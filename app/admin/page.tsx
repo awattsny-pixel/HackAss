@@ -206,7 +206,8 @@ export default function AdminDashboard() {
                     </div>
                   )}
 
-                    {/* Content */}
+                  {/* Content */}
+                  <div className="p-6 space-y-4">
                     <div>
                       <h3 className="text-xl font-bold text-gray-900 mb-2">{hack.title}</h3>
                       <p className="text-gray-600 line-clamp-3">{hack.description}</p>
