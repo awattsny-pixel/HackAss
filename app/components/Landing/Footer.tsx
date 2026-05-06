@@ -10,8 +10,13 @@ export default function Footer() {
         <div className="grid md:grid-cols-5 gap-12 mb-16">
           {/* Brand */}
           <div className="md:col-span-1">
-            <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent mb-3">
-              hackass
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-emerald-500 flex items-center justify-center text-white font-bold text-sm">
+                ⚡
+              </div>
+              <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+                hackass
+              </div>
             </div>
             <p className="text-gray-500 text-sm">
               Crowdsourced life hacks. Voted by humans. Updated by minutes.
