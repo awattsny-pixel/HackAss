@@ -26,12 +26,46 @@ export default function SubmitPage() {
     videoUrl: '',
   });
 
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string>('');
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Photo must be less than 5MB');
+        return;
+      }
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setError('Please upload an image file');
+        return;
+      }
+
+      setPhotoFile(file);
+      setError('');
+
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removePhoto = () => {
+    setPhotoFile(null);
+    setPhotoPreview('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -53,10 +87,17 @@ export default function SubmitPage() {
     }
 
     try {
+      const submitData = { ...formData };
+
+      // Include photo as base64 if provided
+      if (photoFile && photoPreview) {
+        submitData.photo = photoPreview;
+      }
+
       const response = await fetch('/api/hacks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(submitData),
       });
 
       if (!response.ok) {
@@ -72,6 +113,8 @@ export default function SubmitPage() {
         steps: '',
         videoUrl: '',
       });
+      setPhotoFile(null);
+      setPhotoPreview('');
 
       // Redirect after 2 seconds
       setTimeout(() => {
@@ -147,6 +190,49 @@ export default function SubmitPage() {
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
+          </div>
+
+          {/* Photo Upload */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-300 mb-3">
+              Photo <span className="text-gray-500 text-xs font-normal">(optional)</span>
+            </label>
+
+            {photoPreview ? (
+              <div className="space-y-3">
+                <div className="relative rounded-lg overflow-hidden bg-gray-900 border border-gray-700">
+                  <img
+                    src={photoPreview}
+                    alt="Preview"
+                    className="w-full h-48 object-cover"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={removePhoto}
+                  className="text-sm text-red-400 hover:text-red-300 transition font-semibold"
+                >
+                  Remove photo
+                </button>
+              </div>
+            ) : (
+              <label className="flex flex-col items-center justify-center w-full p-8 rounded-lg border-2 border-dashed border-gray-700 hover:border-emerald-500 transition cursor-pointer bg-gray-900/50">
+                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                  <svg className="w-8 h-8 text-gray-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  <p className="text-gray-400 text-sm">Click to upload or drag and drop</p>
+                  <p className="text-gray-500 text-xs mt-1">PNG, JPG up to 5MB</p>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                />
+              </label>
+            )}
+            <p className="text-gray-500 text-xs mt-2 font-mono">A photo helps people understand your hack faster</p>
           </div>
 
           {/* Summary */}
