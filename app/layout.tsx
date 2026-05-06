@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Navigation from './components/Navigation';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -16,7 +17,10 @@ export default function RootLayout({
       <head>
         <script async src="https://www.instagram.com/embed.js"></script>
       </head>
-      <body>{children}</body>
+      <body className="bg-black text-white">
+        <Navigation />
+        {children}
+      </body>
     </html>
   );
 }

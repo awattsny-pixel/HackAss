@@ -18,5 +18,31 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f9fafb;
+  background-color: #0a0a0a;
+  color: #ffffff;
 }
+
+/* Design System: Typography */
+@layer base {
+  h1 {
+    @apply text-5xl font-bold tracking-tight;
+  }
+  h2 {
+    @apply text-4xl font-bold;
+  }
+  h3 {
+    @apply text-2xl font-bold;
+  }
+}
+
+/* Category Tag Colors */
+.tag-cooking { @apply bg-orange-500 text-white; }
+.tag-cleaning { @apply bg-green-500 text-white; }
+.tag-money { @apply bg-cyan-500 text-white; }
+.tag-travel { @apply bg-purple-500 text-white; }
+.tag-productivity { @apply bg-blue-500 text-white; }
+.tag-home { @apply bg-amber-600 text-white; }
+.tag-laundry { @apply bg-blue-400 text-white; }
+.tag-tech { @apply bg-indigo-600 text-white; }
+.tag-beauty { @apply bg-pink-500 text-white; }
+.tag-fitness { @apply bg-red-500 text-white; }
