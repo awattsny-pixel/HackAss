@@ -26,8 +26,9 @@ export default function SubmitPage() {
     videoUrl: '',
   });
 
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string>('');
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<string>('');
+  const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
@@ -36,36 +37,39 @@ export default function SubmitPage() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        setError('Photo must be less than 5MB');
+      // Validate file size (max 50MB for videos, 5MB for images)
+      const maxSize = file.type.startsWith('video/') ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
+      if (file.size > maxSize) {
+        setError(`File must be less than ${file.type.startsWith('video/') ? '50MB' : '5MB'}`);
         return;
       }
 
       // Validate file type
-      if (!file.type.startsWith('image/')) {
-        setError('Please upload an image file');
+      if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+        setError('Please upload an image or video file');
         return;
       }
 
-      setPhotoFile(file);
+      setMediaFile(file);
+      setMediaType(file.type.startsWith('video/') ? 'video' : 'image');
       setError('');
 
       // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
+        setMediaPreview(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const removePhoto = () => {
-    setPhotoFile(null);
-    setPhotoPreview('');
+  const removeMedia = () => {
+    setMediaFile(null);
+    setMediaPreview('');
+    setMediaType(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -89,9 +93,13 @@ export default function SubmitPage() {
     try {
       const submitData = { ...formData };
 
-      // Include photo as base64 if provided
-      if (photoFile && photoPreview) {
-        submitData.photo = photoPreview;
+      // Include media (photo or video) as base64 if provided
+      if (mediaFile && mediaPreview) {
+        if (mediaType === 'video') {
+          submitData.videoUpload = mediaPreview;
+        } else {
+          submitData.photo = mediaPreview;
+        }
       }
 
       const response = await fetch('/api/hacks', {
@@ -113,8 +121,9 @@ export default function SubmitPage() {
         steps: '',
         videoUrl: '',
       });
-      setPhotoFile(null);
-      setPhotoPreview('');
+      setMediaFile(null);
+      setMediaPreview('');
+      setMediaType(null);
 
       // Redirect after 2 seconds
       setTimeout(() => {
@@ -192,27 +201,35 @@ export default function SubmitPage() {
             </select>
           </div>
 
-          {/* Photo Upload */}
+          {/* Photo/Video Upload */}
           <div>
             <label className="block text-sm font-semibold text-gray-300 mb-3">
-              Photo <span className="text-gray-500 text-xs font-normal">(optional)</span>
+              Photo or video <span className="text-gray-500 text-xs font-normal">(optional)</span>
             </label>
 
-            {photoPreview ? (
+            {mediaPreview ? (
               <div className="space-y-3">
                 <div className="relative rounded-lg overflow-hidden bg-gray-900 border border-gray-700">
-                  <img
-                    src={photoPreview}
-                    alt="Preview"
-                    className="w-full h-48 object-cover"
-                  />
+                  {mediaType === 'video' ? (
+                    <video
+                      src={mediaPreview}
+                      className="w-full h-48 object-cover bg-black"
+                      controls
+                    />
+                  ) : (
+                    <img
+                      src={mediaPreview}
+                      alt="Preview"
+                      className="w-full h-48 object-cover"
+                    />
+                  )}
                 </div>
                 <button
                   type="button"
-                  onClick={removePhoto}
+                  onClick={removeMedia}
                   className="text-sm text-red-400 hover:text-red-300 transition font-semibold"
                 >
-                  Remove photo
+                  Remove {mediaType === 'video' ? 'video' : 'photo'}
                 </button>
               </div>
             ) : (
@@ -222,17 +239,33 @@ export default function SubmitPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                   <p className="text-gray-400 text-sm">Click to upload or drag and drop</p>
-                  <p className="text-gray-500 text-xs mt-1">PNG, JPG up to 5MB</p>
+                  <p className="text-gray-500 text-xs mt-1">PNG, JPG (5MB) or MP4, WebM (50MB)</p>
                 </div>
                 <input
                   type="file"
-                  accept="image/*"
-                  onChange={handlePhotoChange}
+                  accept="image/*,video/*"
+                  onChange={handleMediaChange}
                   className="hidden"
                 />
               </label>
             )}
-            <p className="text-gray-500 text-xs mt-2 font-mono">A photo helps people understand your hack faster</p>
+            <p className="text-gray-500 text-xs mt-2 font-mono">Upload a photo or video to help people understand your hack</p>
+          </div>
+
+          {/* Video Link (alternative) */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-300 mb-3">
+              Or paste a video link <span className="text-gray-500 text-xs font-normal">(instead of uploading)</span>
+            </label>
+            <input
+              type="url"
+              name="videoUrl"
+              value={formData.videoUrl}
+              onChange={handleChange}
+              placeholder="YouTube, Vimeo, or TikTok link"
+              className="w-full px-4 py-3 rounded-lg bg-gray-900 border border-gray-700 text-white placeholder-gray-500 focus:border-emerald-500 focus:outline-none transition"
+            />
+            <p className="text-gray-500 text-xs mt-2 font-mono">Add a link if you prefer not to upload</p>
           </div>
 
           {/* Summary */}
@@ -288,21 +321,6 @@ export default function SubmitPage() {
             />
           </div>
 
-          {/* Video URL (optional) */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-300 mb-3">
-              Video link <span className="text-gray-500 text-xs font-normal">(optional)</span>
-            </label>
-            <input
-              type="url"
-              name="videoUrl"
-              value={formData.videoUrl}
-              onChange={handleChange}
-              placeholder="YouTube, Vimeo, or TikTok link"
-              className="w-full px-4 py-3 rounded-lg bg-gray-900 border border-gray-700 text-white placeholder-gray-500 focus:border-emerald-500 focus:outline-none transition"
-            />
-            <p className="text-gray-500 text-xs mt-2 font-mono">Add a video if it helps explain the hack</p>
-          </div>
 
           {/* Submit Button */}
           <div className="flex gap-4 pt-8">
