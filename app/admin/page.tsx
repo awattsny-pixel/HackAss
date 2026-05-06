@@ -147,79 +147,118 @@ export default function AdminDashboard() {
         {/* Hacks Grid */}
         {!loading && hacks.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {hacks.map((hack) => (
-              <div key={hack.id} className="bg-white rounded-lg shadow overflow-hidden">
-                {/* Thumbnail */}
-                {hack.content_thumbnail || hack.content_url ? (
-                  <div className="relative w-full h-48 bg-gray-200">
-                    {hack.content_type === 'photo' && hack.content_url ? (
-                      <Image
-                        src={hack.content_url}
-                        alt={hack.title}
-                        fill
-                        className="object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gray-300 text-gray-600 text-4xl">
-                        {hack.content_type === 'video' ? '🎥' : '🔗'}
-                      </div>
-                    )}
-                  </div>
-                ) : null}
+            {hacks.map((hack) => {
+              // Get embed URL for videos
+              const getEmbedUrl = () => {
+                const url = hack.content_url;
+                if (!url) return null;
 
-                {/* Content */}
-                <div className="p-6 space-y-4">
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">{hack.title}</h3>
-                    <p className="text-gray-600 line-clamp-3">{hack.description}</p>
-                  </div>
+                // YouTube
+                if (url.includes('youtube.com') || url.includes('youtu.be')) {
+                  const videoId = url.includes('v=')
+                    ? url.split('v=')[1]?.split('&')[0]
+                    : url.split('/').pop();
+                  return `https://www.youtube.com/embed/${videoId}`;
+                }
 
-                  <div className="text-sm text-gray-500 border-t pt-4">
-                    <p>
-                      <span className="font-semibold">Type:</span> {hack.content_type}
-                    </p>
-                    <p>
-                      <span className="font-semibold">From:</span> {hack.source_attribution}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Submitted:</span>{' '}
-                      {new Date(hack.created_at).toLocaleDateString()}
-                    </p>
-                    {hack.content_url && (
-                      <p className="break-all">
-                        <span className="font-semibold">URL:</span>{' '}
-                        <a
-                          href={hack.content_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline"
-                        >
-                          {hack.content_url.substring(0, 50)}...
-                        </a>
+                // Vimeo
+                if (url.includes('vimeo.com')) {
+                  const videoId = url.split('/').pop()?.split('?')[0];
+                  return `https://player.vimeo.com/video/${videoId}`;
+                }
+
+                // TikTok
+                if (url.includes('tiktok.com')) {
+                  const videoId = url.split('/video/')[1]?.split('?')[0] || url.split('/').pop();
+                  return `https://www.tiktok.com/embed/v2/${videoId}`;
+                }
+
+                return null;
+              };
+
+              return (
+                <div key={hack.id} className="bg-white rounded-lg shadow overflow-hidden">
+                  {/* Thumbnail/Video Preview */}
+                  {hack.content_url && (
+                    <div className="relative w-full bg-gray-200" style={{ aspectRatio: hack.content_type === 'photo' ? '1' : '16 / 9' }}>
+                      {hack.content_type === 'photo' ? (
+                        <Image
+                          src={hack.content_url}
+                          alt={hack.title}
+                          fill
+                          className="object-cover"
+                        />
+                      ) : hack.content_type === 'video' && getEmbedUrl() ? (
+                        <iframe
+                          src={getEmbedUrl()}
+                          width="100%"
+                          height="100%"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          className="w-full h-full"
+                          title={hack.title}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gray-300 text-gray-600 text-4xl">
+                          {hack.content_type === 'video' ? '🎥' : '🔗'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                    {/* Content */}
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900 mb-2">{hack.title}</h3>
+                      <p className="text-gray-600 line-clamp-3">{hack.description}</p>
+                    </div>
+
+                    <div className="text-sm text-gray-500 border-t pt-4">
+                      <p>
+                        <span className="font-semibold">Type:</span> {hack.content_type}
                       </p>
-                    )}
-                  </div>
+                      <p>
+                        <span className="font-semibold">From:</span> {hack.source_attribution}
+                      </p>
+                      <p>
+                        <span className="font-semibold">Submitted:</span>{' '}
+                        {new Date(hack.created_at).toLocaleDateString()}
+                      </p>
+                      {hack.content_url && (
+                        <p className="break-all">
+                          <span className="font-semibold">URL:</span>{' '}
+                          <a
+                            href={hack.content_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline"
+                          >
+                            {hack.content_url.substring(0, 50)}...
+                          </a>
+                        </p>
+                      )}
+                    </div>
 
-                  {/* Actions */}
-                  <div className="flex gap-2 pt-4">
-                    <button
-                      onClick={() => handleApprove(hack.id)}
-                      disabled={processing === hack.id}
-                      className="flex-1 bg-green-600 text-white font-semibold py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
-                    >
-                      {processing === hack.id ? 'Processing...' : '✓ Approve'}
-                    </button>
-                    <button
-                      onClick={() => handleReject(hack.id)}
-                      disabled={processing === hack.id}
-                      className="flex-1 bg-red-600 text-white font-semibold py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 transition"
-                    >
-                      {processing === hack.id ? 'Processing...' : '✕ Reject'}
-                    </button>
+                    {/* Actions */}
+                    <div className="flex gap-2 pt-4">
+                      <button
+                        onClick={() => handleApprove(hack.id)}
+                        disabled={processing === hack.id}
+                        className="flex-1 bg-green-600 text-white font-semibold py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
+                      >
+                        {processing === hack.id ? 'Processing...' : '✓ Approve'}
+                      </button>
+                      <button
+                        onClick={() => handleReject(hack.id)}
+                        disabled={processing === hack.id}
+                        className="flex-1 bg-red-600 text-white font-semibold py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 transition"
+                      >
+                        {processing === hack.id ? 'Processing...' : '✕ Reject'}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
