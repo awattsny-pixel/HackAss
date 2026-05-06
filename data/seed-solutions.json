@@ -1,0 +1,594 @@
+{
+  "solutions": [
+    {
+      "solution_id": "sol-001-a",
+      "problem_id": "clean-001",
+      "title": "Oxygen Bleach Pre-soak for White Shirt Stains",
+      "description": "Use oxygen bleach (OxiClean) as a pre-soak to break down tough stains before washing.",
+      "steps": [
+        "Fill a bucket with cool water",
+        "Add 1 scoop of OxiClean powder per gallon of water",
+        "Submerge the stained shirt and stir to distribute",
+        "Let soak for 12-24 hours",
+        "Wash normally with detergent",
+        "Air dry to check if stain is gone before machine drying"
+      ],
+      "category": "CLEANING",
+      "difficulty": "easy",
+      "why_it_works": "Oxygen bleach (hydrogen peroxide-based) breaks down the molecular structure of organic stains without damaging white fabrics. It's gentler than chlorine bleach.",
+      "source_attribution": "cleaninghacks.com",
+      "seed_signals": {
+        "worked_votes": 82,
+        "failed_votes": 5,
+        "unique_validators": 87,
+        "upvotes": 156,
+        "impressions": 2400
+      }
+    },
+    {
+      "solution_id": "sol-001-b",
+      "problem_id": "clean-001",
+      "title": "Lemon Juice and Sunlight Bleaching",
+      "description": "Natural lemon juice and sunlight act as a gentle bleach alternative for white cotton.",
+      "steps": [
+        "Squeeze fresh lemon juice onto the stain",
+        "Rub the juice into the fabric gently",
+        "Lay the garment flat in direct sunlight for 2-3 hours",
+        "Rinse with cold water",
+        "Wash normally"
+      ],
+      "category": "CLEANING",
+      "difficulty": "easy",
+      "why_it_works": "Lemon acid and UV rays from sunlight work together to break down stain molecules. Works best on protein-based stains like blood or sweat.",
+      "source_attribution": "apartmenttherapy.com",
+      "seed_signals": {
+        "worked_votes": 40,
+        "failed_votes": 10,
+        "unique_validators": 50,
+        "upvotes": 89,
+        "impressions": 1800
+      }
+    },
+    {
+      "solution_id": "sol-001-c",
+      "problem_id": "clean-001",
+      "title": "Hydrogen Peroxide Direct Application",
+      "description": "Apply food-grade hydrogen peroxide directly to fresh stains for quick results.",
+      "steps": [
+        "Blot the stain with a clean cloth (don't rub)",
+        "Apply 3% hydrogen peroxide directly to the stain",
+        "Let sit for 5-10 minutes",
+        "Blot again with a damp cloth",
+        "Rinse with cold water and wash"
+      ],
+      "category": "CLEANING",
+      "difficulty": "easy",
+      "why_it_works": "Hydrogen peroxide oxidizes stain particles. Works best on fresh stains and organic matter (blood, wine, sweat). Always test on hidden area first.",
+      "source_attribution": "reddit.com/r/lifehacks",
+      "seed_signals": {
+        "worked_votes": 117,
+        "failed_votes": 5,
+        "unique_validators": 122,
+        "upvotes": 243,
+        "impressions": 3100
+      }
+    },
+    {
+      "solution_id": "sol-002-a",
+      "problem_id": "clean-002",
+      "title": "Baking Soda and Vinegar Drain Cleaner",
+      "description": "Use the chemical reaction between baking soda and vinegar to clear clogs naturally.",
+      "steps": [
+        "Remove debris from drain opening",
+        "Pour 1 cup of baking soda down the drain",
+        "Pour 1 cup of white vinegar down the drain slowly",
+        "Cover the drain with a wet cloth for 15 minutes",
+        "Boil water and pour it down the drain to flush",
+        "Repeat if necessary"
+      ],
+      "category": "CLEANING",
+      "difficulty": "easy",
+      "why_it_works": "The acid-base reaction between vinegar and baking soda creates CO2 bubbles that dislodge debris. Works on light to medium clogs.",
+      "source_attribution": "goodhousekeeping.com",
+      "seed_signals": {
+        "worked_votes": 156,
+        "failed_votes": 22,
+        "unique_validators": 62,
+        "upvotes": 298,
+        "impressions": 4200
+      }
+    },
+    {
+      "solution_id": "sol-002-b",
+      "problem_id": "clean-002",
+      "title": "Wire Hanger Plunger for Drain Clogs",
+      "description": "Make a makeshift drain snake from a wire coat hanger to physically remove clogs.",
+      "steps": [
+        "Unwind a wire coat hanger and straighten it",
+        "Bend one end into a small hook shape",
+        "Feed the hooked end into the drain",
+        "Twist and pull slowly to catch debris",
+        "Remove debris and rinse drain with hot water"
+      ],
+      "category": "CLEANING",
+      "difficulty": "easy",
+      "why_it_works": "The hook catches hair and debris that's blocking water flow. Works for clogs near the drain opening, not deep pipes.",
+      "source_attribution": "apartmenttherapy.com",
+      "seed_signals": {
+        "worked_votes": 203,
+        "failed_votes": 12,
+        "unique_validators": 78,
+        "upvotes": 401,
+        "impressions": 5100
+      }
+    },
+    {
+      "solution_id": "sol-003-a",
+      "problem_id": "clean-003",
+      "title": "Lower Heat and Oil Temperature Check",
+      "description": "Prevent burning by using lower heat and ensuring oil is at the right temperature before adding food.",
+      "steps": [
+        "Set stovetop to medium or medium-low heat",
+        "Add oil and let it heat for 1-2 minutes",
+        "Test with a tiny piece of food—it should sizzle gently",
+        "Add your main ingredients slowly",
+        "Keep heat consistent throughout cooking"
+      ],
+      "category": "CLEANING",
+      "difficulty": "easy",
+      "why_it_works": "Lower heat allows food to cook through before the outside burns. Proper oil temperature creates a protective layer that prevents sticking and burning.",
+      "source_attribution": "foodnetwork.com",
+      "seed_signals": {
+        "worked_votes": 289,
+        "failed_votes": 6,
+        "unique_validators": 103,
+        "upvotes": 531,
+        "impressions": 6200
+      }
+    },
+    {
+      "solution_id": "sol-004-a",
+      "problem_id": "clean-004",
+      "title": "Baking Soda Odor Absorption",
+      "description": "Baking soda absorbs food odors over time naturally and safely.",
+      "steps": [
+        "Clean and dry the inside of the fridge",
+        "Place an open box of baking soda on a shelf",
+        "Replace every 3 months or when it stops smelling fresh",
+        "For stubborn odors, use more boxes or activated charcoal"
+      ],
+      "category": "CLEANING",
+      "difficulty": "easy",
+      "why_it_works": "Baking soda is porous and absorbs odor molecules. It's cheap, safe, and non-toxic for food storage areas.",
+      "source_attribution": "spruceeats.com",
+      "seed_signals": {
+        "worked_votes": 167,
+        "failed_votes": 8,
+        "unique_validators": 59,
+        "upvotes": 312,
+        "impressions": 3800
+      }
+    },
+    {
+      "solution_id": "sol-005-a",
+      "problem_id": "clean-005",
+      "title": "Baking Soda and Water Paste Oven Cleaner",
+      "description": "Make a non-toxic oven cleaner paste from baking soda and water.",
+      "steps": [
+        "Mix 1/2 cup baking soda with 3 tablespoons water to form a paste",
+        "Spread paste inside the oven, avoiding heating elements",
+        "Let sit overnight for best results (minimum 12 hours)",
+        "Spray vinegar to activate any remaining paste",
+        "Scrape out with a plastic scraper",
+        "Wipe down with a damp cloth and rinse"
+      ],
+      "category": "CLEANING",
+      "difficulty": "medium",
+      "why_it_works": "Baking soda is mildly abrasive and alkaline, breaking down baked-on grease. It's non-toxic unlike commercial oven cleaners.",
+      "source_attribution": "apartmenttherapy.com",
+      "seed_signals": {
+        "worked_votes": 134,
+        "failed_votes": 18,
+        "unique_validators": 48,
+        "upvotes": 251,
+        "impressions": 3200
+      }
+    },
+    {
+      "solution_id": "sol-006-a",
+      "problem_id": "clean-006",
+      "title": "Dish Soap and Warm Water for Fresh Grease Stains",
+      "description": "Treat grease stains immediately with dish soap before washing.",
+      "steps": [
+        "Identify the stain while fabric is still dry",
+        "Apply liquid dish soap directly to the stain",
+        "Let sit for 5-10 minutes (don't let it dry)",
+        "Rub gently with a soft brush or cloth",
+        "Rinse with warm water and wash as normal"
+      ],
+      "category": "CLEANING",
+      "difficulty": "easy",
+      "why_it_works": "Dish soap is designed to break down oil and grease. Treating immediately prevents the oil from setting into the fabric.",
+      "source_attribution": "thespruce.com",
+      "seed_signals": {
+        "worked_votes": 198,
+        "failed_votes": 12,
+        "unique_validators": 71,
+        "upvotes": 367,
+        "impressions": 4500
+      }
+    },
+    {
+      "solution_id": "sol-007-a",
+      "problem_id": "clean-007",
+      "title": "Vinegar and Baking Soda for Hard Water Stains",
+      "description": "Remove mineral deposits from shower glass using vinegar and baking soda.",
+      "steps": [
+        "Spray white vinegar generously on stained glass",
+        "Let soak for 30 minutes",
+        "Sprinkle baking soda on a damp cloth",
+        "Scrub the glass gently in circular motions",
+        "Rinse thoroughly with water",
+        "Dry with a squeegee or microfiber cloth"
+      ],
+      "category": "CLEANING",
+      "difficulty": "easy",
+      "why_it_works": "Vinegar dissolves mineral deposits (calcium and magnesium). Baking soda adds mild abrasion without scratching glass.",
+      "source_attribution": "goodhousekeeping.com",
+      "seed_signals": {
+        "worked_votes": 212,
+        "failed_votes": 9,
+        "unique_validators": 76,
+        "upvotes": 401,
+        "impressions": 4800
+      }
+    },
+    {
+      "solution_id": "sol-money-001-a",
+      "problem_id": "money-001",
+      "title": "Shop With a List and Weekly Meal Plan",
+      "description": "Plan meals first, then shop only for what you need. Reduces impulse purchases.",
+      "steps": [
+        "Plan 7 days of meals for your household",
+        "Check pantry for items you already have",
+        "Create a detailed shopping list organized by store section",
+        "Set a budget and stick to it",
+        "Shop with the list only—don't add items",
+        "Use a calculator app to track spending in-store"
+      ],
+      "category": "MONEY",
+      "difficulty": "medium",
+      "why_it_works": "Meal planning eliminates guesswork and impulse buying. Organized lists prevent forgotten items that trigger second trips.",
+      "source_attribution": "budgetbytes.com",
+      "seed_signals": {
+        "worked_votes": 267,
+        "failed_votes": 21,
+        "unique_validators": 94,
+        "upvotes": 501,
+        "impressions": 6200
+      }
+    },
+    {
+      "solution_id": "sol-money-001-b",
+      "problem_id": "money-001",
+      "title": "Buy Store Brand Instead of Name Brand",
+      "description": "Switch to store-brand equivalents for 30-50% savings.",
+      "steps": [
+        "Compare store brand and name brand prices per ounce/unit",
+        "Read ingredient lists—most are identical",
+        "Start with items you use frequently (pasta, oil, canned goods)",
+        "Track your spending for 4 weeks to see savings",
+        "Commit to store brands for regular items"
+      ],
+      "category": "MONEY",
+      "difficulty": "easy",
+      "why_it_works": "Store brands are often made by the same manufacturers as name brands but with lower marketing costs passed to you as savings.",
+      "source_attribution": "consumerreports.org",
+      "seed_signals": {
+        "worked_votes": 342,
+        "failed_votes": 18,
+        "unique_validators": 121,
+        "upvotes": 648,
+        "impressions": 7800
+      }
+    },
+    {
+      "solution_id": "sol-money-001-c",
+      "problem_id": "money-001",
+      "title": "Shop Sales and Stock Up on Non-Perishables",
+      "description": "Buy non-perishable items when on sale and stock up your pantry.",
+      "steps": [
+        "Review weekly store ads and sales flyers",
+        "Sign up for store loyalty programs for extra discounts",
+        "Buy non-perishables (pasta, rice, beans, canned items) when on sale",
+        "Keep a pantry inventory spreadsheet",
+        "Plan meals around what's in stock",
+        "Rotate older items to the front"
+      ],
+      "category": "MONEY",
+      "difficulty": "easy",
+      "why_it_works": "Non-perishable sales create opportunities to build inventory cheaply. Strategic shopping reduces price per item over time.",
+      "source_attribution": "reddit.com/r/frugal",
+      "seed_signals": {
+        "worked_votes": 289,
+        "failed_votes": 24,
+        "unique_validators": 103,
+        "upvotes": 542,
+        "impressions": 6800
+      }
+    },
+    {
+      "solution_id": "sol-money-002-a",
+      "problem_id": "money-002",
+      "title": "Use ATM Networks That Waive Fees",
+      "description": "Find ATMs that are free to use by checking your bank's network.",
+      "steps": [
+        "Check your bank's website for fee-free ATM locations",
+        "Look for banks that participate in nationwide networks (Allpoint, MoneyPass)",
+        "Use only ATMs in your bank's network when possible",
+        "Keep cash in wallet to reduce ATM visits",
+        "Plan withdrawals before traveling"
+      ],
+      "category": "MONEY",
+      "difficulty": "easy",
+      "why_it_works": "Banks partner with ATM networks to offer free access to members. Fee-free ATM usage saves $2-3 per transaction.",
+      "source_attribution": "bankrate.com",
+      "seed_signals": {
+        "worked_votes": 198,
+        "failed_votes": 12,
+        "unique_validators": 71,
+        "upvotes": 389,
+        "impressions": 4900
+      }
+    },
+    {
+      "solution_id": "sol-money-004-a",
+      "problem_id": "money-004",
+      "title": "Set Phone Reminders Before Auto-Renewal Dates",
+      "description": "Track subscription renewal dates and cancel before being charged.",
+      "steps": [
+        "List all subscriptions (streaming, apps, memberships)",
+        "Find renewal dates in account settings",
+        "Set phone reminders 3 days before each renewal",
+        "When reminder comes, decide if you still use the service",
+        "Cancel before the charge date if you don't",
+        "Consider if you could share cost with family members"
+      ],
+      "category": "MONEY",
+      "difficulty": "easy",
+      "why_it_works": "Most subscriptions count on users forgetting cancellations. Proactive tracking prevents unwanted charges.",
+      "source_attribution": "nerdwallet.com",
+      "seed_signals": {
+        "worked_votes": 401,
+        "failed_votes": 8,
+        "unique_validators": 143,
+        "upvotes": 756,
+        "impressions": 8900
+      }
+    },
+    {
+      "solution_id": "sol-travel-001-a",
+      "problem_id": "travel-001",
+      "title": "Roll Clothes Instead of Folding",
+      "description": "Rolling clothes saves space and reduces wrinkles in luggage.",
+      "steps": [
+        "Lay clothing flat on a bed",
+        "Fold sleeves inward, then fold in half lengthwise",
+        "Roll tightly from the bottom to the top",
+        "Pack rolled items snugly in your carry-on",
+        "Place heavier items at the bottom"
+      ],
+      "category": "TRAVEL",
+      "difficulty": "easy",
+      "why_it_works": "Rolling creates a more compact shape than folding. Wrinkles form from creasing, not rolling, so clothes stay fresher.",
+      "source_attribution": "travelandleisure.com",
+      "seed_signals": {
+        "worked_votes": 267,
+        "failed_votes": 6,
+        "unique_validators": 92,
+        "upvotes": 498,
+        "impressions": 5800
+      }
+    },
+    {
+      "solution_id": "sol-travel-003-a",
+      "problem_id": "travel-003",
+      "title": "Use Flight Comparison Websites and Browser Extensions",
+      "description": "Track flights using Google Flights, Kayak, and Hopper to find the cheapest times.",
+      "steps": [
+        "Go to Google Flights and set your destination",
+        "Enable price tracking for email alerts when prices drop",
+        "Compare across multiple sites (Kayak, Expedia, Skyscanner)",
+        "Use browser extensions like Hopper for price history",
+        "Book on Tuesday-Thursday when prices are usually lowest",
+        "Consider flying mid-week instead of weekends"
+      ],
+      "category": "TRAVEL",
+      "difficulty": "easy",
+      "why_it_works": "Algorithms track millions of flights and identify cheapest times. Mid-week flights are less popular, so airlines price them lower.",
+      "source_attribution": "travelpirates.com",
+      "seed_signals": {
+        "worked_votes": 456,
+        "failed_votes": 11,
+        "unique_validators": 161,
+        "upvotes": 892,
+        "impressions": 10200
+      }
+    },
+    {
+      "solution_id": "sol-travel-003-b",
+      "problem_id": "travel-003",
+      "title": "Book Flights During Sales, Not at Peak Times",
+      "description": "Airlines have specific sale windows when they release cheap flights.",
+      "steps": [
+        "Follow airlines on Twitter for flash sales",
+        "Sign up for airline email newsletters",
+        "Book 2-3 months in advance for domestic, 3-4 months for international",
+        "Avoid holiday periods and peak summer months",
+        "Use incognito mode when searching to avoid price increases",
+        "Check if flying into nearby smaller airports saves money"
+      ],
+      "category": "TRAVEL",
+      "difficulty": "easy",
+      "why_it_works": "Airlines release sales strategically and use dynamic pricing. Advance booking and flexible dates beat last-minute deals.",
+      "source_attribution": "kayak.com",
+      "seed_signals": {
+        "worked_votes": 389,
+        "failed_votes": 15,
+        "unique_validators": 138,
+        "upvotes": 721,
+        "impressions": 8600
+      }
+    },
+    {
+      "solution_id": "sol-prod-001-a",
+      "problem_id": "prod-001",
+      "title": "Pomodoro Technique with Phone in Another Room",
+      "description": "Use 25-minute focused work sprints followed by 5-minute breaks.",
+      "steps": [
+        "Put your phone in another room or in a drawer",
+        "Set a timer for 25 minutes",
+        "Work on ONE task only—no switching",
+        "When timer goes off, take a 5-minute break (walk, water, stretch)",
+        "After 4 pomodoros (2 hours), take a 15-30 minute break",
+        "Don't check messages during work sprints"
+      ],
+      "category": "PRODUCTIVITY",
+      "difficulty": "medium",
+      "why_it_works": "Removing phone distractions eliminates temptation. 25 minutes is short enough that focus feels achievable. Regular breaks prevent burnout.",
+      "source_attribution": "pomodorotechnique.com",
+      "seed_signals": {
+        "worked_votes": 312,
+        "failed_votes": 28,
+        "unique_validators": 111,
+        "upvotes": 587,
+        "impressions": 7200
+      }
+    },
+    {
+      "solution_id": "sol-prod-001-b",
+      "problem_id": "prod-001",
+      "title": "Use a Quiet Location and Noise-Canceling Headphones",
+      "description": "Find or create a distraction-free environment with background noise control.",
+      "steps": [
+        "Identify the quietest room in your space",
+        "If unavailable, use noise-canceling headphones",
+        "Use lofi music or brown noise (apps like Noisli)",
+        "Let others know not to interrupt during work time",
+        "Close unnecessary browser tabs and apps",
+        "Use website blockers to prevent social media during work"
+      ],
+      "category": "PRODUCTIVITY",
+      "difficulty": "easy",
+      "why_it_works": "The brain focuses better without competing sensory input. Brown noise masks unpredictable sounds better than silence.",
+      "source_attribution": "psychologytoday.com",
+      "seed_signals": {
+        "worked_votes": 267,
+        "failed_votes": 32,
+        "unique_validators": 95,
+        "upvotes": 498,
+        "impressions": 6500
+      }
+    },
+    {
+      "solution_id": "sol-cook-001-a",
+      "problem_id": "cook-001",
+      "title": "Cook Eggs on Low-Medium Heat Slowly",
+      "description": "Low heat cooks eggs gently without overcooking the outside before the yolk sets.",
+      "steps": [
+        "Heat butter or oil on low-medium heat for 1 minute",
+        "Crack eggs into the pan gently",
+        "Cover with a lid if you like runny yolks",
+        "Cook for 4-6 minutes until whites are set but yolk is soft",
+        "Season with salt and pepper at the end",
+        "Slide onto plate with a spatula"
+      ],
+      "category": "COOKING",
+      "difficulty": "easy",
+      "why_it_works": "High heat causes rapid water evaporation and makes egg whites rubbery. Low heat cooks eggs evenly without overcooking.",
+      "source_attribution": "seriouseats.com",
+      "seed_signals": {
+        "worked_votes": 234,
+        "failed_votes": 8,
+        "unique_validators": 83,
+        "upvotes": 442,
+        "impressions": 5400
+      }
+    },
+    {
+      "solution_id": "sol-cook-002-a",
+      "problem_id": "cook-002",
+      "title": "Use the Absorption Method for Perfect Rice",
+      "description": "Measure water correctly and use a lid to absorb water evenly.",
+      "steps": [
+        "Rinse rice in cold water 2-3 times until water runs clear",
+        "Use a 2:1 water to rice ratio (2 cups water per 1 cup rice)",
+        "Bring to a boil, then cover and reduce heat to low",
+        "Cook for 18 minutes without lifting the lid",
+        "Remove from heat and let stand 5 minutes",
+        "Fluff with a fork and serve"
+      ],
+      "category": "COOKING",
+      "difficulty": "easy",
+      "why_it_works": "The correct water ratio prevents both mushy and undercooked rice. Resting allows the steam to finish cooking evenly.",
+      "source_attribution": "chowhound.com",
+      "seed_signals": {
+        "worked_votes": 289,
+        "failed_votes": 12,
+        "unique_validators": 102,
+        "upvotes": 541,
+        "impressions": 6400
+      }
+    },
+    {
+      "solution_id": "sol-well-001-a",
+      "problem_id": "well-001",
+      "title": "Keep Room Cool and Dark, Stick to a Schedule",
+      "description": "Create optimal sleep conditions and maintain consistent sleep times.",
+      "steps": [
+        "Keep bedroom temperature between 60-67°F (15-19°C)",
+        "Use blackout curtains or an eye mask",
+        "Go to bed and wake up at the same time daily",
+        "Avoid screens 1 hour before bedtime",
+        "Avoid caffeine after 2 PM",
+        "Use white noise or earplugs if needed"
+      ],
+      "category": "WELLNESS",
+      "difficulty": "medium",
+      "why_it_works": "Cool temperatures trigger melatonin release. Darkness signals the body to sleep. Consistency trains circadian rhythms.",
+      "source_attribution": "sleepfoundation.org",
+      "seed_signals": {
+        "worked_votes": 356,
+        "failed_votes": 34,
+        "unique_validators": 127,
+        "upvotes": 672,
+        "impressions": 8100
+      }
+    },
+    {
+      "solution_id": "sol-well-002-a",
+      "problem_id": "well-002",
+      "title": "Drink Water and Apply a Warm Compress",
+      "description": "Dehydration and muscle tension are common headache causes.",
+      "steps": [
+        "Drink a large glass of water immediately",
+        "Wet a cloth with warm (not hot) water",
+        "Apply to temples or back of neck for 10-15 minutes",
+        "Sit in a quiet, dark room if possible",
+        "Do gentle neck stretches",
+        "Wait 30 minutes before taking any medication"
+      ],
+      "category": "WELLNESS",
+      "difficulty": "easy",
+      "why_it_works": "Dehydration causes blood vessel constriction. Warm compresses relax tense muscles. Rest reduces sensory input.",
+      "source_attribution": "medicalnewstoday.com",
+      "seed_signals": {
+        "worked_votes": 267,
+        "failed_votes": 18,
+        "unique_validators": 94,
+        "upvotes": 498,
+        "impressions": 6000
+      }
+    }
+  ]
+}

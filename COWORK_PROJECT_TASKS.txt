@@ -1,0 +1,387 @@
+================================================================================
+HACK AGGREGATOR PLATFORM - COWORK PROJECT SETUP
+================================================================================
+
+PROJECT NAME: Hack Aggregator
+DURATION: 3-4 weeks to MVP
+TECH STACK: React + Vite | Node.js + Express + TypeScript | PostgreSQL (Supabase)
+
+================================================================================
+SPRINT 1: DESIGN & SETUP (Week 1-2)
+================================================================================
+
+[TASK 1.1] Create Database Schema
+   Estimate: 4 hours
+   Description: PostgreSQL schema design, Prisma models, Supabase setup
+   Subtasks:
+   - Design user, hack, category, vote, submission tables
+   - Create Prisma schema
+   - Set up Supabase project
+   - Test local connection
+
+[TASK 1.2] Design Wireframes & UI Components
+   Estimate: 6 hours
+   Description: Create visual designs for all major pages
+   Subtasks:
+   - Homepage wireframe (hero, featured hack, categories)
+   - Browse page wireframe (hack list, filters, sorting)
+   - Detail page wireframe (full hack, voting, related hacks)
+   - Mobile mockups for all pages
+
+[TASK 1.3] API Specification Document
+   Estimate: 3 hours
+   Description: Define all REST API endpoints and schemas
+   Subtasks:
+   - List all GET, POST, PUT, DELETE endpoints
+   - Define request/response formats
+   - Auth flow documentation
+   - Rate limiting & error handling
+
+[TASK 1.4] Dev Environment Setup
+   Estimate: 4 hours
+   Description: Initialize repositories and configure tools
+   Subtasks:
+   - Git repo setup (main, staging, dev branches)
+   - Node.js + Express + TypeScript scaffolding
+   - React + Vite scaffolding
+   - ESLint, Prettier, TypeScript config
+   - .env file template
+
+================================================================================
+SPRINT 2: BACKEND DEVELOPMENT (Week 2-3)
+================================================================================
+
+[TASK 2.1] User Authentication & Database Connection
+   Estimate: 6 hours
+   Description: Implement user system and Postgres connection
+   Subtasks:
+   - Prisma connection to PostgreSQL
+   - User model (email, password_hash, created_at)
+   - Registration endpoint (POST /auth/register)
+   - Login endpoint (POST /auth/login) with JWT
+   - Password hashing (bcrypt)
+   - Unit tests for auth
+
+[TASK 2.2] Hack CRUD Operations
+   Estimate: 6 hours
+   Description: Core hack endpoints
+   Subtasks:
+   - GET /hacks (list all, paginated)
+   - GET /hacks/:id (single hack)
+   - GET /categories (list categories)
+   - GET /hacks?category=cooking (category filter)
+   - POST /hacks/:id/vote (upvote/downvote)
+   - Test all endpoints
+
+[TASK 2.3] Search & Sorting
+   Estimate: 4 hours
+   Description: Full-text search and sort functionality
+   Subtasks:
+   - Implement PostgreSQL full-text search
+   - Sort by votes, newest, trending (last 7 days)
+   - Pagination (cursor-based or offset-based)
+   - Performance optimization (indexes)
+   - Test search queries
+
+[TASK 2.4] Admin Endpoints
+   Estimate: 4 hours
+   Description: Moderation and bulk operations
+   Subtasks:
+   - POST /admin/hacks/bulk-import (CSV/JSON import)
+   - DELETE /hacks/:id (remove hack)
+   - PATCH /submissions/:id/approve
+   - PATCH /submissions/:id/reject
+   - Admin authentication middleware
+   - Ban user endpoint
+
+[TASK 2.5] Error Handling & Validation
+   Estimate: 2 hours
+   Description: Robust input validation and error responses
+   Subtasks:
+   - Input validation (title, description, steps, category)
+   - Error response format (status, message, code)
+   - Logging setup (Winston or Pino)
+   - Rate limiting middleware
+
+================================================================================
+SPRINT 3: FRONTEND DEVELOPMENT (Week 3-4)
+================================================================================
+
+[TASK 3.1] Homepage & Navigation
+   Estimate: 4 hours
+   Description: Main landing page and navigation
+   Subtasks:
+   - Header with logo, nav links, search bar
+   - Hero section with CTA
+   - Featured hack carousel/spotlight
+   - Category grid (10 categories as clickable cards)
+   - Footer with links (About, Contact, Privacy)
+
+[TASK 3.2] Browse/Category Page
+   Estimate: 5 hours
+   Description: View hacks by category with filters
+   Subtasks:
+   - Hack list component (title, preview, upvote count)
+   - Category title and description
+   - Sort dropdown (trending, newest, most upvotes)
+   - Filter by difficulty (optional)
+   - Pagination or infinite scroll
+   - "No results" state
+
+[TASK 3.3] Hack Detail Page
+   Estimate: 4 hours
+   Description: Full hack view with voting
+   Subtasks:
+   - Hack title, image, description
+   - Step-by-step instructions
+   - "Why it works" explanation
+   - Upvote/downvote button with count
+   - Related hacks sidebar
+   - Share buttons (TikTok, Twitter, Reddit)
+   - Copy hack text feature
+
+[TASK 3.4] Search & Filtering UI
+   Estimate: 3 hours
+   Description: Search bar and filter interface
+   Subtasks:
+   - Search bar with autocomplete
+   - Category filter dropdown
+   - Upvote range slider (optional)
+   - Clear filters button
+   - Active filter chips/tags
+   - Search result count
+
+[TASK 3.5] Responsive Design & Mobile
+   Estimate: 4 hours
+   Description: Mobile-first responsive design
+   Subtasks:
+   - Test on iPhone/Android (< 480px)
+   - Adjust typography and spacing for mobile
+   - Touch-friendly buttons (48px min)
+   - Mobile nav (hamburger menu)
+   - Image optimization for mobile
+   - Performance optimization (LCP < 2.5s)
+
+[TASK 3.6] User Auth UI
+   Estimate: 3 hours
+   Description: Authentication interface
+   Subtasks:
+   - Login modal/page
+   - Registration form
+   - Profile page (voting history, submissions)
+   - Logout button
+   - Protected routes (submissions, voting)
+   - Error messages and validation
+
+================================================================================
+SPRINT 4: CONTENT & LAUNCH (Week 4)
+================================================================================
+
+[TASK 4.1] Content Seeding
+   Estimate: 8 hours (split across week)
+   Description: Curate and import 500+ hacks
+   Subtasks:
+   - Scrape top hacks from r/lifeprotips, r/cooking, etc.
+   - Download BuzzFeed/existing blog hacks
+   - Normalize hack format (title, steps, why, category)
+   - Create CSV/JSON import files
+   - Write import script
+   - Bulk upload via admin API
+   - QA check (no duplicates, proper formatting)
+
+[TASK 4.2] Admin Dashboard (MVP)
+   Estimate: 3 hours
+   Description: Simple moderation interface
+   Subtasks:
+   - Admin auth check
+   - View pending submissions (table)
+   - Approve/reject buttons
+   - View hack statistics (total, category breakdown)
+   - View user statistics
+   - Ban user button
+   - Bulk approve/delete actions
+
+[TASK 4.3] Hack Submission Form
+   Estimate: 3 hours
+   Description: User submission UI and flow
+   Subtasks:
+   - Form fields (title, description, steps array, category, image)
+   - Client-side validation
+   - Image upload (local storage or Cloudinary)
+   - Submit button with loading state
+   - Success/error toast messages
+   - Redirect to moderation notice page
+
+[TASK 4.4] Testing & QA
+   Estimate: 6 hours
+   Description: Comprehensive testing
+   Subtasks:
+   - Functional testing (all user flows)
+   - Edge cases (empty state, large lists, slow network)
+   - Performance testing (Lighthouse score > 85)
+   - Security testing (XSS, SQL injection, CSRF)
+   - Browser compatibility (Chrome, Safari, Firefox, Edge)
+   - Accessibility check (keyboard navigation, screen reader)
+
+[TASK 4.5] Deployment & Infrastructure
+   Estimate: 4 hours
+   Description: Production deployment setup
+   Subtasks:
+   - Backend: Deploy to Railway/Render
+   - Frontend: Deploy to Vercel
+   - Environment variables setup (prod vs dev)
+   - Database migrations in production
+   - Backups and disaster recovery plan
+   - Monitoring/alerts (error tracking, uptime)
+   - Custom domain setup (if available)
+   - SSL/HTTPS verification
+
+[TASK 4.6] Launch Prep & Growth Assets
+   Estimate: 4 hours
+   Description: Marketing materials and initial growth
+   Subtasks:
+   - Write launch blog post / announcement
+   - Create 10 TikTok videos (from top seeded hacks)
+   - TikTok account setup
+   - Twitter/X account setup
+   - Instagram account setup
+   - Email list signup form (embed on site)
+   - Set up Substack/MailChimp for newsletter
+
+================================================================================
+POST-LAUNCH (Week 5+) - ONGOING TASKS
+================================================================================
+
+[TASK 5.1] TikTok & Short-Form Video Strategy
+   Frequency: Daily
+   Description: Post 1-2 videos per day
+   Details:
+   - Create 15-30 second videos from top hacks
+   - Format: text overlay + quick demo/before-after
+   - Hashtags: #LifeHack #CleaningHack #TravelHack #MoneySavingHack
+   - Track views, shares, clicks to site
+   - A/B test formats
+   - Link in bio to site
+
+[TASK 5.2] Reddit Seeding
+   Frequency: Daily
+   Description: Engage with hack communities
+   Details:
+   - Post 1 good hack per day to relevant subreddits
+   - Never spam; always provide genuine value
+   - Subreddits: r/lifeprotips, r/cooking, r/personalfinance, r/cleaning, r/travel
+   - Link naturally in comments (not forced)
+   - Respond to comments and questions
+   - Track upvotes and traffic
+
+[TASK 5.3] User Submission Moderation
+   Frequency: 2x daily (morning, evening)
+   Description: Review and approve user-submitted hacks
+   Details:
+   - Check "Pending" submissions queue
+   - Verify quality (clear steps, beneficial, original)
+   - Approve and publish or provide feedback
+   - Reject spam/duplicates
+   - Ban repeat offenders
+
+[TASK 5.4] Newsletter Setup & Management
+   Frequency: Weekly (Friday)
+   Description: Email newsletter with top hacks
+   Details:
+   - Curate top 5 hacks from the week
+   - Write short email copy
+   - Send via Substack/MailChimp
+   - Track open rate, clicks
+   - Grow subscriber list
+
+[TASK 5.5] Analytics & Monitoring
+   Frequency: Daily check-in
+   Description: Track growth and site health
+   Details:
+   - Set up Google Analytics
+   - Dashboard: visitors, top hacks, traffic sources
+   - Monitor downtime and errors
+   - Daily growth metrics review
+   - Weekly report to stakeholders
+
+[TASK 5.6] Premium Tier Development
+   Timeline: 2 weeks post-launch
+   Description: Paid subscription features
+   Subtasks:
+   - Design premium tier (ad-free, exclusive hacks, early access)
+   - Integrate Stripe payment
+   - Subscription management page
+   - Premium badge on hacks
+   - Email campaigns to free users
+
+================================================================================
+SUCCESS METRICS & MILESTONES
+================================================================================
+
+WEEK 4 (Launch):
+  ☐ 500+ hacks in database
+  ☐ MVP features complete (browse, vote, submit)
+  ☐ Site live and stable
+  ☐ TikTok account with 10 videos posted
+  ☐ Reddit seeding strategy active
+
+WEEK 6 (Post-Launch):
+  ☐ 10K-50K site visitors
+  ☐ 50K TikTok followers
+  ☐ 10+ user-submitted hacks
+  ☐ 500+ email subscribers
+  ☐ 1K monthly hacks viewed
+
+WEEK 12 (Growth Phase):
+  ☐ 200K site visitors
+  ☐ 150K TikTok followers
+  ☐ 300+ user-submitted hacks
+  ☐ 5K email subscribers
+  ☐ $500-1K monthly revenue (affiliate + ads)
+
+================================================================================
+TEAM RECOMMENDATIONS
+================================================================================
+
+For a 3-4 week sprint with ~40 hours/week availability per person:
+- 1 Backend Developer (Node.js/Express/PostgreSQL)
+- 1 Frontend Developer (React/Vite)
+- 1 Full-Stack/DevOps (Deployment, infrastructure)
+- 1 Designer (Wireframes, UI/UX)
+- 1 Growth/Content Lead (TikTok, Reddit, curation)
+- 1 QA/Tester (Testing, bug reports)
+
+Small team can combine roles.
+
+================================================================================
+RISK MITIGATION
+================================================================================
+
+RISK: Hacks database is empty at launch
+MITIGATION: Seed 500 hacks during Week 1-3 (before launch)
+
+RISK: Slow viral growth on TikTok
+MITIGATION: Commit to daily posting; optimize formats based on analytics
+
+RISK: User submissions are low quality / spam
+MITIGATION: Moderation queue + upvote system filters junk
+
+RISK: Monetization doesn't work initially
+MITIGATION: Start with affiliate links (no setup); test sponsored hacks
+
+RISK: Deployment issues on launch day
+MITIGATION: Staging environment testing, rollback plan, 24/7 monitoring
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. Review strategy document: Hack_Aggregator_Strategy.docx
+2. Create Cowork project and assign team members
+3. Schedule sprint kickoff meeting (30 min)
+4. Assign initial tasks from Sprint 1 (Design & Setup)
+5. Set up daily standups (15 min, async or sync)
+6. Create project timeline in Cowork
+7. Begin wireframing and database design
+
+================================================================================

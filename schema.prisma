@@ -1,0 +1,218 @@
+// This is your Hack Aggregator database schema
+// For Supabase PostgreSQL + Prisma ORM
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USERS & AUTHENTICATION
+// ============================================================================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  username  String   @unique
+  passwordHash String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  hacks        Hack[]
+  votes        Vote[]
+  submissions  Submission[]
+  approvals    Submission[] @relation("ApprovedBy")
+
+  @@index([email])
+  @@index([username])
+}
+
+// ============================================================================
+// HACKS (Core Content)
+// ============================================================================
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  hacks Hack[]
+
+  @@index([slug])
+}
+
+model Hack {
+  id        String   @id @default(cuid())
+  title     String
+  description String
+  steps     Json     // Array of step objects: [{ number: 1, text: "..." }, ...]
+  whyItWorks String
+  imageUrl  String?
+
+  // Attribution & Source
+  sourceUrl        String?
+  sourceType       String?  // "reddit" | "blog" | "youtube" | "user"
+  attributionText  String?
+  licenseType      String?  // "cc-by-3.0" | "cc-by-4.0" | "copyright"
+
+  // Categorization
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  // Metadata
+  createdById String?
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Engagement
+  voteCount  Int      @default(0)
+  viewCount  Int      @default(0)
+  status     String   @default("published") // "published" | "pending" | "archived" | "rejected"
+
+  // Duplicate Detection
+  hackFingerprint String? // SHA256 hash of (title + first 3 steps)
+
+  // Relations
+  votes        Vote[]
+  submissions  Submission[]
+  flagReports  FlagReport[]
+
+  @@index([categoryId])
+  @@index([createdById])
+  @@index([status])
+  @@index([voteCount])
+  @@index([createdAt])
+  @@index([hackFingerprint])
+}
+
+// ============================================================================
+// VOTING & ENGAGEMENT
+// ============================================================================
+
+model Vote {
+  id        String   @id @default(cuid())
+  hackId    String
+  hack      Hack     @relation(fields: [hackId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  voteType  String   // "upvote" | "downvote"
+  createdAt DateTime @default(now())
+
+  // Ensure one vote per user per hack
+  @@unique([hackId, userId])
+  @@index([hackId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// USER SUBMISSIONS & MODERATION
+// ============================================================================
+
+model Submission {
+  id        String   @id @default(cuid())
+  hackId    String?
+  hack      Hack?    @relation(fields: [hackId], references: [id], onDelete: SetNull)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Submission status
+  status         String   @default("pending") // "pending" | "approved" | "rejected"
+  moderationReason String?
+
+  // Moderation
+  reviewedAt DateTime?
+  reviewedById String?
+  reviewedBy User? @relation("ApprovedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// MODERATION & SPAM FILTERING
+// ============================================================================
+
+model SpamFilter {
+  id        String   @id @default(cuid())
+  filterName String  @unique
+  regexPattern String // JavaScript regex pattern (stored as string)
+  action    String   // "reject" | "flag"
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([enabled])
+}
+
+model FlagReport {
+  id        String   @id @default(cuid())
+  hackId    String
+  hack      Hack     @relation(fields: [hackId], references: [id], onDelete: Cascade)
+  reason    String   // "spam" | "inappropriate" | "misinformation" | "doesn't-work"
+  count     Int      @default(1)
+  createdAt DateTime @default(now())
+
+  @@unique([hackId, reason])
+  @@index([hackId])
+  @@index([reason])
+}
+
+// ============================================================================
+// DATABASE SETUP NOTES
+// ============================================================================
+//
+// 1. Full-Text Search:
+//    The @@fulltext index on Hack is a PostgreSQL-specific feature.
+//    In Prisma, you can query it with raw SQL or Prisma.raw():
+//
+//    const results = await prisma.hack.findMany({
+//      where: {
+//        OR: [
+//          { title: { search: query } },
+//          { description: { search: query } }
+//        ]
+//      }
+//    });
+//
+// 2. Indexes:
+//    - categoryId: For filtering by category
+//    - createdById: For user's submitted hacks
+//    - status: For filtering published/pending hacks
+//    - voteCount: For sorting by popularity
+//    - createdAt: For sorting by date
+//    - hackFingerprint: For duplicate detection (query before insert)
+//
+// 3. Cascade Deletes:
+//    - If a Category is deleted, all Hacks in that category are deleted
+//    - If a User is deleted, their Votes are deleted (but Hacks remain)
+//    - If a Hack is deleted, all Votes and FlagReports are deleted
+//
+// 4. JSON Field (steps):
+//    Store steps as an array of objects:
+//    {
+//      "steps": [
+//        { "number": 1, "text": "Heat water to 100°C" },
+//        { "number": 2, "text": "Add tea bag" },
+//        { "number": 3, "text": "Let steep for 5 minutes" }
+//      ]
+//    }
+//
+// 5. Unique Constraints:
+//    - User email and username must be unique
+//    - Category name and slug must be unique
+//    - One Vote per user per hack (composite unique)
+//    - One FlagReport per hack per reason type (composite unique)

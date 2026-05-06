@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hack Aggregator - Immersive Feed</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: #fff;
+            font-family: 'DM Sans', sans-serif;
+            overflow: hidden;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes zoomIn {
+            from {
+                transform: scale(1.1);
+            }
+            to {
+                transform: scale(1);
+            }
+        }
+
+        @keyframes bounce {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-8px);
+            }
+        }
+
+        .card-container {
+            perspective: 1000px;
+        }
+
+        .glassmorphic {
+            backdrop-filter: blur(20px);
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+        }
+
+        .category-badge {
+            backdrop-filter: blur(10px);
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        .action-button {
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .action-button:hover {
+            transform: scale(1.1);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .action-button:active {
+            transform: scale(0.95);
+        }
+
+        .action-button.liked {
+            background: rgba(37, 99, 235, 0.2);
+            border-color: rgba(37, 99, 235, 0.5);
+        }
+
+        .action-button.saved {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: rgba(16, 185, 129, 0.5);
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(37, 99, 235, 0.5);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(37, 99, 235, 0.7);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        const HackCard = ({ hack, index, isActive }) => {
+            const [liked, setLiked] = useState(false);
+            const [saved, setSaved] = useState(false);
+
+            return (
+                <div
+                    className={`absolute inset-0 transition-all duration-700 ease-out flex flex-col justify-end overflow-hidden`}
+                    style={{
+                        background: `linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0f0f1e 100%)`,
+                        opacity: isActive ? 1 : 0,
+                        pointerEvents: isActive ? 'auto' : 'none',
+                        zIndex: isActive ? 10 : 0,
+                        animation: isActive ? `fadeInUp 0.8s ease-out` : 'none'
+                    }}
+                >
+                    {/* Background Image */}
+                    <div className="absolute inset-0 overflow-hidden">
+                        <div
+                            className="absolute inset-0 opacity-60"
+                            style={{
+                                backgroundImage: `url('${hack.image}')`,
+                                backgroundSize: 'cover',
+                                backgroundPosition: 'center',
+                                animation: isActive ? `zoomIn 8s ease-out` : 'none'
+                            }}
+                        />
+                        <div
+                            className="absolute inset-0"
+                            style={{
+                                background: `linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(10,10,10,0.4) 40%, rgba(10,10,10,0.95) 100%)`
+                            }}
+                        />
+                    </div>
+
+                    {/* Content */}
+                    <div className="relative z-10 px-6 pb-32 pt-12">
+                        <div
+                            className="glassmorphic rounded-3xl p-6"
+                            style={{
+                                animation: isActive ? `slideUp 0.8s ease-out 0.2s both` : 'none'
+                            }}
+                        >
+                            {/* Badge */}
+                            <div className="inline-flex items-center gap-1 mb-4 px-3 py-1.5 rounded-full category-badge">
+                                <span style={{ fontSize: '12px', color: '#34d399', fontWeight: '500', letterSpacing: '0.05em' }}>
+                                    ⚡ {hack.category}
+                                </span>
+                            </div>
+
+                            {/* Title */}
+                            <h1
+                                className="text-4xl font-black mb-3 leading-tight text-white"
+                                style={{
+                                    fontFamily: 'Unbounded, sans-serif',
+                                    letterSpacing: '-0.02em',
+                                    animation: isActive ? `fadeInUp 0.8s ease-out 0.3s both` : 'none'
+                                }}
+                            >
+                                {hack.title}
+                            </h1>
+
+                            {/* Description */}
+                            <p
+                                className="text-sm text-gray-300 mb-4 leading-relaxed max-w-md"
+                                style={{
+                                    animation: isActive ? `fadeInUp 0.8s ease-out 0.4s both` : 'none',
+                                    opacity: 0.9
+                                }}
+                            >
+                                {hack.description}
+                            </p>
+
+                            {/* Creator */}
+                            <div
+                                className="flex items-center gap-3 pt-4 border-t border-white/10"
+                                style={{
+                                    animation: isActive ? `fadeInUp 0.8s ease-out 0.5s both` : 'none'
+                                }}
+                            >
+                                <div
+                                    style={{
+                                        width: '40px',
+                                        height: '40px',
+                                        borderRadius: '50%',
+                                        background: 'linear-gradient(135deg, #2563EB 0%, #10B981 100%)',
+                                        boxShadow: '0 4px 12px rgba(37, 99, 235, 0.4)'
+                                    }}
+                                />
+                                <div className="flex-1">
+                                    <p className="text-sm font-semibold text-white">
+                                        {hack.creator}
+                                    </p>
+                                    <p className="text-xs text-gray-400">
+                                        {hack.votes} upvotes
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Action Bar */}
+                    <div
+                        className="fixed bottom-0 left-0 right-0 px-6 py-6"
+                        style={{
+                            background: 'rgba(10, 10, 10, 0.6)',
+                            borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                            backdropFilter: 'blur(10px)',
+                            animation: isActive ? `slideUp 0.8s ease-out 0.4s both` : 'none'
+                        }}
+                    >
+                        <div className="flex items-center justify-between max-w-md mx-auto gap-3">
+                            <button
+                                onClick={() => setLiked(!liked)}
+                                className={`action-button flex items-center gap-2 px-4 py-3 rounded-full ${liked ? 'liked' : ''}`}
+                            >
+                                <span style={{ color: liked ? '#60a5fa' : '#9ca3af' }}>❤️</span>
+                                <span className="text-sm font-medium text-white hidden sm:inline">
+                                    {liked ? hack.votes + 1 : hack.votes}
+                                </span>
+                            </button>
+
+                            <button className="action-button flex items-center gap-2 px-4 py-3 rounded-full">
+                                <span>📤</span>
+                                <span className="text-sm font-medium text-white hidden sm:inline">Share</span>
+                            </button>
+
+                            <button
+                                onClick={() => setSaved(!saved)}
+                                className={`action-button flex items-center gap-2 px-4 py-3 rounded-full ${saved ? 'saved' : ''}`}
+                            >
+                                <span style={{ color: saved ? '#34d399' : '#9ca3af' }}>🔖</span>
+                                <span className="text-sm font-medium text-white hidden sm:inline">Save</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Scroll Indicator */}
+                    {index === 0 && isActive && (
+                        <div
+                            className="absolute top-8 right-6 flex flex-col items-center gap-1"
+                            style={{
+                                animation: `bounce 2s ease-in-out infinite`
+                            }}
+                        >
+                            <span className="text-xs font-medium text-gray-400">Scroll</span>
+                            <span style={{ fontSize: '18px' }}>⬆️</span>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const MOCK_HACKS = [
+            {
+                id: 1,
+                title: 'Neural Canvas',
+                description: 'AI-powered real-time sketch to vector art generator. Transform hand-drawn sketches into publication-ready vector illustrations in seconds.',
+                image: 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=1200&h=1600&fit=crop',
+                creator: 'Maya Chen',
+                category: 'AI/ML',
+                votes: 3427
+            },
+            {
+                id: 2,
+                title: 'Flow State',
+                description: 'Ambient soundscape generator that adapts to your work rhythm. Uses biometric data to create personalized productivity music.',
+                image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=1200&h=1600&fit=crop',
+                creator: 'Alex Rivera',
+                category: 'Audio',
+                votes: 2891
+            },
+            {
+                id: 3,
+                title: 'Gesture Control 3D',
+                description: 'Hand-tracking 3D model viewer. Control 3D models in AR using hand gestures. Perfect for design, architecture, and product visualization.',
+                image: 'https://images.unsplash.com/photo-1633356122544-f134324ef6db?w=1200&h=1600&fit=crop',
+                creator: 'Jordan Smith',
+                category: 'AR/VR',
+                votes: 4102
+            },
+            {
+                id: 4,
+                title: 'Code Mentor Pro',
+                description: 'Real-time code review bot that learns your style. Provides intelligent suggestions while maintaining your unique coding voice.',
+                image: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=1200&h=1600&fit=crop',
+                creator: 'Sam Patel',
+                category: 'Dev Tools',
+                votes: 5230
+            },
+            {
+                id: 5,
+                title: 'Chromatic UI',
+                description: 'Design system generator that creates accessible, brand-cohesive component libraries from a single color palette.',
+                image: 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=1200&h=1600&fit=crop',
+                creator: 'Casey Morgan',
+                category: 'Design',
+                votes: 2156
+            }
+        ];
+
+        function App() {
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const containerRef = useRef(null);
+            const touchStartY = useRef(0);
+
+            useEffect(() => {
+                const handleWheel = (e) => {
+                    e.preventDefault();
+
+                    if (e.deltaY > 0) {
+                        setCurrentIndex((prev) => Math.min(prev + 1, MOCK_HACKS.length - 1));
+                    } else {
+                        setCurrentIndex((prev) => Math.max(prev - 1, 0));
+                    }
+                };
+
+                const container = containerRef.current;
+                if (container) {
+                    container.addEventListener('wheel', handleWheel, { passive: false });
+                }
+
+                return () => {
+                    if (container) {
+                        container.removeEventListener('wheel', handleWheel);
+                    }
+                };
+            }, []);
+
+            const handleTouchStart = (e) => {
+                touchStartY.current = e.touches[0].clientY;
+            };
+
+            const handleTouchEnd = (e) => {
+                const touchEndY = e.changedTouches[0].clientY;
+                const diff = touchStartY.current - touchEndY;
+
+                if (Math.abs(diff) > 50) {
+                    if (diff > 0) {
+                        setCurrentIndex((prev) => Math.min(prev + 1, MOCK_HACKS.length - 1));
+                    } else {
+                        setCurrentIndex((prev) => Math.max(prev - 1, 0));
+                    }
+                }
+            };
+
+            return (
+                <div
+                    ref={containerRef}
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
+                    className="relative w-full overflow-hidden"
+                    style={{ height: '100vh' }}
+                >
+                    <div className="absolute inset-0 card-container">
+                        {MOCK_HACKS.map((hack, index) => (
+                            <HackCard
+                                key={hack.id}
+                                hack={hack}
+                                index={index}
+                                isActive={index === currentIndex}
+                            />
+                        ))}
+                    </div>
+
+                    {/* Counter */}
+                    <div className="fixed top-6 right-6 z-50 px-4 py-2 rounded-full glassmorphic">
+                        <p className="text-sm font-medium text-gray-300">
+                            {currentIndex + 1} / {MOCK_HACKS.length}
+                        </p>
+                    </div>
+
+                    {/* Logo */}
+                    <div className="fixed top-6 left-6 z-50">
+                        <div className="text-2xl font-black" style={{
+                            fontFamily: 'Unbounded, sans-serif',
+                            background: 'linear-gradient(135deg, #2563EB 0%, #10B981 100%)',
+                            backgroundClip: 'text',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                            letterSpacing: '-0.02em'
+                        }}>
+                            HACK
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>

@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hack Aggregator - Immersive Feed</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes zoomIn {
+            from {
+                transform: scale(1.1);
+            }
+            to {
+                transform: scale(1);
+            }
+        }
+
+        .container {
+            width: 100%;
+            height: 100vh;
+            position: relative;
+        }
+
+        .card-stack {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .card {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0f0f1e 100%);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.7s ease-out;
+            z-index: 0;
+        }
+
+        .card.active {
+            opacity: 1;
+            pointer-events: auto;
+            z-index: 10;
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        .card-bg {
+            position: absolute;
+            inset: 0;
+            background-size: cover;
+            background-position: center;
+            opacity: 0.6;
+            animation: zoomIn 8s ease-out;
+        }
+
+        .card-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(10,10,10,0.4) 40%, rgba(10,10,10,0.95) 100%);
+        }
+
+        .card-content {
+            position: relative;
+            z-index: 10;
+            padding: 24px 24px 120px 24px;
+        }
+
+        .card-panel {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(20px);
+            animation: slideUp 0.8s ease-out 0.2s both;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #34d399;
+            margin-bottom: 16px;
+            width: fit-content;
+        }
+
+        .title {
+            font-size: 36px;
+            font-weight: 900;
+            margin-bottom: 12px;
+            letter-spacing: -0.02em;
+            animation: fadeInUp 0.8s ease-out 0.3s both;
+        }
+
+        .description {
+            font-size: 14px;
+            color: #d1d5db;
+            margin-bottom: 16px;
+            max-width: 400px;
+            animation: fadeInUp 0.8s ease-out 0.4s both;
+        }
+
+        .creator {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            animation: fadeInUp 0.8s ease-out 0.5s both;
+        }
+
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2563EB 0%, #10B981 100%);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+        }
+
+        .creator-info h3 {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .creator-info p {
+            font-size: 12px;
+            color: #9ca3af;
+        }
+
+        .action-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 24px;
+            background: rgba(10, 10, 10, 0.6);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        button:hover {
+            transform: scale(1.1);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .counter {
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            z-index: 50;
+            padding: 8px 16px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-size: 13px;
+            color: #d1d5db;
+            backdrop-filter: blur(10px);
+        }
+
+        .logo {
+            position: fixed;
+            top: 24px;
+            left: 24px;
+            z-index: 50;
+            font-size: 24px;
+            font-weight: 900;
+            background: linear-gradient(135deg, #2563EB 0%, #10B981 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.02em;
+        }
+
+        .scroll-hint {
+            position: absolute;
+            top: 32px;
+            right: 24px;
+            z-index: 50;
+            text-align: center;
+            animation: bounce 2s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+
+        .scroll-hint p {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-bottom: 4px;
+        }
+
+        .scroll-hint span {
+            display: inline-block;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card-stack" id="cardStack">
+            <!-- Cards will be generated here -->
+        </div>
+
+        <div class="logo">HACK</div>
+        <div class="counter"><span id="counter">1</span> / <span id="total">5</span></div>
+
+        <div id="scrollHint" class="scroll-hint">
+            <p>Scroll</p>
+            <span>⬆️</span>
+        </div>
+
+        <div class="action-bar">
+            <div class="actions">
+                <button>❤️ <span id="likes">0</span></button>
+                <button>📤 Share</button>
+                <button>🔖 Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const HACKS = [
+            {
+                id: 1,
+                title: 'Neural Canvas',
+                description: 'AI-powered real-time sketch to vector art generator. Transform hand-drawn sketches into publication-ready vector illustrations in seconds.',
+                creator: 'Maya Chen',
+                votes: 3427,
+                category: 'AI/ML',
+                image: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22400%22%3E%3Crect fill=%22%234f46e5%22 width=%22400%22 height=%22400%22/%3E%3C/svg%3E'
+            },
+            {
+                id: 2,
+                title: 'Flow State',
+                description: 'Ambient soundscape generator that adapts to your work rhythm. Uses biometric data to create personalized productivity music.',
+                creator: 'Alex Rivera',
+                votes: 2891,
+                category: 'Audio',
+                image: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22400%22%3E%3Crect fill=%22%2310b981%22 width=%22400%22 height=%22400%22/%3E%3C/svg%3E'
+            },
+            {
+                id: 3,
+                title: 'Gesture Control 3D',
+                description: 'Hand-tracking 3D model viewer. Control 3D models in AR using hand gestures. Perfect for design, architecture, and product visualization.',
+                creator: 'Jordan Smith',
+                votes: 4102,
+                category: 'AR/VR',
+                image: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22400%22%3E%3Crect fill=%22%23ec4899%22 width=%22400%22 height=%22400%22/%3E%3C/svg%3E'
+            },
+            {
+                id: 4,
+                title: 'Code Mentor Pro',
+                description: 'Real-time code review bot that learns your style. Provides intelligent suggestions while maintaining your unique coding voice.',
+                creator: 'Sam Patel',
+                votes: 5230,
+                category: 'Dev Tools',
+                image: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22400%22%3E%3Crect fill=%22%23f59e0b%22 width=%22400%22 height=%22400%22/%3E%3C/svg%3E'
+            },
+            {
+                id: 5,
+                title: 'Chromatic UI',
+                description: 'Design system generator that creates accessible, brand-cohesive component libraries from a single color palette.',
+                creator: 'Casey Morgan',
+                votes: 2156,
+                category: 'Design',
+                image: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22400%22%3E%3Crect fill=%22%236366f1%22 width=%22400%22 height=%22400%22/%3E%3C/svg%3E'
+            }
+        ];
+
+        let currentIndex = 0;
+
+        function renderCard(hack, index, isActive) {
+            const card = document.createElement('div');
+            card.className = `card ${isActive ? 'active' : ''}`;
+
+            card.innerHTML = `
+                <div class="card-bg" style="background-image: url('${hack.image}')"></div>
+                <div class="card-overlay"></div>
+                <div class="card-content">
+                    <div class="card-panel">
+                        <div class="badge">⚡ ${hack.category}</div>
+                        <h1 class="title">${hack.title}</h1>
+                        <p class="description">${hack.description}</p>
+                        <div class="creator">
+                            <div class="avatar"></div>
+                            <div class="creator-info">
+                                <h3>${hack.creator}</h3>
+                                <p>${hack.votes} upvotes</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            return card;
+        }
+
+        function init() {
+            const stack = document.getElementById('cardStack');
+            HACKS.forEach((hack, index) => {
+                stack.appendChild(renderCard(hack, index, index === 0));
+            });
+            document.getElementById('total').textContent = HACKS.length;
+        }
+
+        function updateCards() {
+            const cards = document.querySelectorAll('.card');
+            cards.forEach((card, index) => {
+                card.classList.toggle('active', index === currentIndex);
+            });
+            document.getElementById('counter').textContent = currentIndex + 1;
+            document.getElementById('likes').textContent = HACKS[currentIndex].votes;
+
+            const hint = document.getElementById('scrollHint');
+            hint.style.display = currentIndex === 0 ? 'block' : 'none';
+        }
+
+        document.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            if (e.deltaY > 0) {
+                currentIndex = Math.min(currentIndex + 1, HACKS.length - 1);
+            } else {
+                currentIndex = Math.max(currentIndex - 1, 0);
+            }
+            updateCards();
+        }, { passive: false });
+
+        init();
+        updateCards();
+    </script>
+</body>
+</html>

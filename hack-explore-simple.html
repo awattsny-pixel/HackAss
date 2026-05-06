@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Explore</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        }
+
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 50;
+            padding: 24px;
+            background: rgba(10, 10, 10, 0.7);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+        }
+
+        .title {
+            font-size: 24px;
+            font-weight: 900;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, #2563EB 0%, #10B981 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .search {
+            width: 100%;
+            padding: 12px 16px 12px 40px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 14px;
+            position: relative;
+        }
+
+        .search::before {
+            content: "🔍";
+            position: absolute;
+            left: 12px;
+            top: 12px;
+        }
+
+        .filters {
+            position: fixed;
+            top: 100px;
+            left: 0;
+            right: 0;
+            z-index: 40;
+            padding: 12px 24px;
+            background: rgba(10, 10, 10, 0.5);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            overflow-x: auto;
+        }
+
+        .filter-tags {
+            display: flex;
+            gap: 12px;
+        }
+
+        .filter-tag {
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.08);
+            color: #9ca3af;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.3s;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .filter-tag:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .filter-tag.active {
+            background: linear-gradient(135deg, #2563EB 0%, #10B981 100%);
+            border: none;
+            color: #fff;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 16px;
+            padding: 24px;
+            margin-top: 80px;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+            padding-bottom: 40px;
+        }
+
+        .card {
+            aspect-ratio: 1;
+            border-radius: 16px;
+            overflow: hidden;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #1a1a2e;
+        }
+
+        .card:hover {
+            transform: scale(1.05);
+        }
+
+        .card-bg {
+            position: absolute;
+            inset: 0;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .card-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.3);
+            transition: all 0.3s;
+        }
+
+        .card:hover .card-overlay {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(20px);
+        }
+
+        .card-content {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 16px;
+            z-index: 10;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .card:hover .card-content {
+            opacity: 1;
+        }
+
+        .card-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            color: #34d399;
+            margin-bottom: 8px;
+        }
+
+        .card-title {
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .card-creator {
+            font-size: 11px;
+            color: #d1d5db;
+            margin-bottom: 8px;
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .card-btn {
+            flex: 1;
+            padding: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: #9ca3af;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .card-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .card-votes {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            font-size: 12px;
+            font-weight: 700;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+            z-index: 5;
+        }
+
+        .card:hover .card-votes {
+            opacity: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">Explore</h1>
+        <input type="text" class="search" placeholder="Search hacks, creators...">
+    </div>
+
+    <div class="filters">
+        <div class="filter-tags">
+            <button class="filter-tag active">All</button>
+            <button class="filter-tag">AI/ML</button>
+            <button class="filter-tag">Design</button>
+            <button class="filter-tag">Dev Tools</button>
+            <button class="filter-tag">Audio</button>
+            <button class="filter-tag">AR/VR</button>
+            <button class="filter-tag">Web3</button>
+            <button class="filter-tag">Mobile</button>
+        </div>
+    </div>
+
+    <div class="grid">
+        <div class="card">
+            <div class="card-bg" style="background: linear-gradient(135deg, #4f46e5, #7c3aed);"></div>
+            <div class="card-overlay"></div>
+            <div class="card-votes">❤️ 3427</div>
+            <div class="card-content">
+                <div class="card-badge">⚡ AI/ML</div>
+                <h3 class="card-title">Neural Canvas</h3>
+                <p class="card-creator">by Maya Chen</p>
+                <div class="card-actions">
+                    <button class="card-btn">❤️ 3427</button>
+                    <button class="card-btn">📤</button>
+                    <button class="card-btn">🔖</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-bg" style="background: linear-gradient(135deg, #10b981, #059669);"></div>
+            <div class="card-overlay"></div>
+            <div class="card-votes">❤️ 2891</div>
+            <div class="card-content">
+                <div class="card-badge">⚡ Audio</div>
+                <h3 class="card-title">Flow State</h3>
+                <p class="card-creator">by Alex Rivera</p>
+                <div class="card-actions">
+                    <button class="card-btn">❤️ 2891</button>
+                    <button class="card-btn">📤</button>
+                    <button class="card-btn">🔖</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-bg" style="background: linear-gradient(135deg, #ec4899, #db2777);"></div>
+            <div class="card-overlay"></div>
+            <div class="card-votes">❤️ 4102</div>
+            <div class="card-content">
+                <div class="card-badge">⚡ AR/VR</div>
+                <h3 class="card-title">Gesture 3D</h3>
+                <p class="card-creator">by Jordan Smith</p>
+                <div class="card-actions">
+                    <button class="card-btn">❤️ 4102</button>
+                    <button class="card-btn">📤</button>
+                    <button class="card-btn">🔖</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-bg" style="background: linear-gradient(135deg, #f59e0b, #d97706);"></div>
+            <div class="card-overlay"></div>
+            <div class="card-votes">❤️ 5230</div>
+            <div class="card-content">
+                <div class="card-badge">⚡ Dev Tools</div>
+                <h3 class="card-title">Code Mentor</h3>
+                <p class="card-creator">by Sam Patel</p>
+                <div class="card-actions">
+                    <button class="card-btn">❤️ 5230</button>
+                    <button class="card-btn">📤</button>
+                    <button class="card-btn">🔖</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-bg" style="background: linear-gradient(135deg, #6366f1, #4f46e5);"></div>
+            <div class="card-overlay"></div>
+            <div class="card-votes">❤️ 2156</div>
+            <div class="card-content">
+                <div class="card-badge">⚡ Design</div>
+                <h3 class="card-title">Chromatic UI</h3>
+                <p class="card-creator">by Casey Morgan</p>
+                <div class="card-actions">
+                    <button class="card-btn">❤️ 2156</button>
+                    <button class="card-btn">📤</button>
+                    <button class="card-btn">🔖</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-bg" style="background: linear-gradient(135deg, #06b6d4, #0891b2);"></div>
+            <div class="card-overlay"></div>
+            <div class="card-votes">❤️ 2543</div>
+            <div class="card-content">
+                <div class="card-badge">⚡ Mobile</div>
+                <h3 class="card-title">Mobile First</h3>
+                <p class="card-creator">by Alex Jordan</p>
+                <div class="card-actions">
+                    <button class="card-btn">❤️ 2543</button>
+                    <button class="card-btn">📤</button>
+                    <button class="card-btn">🔖</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-bg" style="background: linear-gradient(135deg, #4f46e5, #7c3aed);"></div>
+            <div class="card-overlay"></div>
+            <div class="card-votes">❤️ 3891</div>
+            <div class="card-content">
+                <div class="card-badge">⚡ AI/ML</div>
+                <h3 class="card-title">AI Assistant</h3>
+                <p class="card-creator">by Jordan Lee</p>
+                <div class="card-actions">
+                    <button class="card-btn">❤️ 3891</button>
+                    <button class="card-btn">📤</button>
+                    <button class="card-btn">🔖</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-bg" style="background: linear-gradient(135deg, #a855f7, #9333ea);"></div>
+            <div class="card-overlay"></div>
+            <div class="card-votes">❤️ 2234</div>
+            <div class="card-content">
+                <div class="card-badge">⚡ Design</div>
+                <h3 class="card-title">Design System</h3>
+                <p class="card-creator">by Sam Wilson</p>
+                <div class="card-actions">
+                    <button class="card-btn">❤️ 2234</button>
+                    <button class="card-btn">📤</button>
+                    <button class="card-btn">🔖</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

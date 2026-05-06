@@ -1,0 +1,804 @@
+{
+  "problems": [
+    {
+      "problem_id": "clean-001",
+      "title": "Remove stains from white shirts",
+      "category": "CLEANING",
+      "search_volume": 2400,
+      "difficulty": "easy",
+      "subcategory": "laundry"
+    },
+    {
+      "problem_id": "clean-002",
+      "title": "Unclog drains without chemicals",
+      "category": "CLEANING",
+      "search_volume": 1800,
+      "difficulty": "easy",
+      "subcategory": "bathroom"
+    },
+    {
+      "problem_id": "clean-003",
+      "title": "Stop food from burning on the pan",
+      "category": "CLEANING",
+      "search_volume": 1200,
+      "difficulty": "easy",
+      "subcategory": "kitchen"
+    },
+    {
+      "problem_id": "clean-004",
+      "title": "Eliminate odors from the refrigerator",
+      "category": "CLEANING",
+      "search_volume": 1100,
+      "difficulty": "easy",
+      "subcategory": "kitchen"
+    },
+    {
+      "problem_id": "clean-005",
+      "title": "Clean the oven without toxic fumes",
+      "category": "CLEANING",
+      "search_volume": 950,
+      "difficulty": "medium",
+      "subcategory": "kitchen"
+    },
+    {
+      "problem_id": "clean-006",
+      "title": "Get rid of grease stains from clothes",
+      "category": "CLEANING",
+      "search_volume": 1400,
+      "difficulty": "easy",
+      "subcategory": "laundry"
+    },
+    {
+      "problem_id": "clean-007",
+      "title": "Remove hard water stains from shower glass",
+      "category": "CLEANING",
+      "search_volume": 1300,
+      "difficulty": "easy",
+      "subcategory": "bathroom"
+    },
+    {
+      "problem_id": "clean-008",
+      "title": "Kill mold and mildew without bleach",
+      "category": "CLEANING",
+      "search_volume": 1700,
+      "difficulty": "medium",
+      "subcategory": "bathroom"
+    },
+    {
+      "problem_id": "clean-009",
+      "title": "Get red wine out of carpet",
+      "category": "CLEANING",
+      "search_volume": 920,
+      "difficulty": "medium",
+      "subcategory": "general"
+    },
+    {
+      "problem_id": "clean-010",
+      "title": "Remove ink stains from furniture",
+      "category": "CLEANING",
+      "search_volume": 650,
+      "difficulty": "medium",
+      "subcategory": "general"
+    },
+    {
+      "problem_id": "clean-011",
+      "title": "Polish stainless steel without streaks",
+      "category": "CLEANING",
+      "search_volume": 800,
+      "difficulty": "easy",
+      "subcategory": "kitchen"
+    },
+    {
+      "problem_id": "clean-012",
+      "title": "Remove gum from carpet or clothing",
+      "category": "CLEANING",
+      "search_volume": 1100,
+      "difficulty": "easy",
+      "subcategory": "general"
+    },
+    {
+      "problem_id": "clean-013",
+      "title": "Clean microwave without harsh chemicals",
+      "category": "CLEANING",
+      "search_volume": 750,
+      "difficulty": "easy",
+      "subcategory": "kitchen"
+    },
+    {
+      "problem_id": "clean-014",
+      "title": "Remove permanent marker from walls",
+      "category": "CLEANING",
+      "search_volume": 680,
+      "difficulty": "easy",
+      "subcategory": "general"
+    },
+    {
+      "problem_id": "clean-015",
+      "title": "Get rid of rust stains in the bathtub",
+      "category": "CLEANING",
+      "search_volume": 590,
+      "difficulty": "medium",
+      "subcategory": "bathroom"
+    },
+    {
+      "problem_id": "clean-016",
+      "title": "Remove pet hair from furniture",
+      "category": "CLEANING",
+      "search_volume": 1900,
+      "difficulty": "easy",
+      "subcategory": "general"
+    },
+    {
+      "problem_id": "clean-017",
+      "title": "Clean cast iron without ruining the seasoning",
+      "category": "CLEANING",
+      "search_volume": 1250,
+      "difficulty": "easy",
+      "subcategory": "kitchen"
+    },
+    {
+      "problem_id": "clean-018",
+      "title": "Remove soap scum from bathroom tiles",
+      "category": "CLEANING",
+      "search_volume": 1050,
+      "difficulty": "easy",
+      "subcategory": "bathroom"
+    },
+    {
+      "problem_id": "clean-019",
+      "title": "Get chalk dust off hands and clothes",
+      "category": "CLEANING",
+      "search_volume": 420,
+      "difficulty": "easy",
+      "subcategory": "general"
+    },
+    {
+      "problem_id": "clean-020",
+      "title": "Remove wax from hardwood floors",
+      "category": "CLEANING",
+      "search_volume": 580,
+      "difficulty": "medium",
+      "subcategory": "general"
+    },
+    {
+      "problem_id": "clean-021",
+      "title": "Get rid of kitchen grease buildup on cabinets",
+      "category": "CLEANING",
+      "search_volume": 720,
+      "difficulty": "easy",
+      "subcategory": "kitchen"
+    },
+    {
+      "problem_id": "clean-022",
+      "title": "Clean blinds without taking them down",
+      "category": "CLEANING",
+      "search_volume": 890,
+      "difficulty": "easy",
+      "subcategory": "general"
+    },
+    {
+      "problem_id": "clean-023",
+      "title": "Remove scuff marks from wood floors",
+      "category": "CLEANING",
+      "search_volume": 640,
+      "difficulty": "easy",
+      "subcategory": "general"
+    },
+    {
+      "problem_id": "clean-024",
+      "title": "Disinfect without harsh chemical smell",
+      "category": "CLEANING",
+      "search_volume": 1100,
+      "difficulty": "easy",
+      "subcategory": "general"
+    },
+    {
+      "problem_id": "clean-025",
+      "title": "Remove sticky residue from sticker labels",
+      "category": "CLEANING",
+      "search_volume": 850,
+      "difficulty": "easy",
+      "subcategory": "general"
+    },
+    {
+      "problem_id": "money-001",
+      "title": "Save $50 per week on groceries",
+      "category": "MONEY",
+      "search_volume": 3200,
+      "difficulty": "medium",
+      "subcategory": "food"
+    },
+    {
+      "problem_id": "money-002",
+      "title": "Avoid ATM fees when you travel",
+      "category": "MONEY",
+      "search_volume": 2100,
+      "difficulty": "easy",
+      "subcategory": "banking"
+    },
+    {
+      "problem_id": "money-003",
+      "title": "Budget weekly spending without an app",
+      "category": "MONEY",
+      "search_volume": 1800,
+      "difficulty": "easy",
+      "subcategory": "budgeting"
+    },
+    {
+      "problem_id": "money-004",
+      "title": "Cancel unwanted subscriptions that auto-renew",
+      "category": "MONEY",
+      "search_volume": 2800,
+      "difficulty": "easy",
+      "subcategory": "subscriptions"
+    },
+    {
+      "problem_id": "money-005",
+      "title": "Get better insurance rates without switching",
+      "category": "MONEY",
+      "search_volume": 1600,
+      "difficulty": "medium",
+      "subcategory": "insurance"
+    },
+    {
+      "problem_id": "money-006",
+      "title": "Reduce phone bill by $10+ per month",
+      "category": "MONEY",
+      "search_volume": 2400,
+      "difficulty": "easy",
+      "subcategory": "utilities"
+    },
+    {
+      "problem_id": "money-007",
+      "title": "Find hidden fees in your bank account",
+      "category": "MONEY",
+      "search_volume": 1200,
+      "difficulty": "easy",
+      "subcategory": "banking"
+    },
+    {
+      "problem_id": "money-008",
+      "title": "Get free shipping on online purchases",
+      "category": "MONEY",
+      "search_volume": 1900,
+      "difficulty": "easy",
+      "subcategory": "shopping"
+    },
+    {
+      "problem_id": "money-009",
+      "title": "Negotiate a higher salary at your job",
+      "category": "MONEY",
+      "search_volume": 2600,
+      "difficulty": "hard",
+      "subcategory": "income"
+    },
+    {
+      "problem_id": "money-010",
+      "title": "Get a refund for unused gift cards",
+      "category": "MONEY",
+      "search_volume": 1100,
+      "difficulty": "easy",
+      "subcategory": "shopping"
+    },
+    {
+      "problem_id": "money-011",
+      "title": "Save money on heating bills in winter",
+      "category": "MONEY",
+      "search_volume": 1700,
+      "difficulty": "medium",
+      "subcategory": "utilities"
+    },
+    {
+      "problem_id": "money-012",
+      "title": "Get cash back at retailers without a card",
+      "category": "MONEY",
+      "search_volume": 850,
+      "difficulty": "easy",
+      "subcategory": "banking"
+    },
+    {
+      "problem_id": "money-013",
+      "title": "Find cheaper car insurance in your area",
+      "category": "MONEY",
+      "search_volume": 2300,
+      "difficulty": "medium",
+      "subcategory": "insurance"
+    },
+    {
+      "problem_id": "money-014",
+      "title": "Lower your credit card interest rate",
+      "category": "MONEY",
+      "search_volume": 1500,
+      "difficulty": "medium",
+      "subcategory": "credit"
+    },
+    {
+      "problem_id": "money-015",
+      "title": "Get discounts on prescription medications",
+      "category": "MONEY",
+      "search_volume": 1400,
+      "difficulty": "easy",
+      "subcategory": "health"
+    },
+    {
+      "problem_id": "money-016",
+      "title": "Stop paying overdraft fees",
+      "category": "MONEY",
+      "search_volume": 1100,
+      "difficulty": "easy",
+      "subcategory": "banking"
+    },
+    {
+      "problem_id": "money-017",
+      "title": "Get a better deal on your internet bill",
+      "category": "MONEY",
+      "search_volume": 1800,
+      "difficulty": "medium",
+      "subcategory": "utilities"
+    },
+    {
+      "problem_id": "money-018",
+      "title": "Buy groceries for less by meal planning",
+      "category": "MONEY",
+      "search_volume": 1600,
+      "difficulty": "medium",
+      "subcategory": "food"
+    },
+    {
+      "problem_id": "money-019",
+      "title": "Get free hotel upgrades when you check in",
+      "category": "MONEY",
+      "search_volume": 1300,
+      "difficulty": "medium",
+      "subcategory": "travel"
+    },
+    {
+      "problem_id": "money-020",
+      "title": "Avoid paying full price at restaurants",
+      "category": "MONEY",
+      "search_volume": 1200,
+      "difficulty": "easy",
+      "subcategory": "food"
+    },
+    {
+      "problem_id": "money-021",
+      "title": "Get your security deposit back from a landlord",
+      "category": "MONEY",
+      "search_volume": 980,
+      "difficulty": "medium",
+      "subcategory": "housing"
+    },
+    {
+      "problem_id": "money-022",
+      "title": "Buy brand-name items for much less",
+      "category": "MONEY",
+      "search_volume": 1350,
+      "difficulty": "easy",
+      "subcategory": "shopping"
+    },
+    {
+      "problem_id": "money-023",
+      "title": "Get rewards points without spending more",
+      "category": "MONEY",
+      "search_volume": 1100,
+      "difficulty": "easy",
+      "subcategory": "credit"
+    },
+    {
+      "problem_id": "money-024",
+      "title": "Sell items you no longer use for cash",
+      "category": "MONEY",
+      "search_volume": 1400,
+      "difficulty": "easy",
+      "subcategory": "income"
+    },
+    {
+      "problem_id": "money-025",
+      "title": "Save money on energy bills year-round",
+      "category": "MONEY",
+      "search_volume": 1650,
+      "difficulty": "medium",
+      "subcategory": "utilities"
+    },
+    {
+      "problem_id": "travel-001",
+      "title": "Pack a carry-on for a 2-week trip",
+      "category": "TRAVEL",
+      "search_volume": 2200,
+      "difficulty": "medium",
+      "subcategory": "packing"
+    },
+    {
+      "problem_id": "travel-002",
+      "title": "Fix jet lag quickly after flying",
+      "category": "TRAVEL",
+      "search_volume": 1600,
+      "difficulty": "medium",
+      "subcategory": "health"
+    },
+    {
+      "problem_id": "travel-003",
+      "title": "Find the cheapest flights to anywhere",
+      "category": "TRAVEL",
+      "search_volume": 2800,
+      "difficulty": "easy",
+      "subcategory": "flights"
+    },
+    {
+      "problem_id": "travel-004",
+      "title": "Stay comfortable in a hotel with bad wifi",
+      "category": "TRAVEL",
+      "search_volume": 950,
+      "difficulty": "easy",
+      "subcategory": "hotels"
+    },
+    {
+      "problem_id": "travel-005",
+      "title": "Navigate a foreign city without getting lost",
+      "category": "TRAVEL",
+      "search_volume": 1400,
+      "difficulty": "easy",
+      "subcategory": "navigation"
+    },
+    {
+      "problem_id": "travel-006",
+      "title": "Get better hotel rates without booking sites",
+      "category": "TRAVEL",
+      "search_volume": 1200,
+      "difficulty": "medium",
+      "subcategory": "hotels"
+    },
+    {
+      "problem_id": "travel-007",
+      "title": "Avoid getting sick while traveling",
+      "category": "TRAVEL",
+      "search_volume": 1500,
+      "difficulty": "easy",
+      "subcategory": "health"
+    },
+    {
+      "problem_id": "travel-008",
+      "title": "Get through airport security faster",
+      "category": "TRAVEL",
+      "search_volume": 1100,
+      "difficulty": "easy",
+      "subcategory": "flights"
+    },
+    {
+      "problem_id": "travel-009",
+      "title": "Find safe neighborhoods in a new city",
+      "category": "TRAVEL",
+      "search_volume": 1300,
+      "difficulty": "easy",
+      "subcategory": "navigation"
+    },
+    {
+      "problem_id": "travel-010",
+      "title": "Sleep well on long flights",
+      "category": "TRAVEL",
+      "search_volume": 1250,
+      "difficulty": "easy",
+      "subcategory": "flights"
+    },
+    {
+      "problem_id": "travel-011",
+      "title": "Avoid baggage fees on airlines",
+      "category": "TRAVEL",
+      "search_volume": 1400,
+      "difficulty": "easy",
+      "subcategory": "flights"
+    },
+    {
+      "problem_id": "travel-012",
+      "title": "Get the best travel insurance for cheap",
+      "category": "TRAVEL",
+      "search_volume": 920,
+      "difficulty": "medium",
+      "subcategory": "insurance"
+    },
+    {
+      "problem_id": "travel-013",
+      "title": "Keep valuables safe in a hostel or hotel",
+      "category": "TRAVEL",
+      "search_volume": 1050,
+      "difficulty": "easy",
+      "subcategory": "safety"
+    },
+    {
+      "problem_id": "travel-014",
+      "title": "Find the cheapest gas on a road trip",
+      "category": "TRAVEL",
+      "search_volume": 1100,
+      "difficulty": "easy",
+      "subcategory": "driving"
+    },
+    {
+      "problem_id": "travel-015",
+      "title": "Deal with a lost suitcase or luggage",
+      "category": "TRAVEL",
+      "search_volume": 800,
+      "difficulty": "medium",
+      "subcategory": "luggage"
+    },
+    {
+      "problem_id": "travel-016",
+      "title": "Stay connected without paying roaming fees",
+      "category": "TRAVEL",
+      "search_volume": 1350,
+      "difficulty": "easy",
+      "subcategory": "communication"
+    },
+    {
+      "problem_id": "travel-017",
+      "title": "Find the best time to book a flight",
+      "category": "TRAVEL",
+      "search_volume": 1450,
+      "difficulty": "easy",
+      "subcategory": "flights"
+    },
+    {
+      "problem_id": "travel-018",
+      "title": "Eat well while traveling on a budget",
+      "category": "TRAVEL",
+      "search_volume": 1200,
+      "difficulty": "easy",
+      "subcategory": "food"
+    },
+    {
+      "problem_id": "travel-019",
+      "title": "Get free hotel room upgrades",
+      "category": "TRAVEL",
+      "search_volume": 1250,
+      "difficulty": "medium",
+      "subcategory": "hotels"
+    },
+    {
+      "problem_id": "travel-020",
+      "title": "Avoid long lines at popular tourist attractions",
+      "category": "TRAVEL",
+      "search_volume": 1050,
+      "difficulty": "easy",
+      "subcategory": "attractions"
+    },
+    {
+      "problem_id": "prod-001",
+      "title": "Focus for 2+ hours without distractions",
+      "category": "PRODUCTIVITY",
+      "search_volume": 1900,
+      "difficulty": "medium",
+      "subcategory": "focus"
+    },
+    {
+      "problem_id": "prod-002",
+      "title": "Remember more from books you read",
+      "category": "PRODUCTIVITY",
+      "search_volume": 1600,
+      "difficulty": "medium",
+      "subcategory": "learning"
+    },
+    {
+      "problem_id": "prod-003",
+      "title": "Organize chaotic digital files",
+      "category": "PRODUCTIVITY",
+      "search_volume": 1400,
+      "difficulty": "easy",
+      "subcategory": "organization"
+    },
+    {
+      "problem_id": "prod-004",
+      "title": "Meet deadlines consistently",
+      "category": "PRODUCTIVITY",
+      "search_volume": 1600,
+      "difficulty": "hard",
+      "subcategory": "time-management"
+    },
+    {
+      "problem_id": "prod-005",
+      "title": "Wake up before 6 AM without an alarm",
+      "category": "PRODUCTIVITY",
+      "search_volume": 1300,
+      "difficulty": "hard",
+      "subcategory": "habits"
+    },
+    {
+      "problem_id": "prod-006",
+      "title": "Stop procrastinating on important tasks",
+      "category": "PRODUCTIVITY",
+      "search_volume": 1800,
+      "difficulty": "hard",
+      "subcategory": "habits"
+    },
+    {
+      "problem_id": "prod-007",
+      "title": "Take better notes that you'll actually use",
+      "category": "PRODUCTIVITY",
+      "search_volume": 1200,
+      "difficulty": "easy",
+      "subcategory": "learning"
+    },
+    {
+      "problem_id": "prod-008",
+      "title": "Reduce email overload and stress",
+      "category": "PRODUCTIVITY",
+      "search_volume": 1100,
+      "difficulty": "easy",
+      "subcategory": "email"
+    },
+    {
+      "problem_id": "prod-009",
+      "title": "Finish a long project without losing momentum",
+      "category": "PRODUCTIVITY",
+      "search_volume": 1050,
+      "difficulty": "hard",
+      "subcategory": "projects"
+    },
+    {
+      "problem_id": "prod-010",
+      "title": "Learn new skills faster",
+      "category": "PRODUCTIVITY",
+      "search_volume": 1400,
+      "difficulty": "medium",
+      "subcategory": "learning"
+    },
+    {
+      "problem_id": "prod-011",
+      "title": "Get back on track after a break",
+      "category": "PRODUCTIVITY",
+      "search_volume": 900,
+      "difficulty": "medium",
+      "subcategory": "habits"
+    },
+    {
+      "problem_id": "prod-012",
+      "title": "Say no to requests without feeling guilty",
+      "category": "PRODUCTIVITY",
+      "search_volume": 1100,
+      "difficulty": "hard",
+      "subcategory": "boundaries"
+    },
+    {
+      "problem_id": "prod-013",
+      "title": "Create a sustainable morning routine",
+      "category": "PRODUCTIVITY",
+      "search_volume": 1300,
+      "difficulty": "medium",
+      "subcategory": "habits"
+    },
+    {
+      "problem_id": "prod-014",
+      "title": "Track time spent on work tasks",
+      "category": "PRODUCTIVITY",
+      "search_volume": 850,
+      "difficulty": "easy",
+      "subcategory": "tracking"
+    },
+    {
+      "problem_id": "prod-015",
+      "title": "Batch similar tasks to work faster",
+      "category": "PRODUCTIVITY",
+      "search_volume": 950,
+      "difficulty": "easy",
+      "subcategory": "workflow"
+    },
+    {
+      "problem_id": "cook-001",
+      "title": "Make eggs taste less rubbery",
+      "category": "COOKING",
+      "search_volume": 1400,
+      "difficulty": "easy",
+      "subcategory": "breakfast"
+    },
+    {
+      "problem_id": "cook-002",
+      "title": "Cook rice without it getting mushy",
+      "category": "COOKING",
+      "search_volume": 1600,
+      "difficulty": "easy",
+      "subcategory": "grains"
+    },
+    {
+      "problem_id": "cook-003",
+      "title": "Make pasta sauce less acidic",
+      "category": "COOKING",
+      "search_volume": 1200,
+      "difficulty": "easy",
+      "subcategory": "sauces"
+    },
+    {
+      "problem_id": "cook-004",
+      "title": "Season food properly without oversalting",
+      "category": "COOKING",
+      "search_volume": 1100,
+      "difficulty": "easy",
+      "subcategory": "seasoning"
+    },
+    {
+      "problem_id": "cook-005",
+      "title": "Roast vegetables without them drying out",
+      "category": "COOKING",
+      "search_volume": 1050,
+      "difficulty": "easy",
+      "subcategory": "vegetables"
+    },
+    {
+      "problem_id": "cook-006",
+      "title": "Make tender, juicy chicken every time",
+      "category": "COOKING",
+      "search_volume": 1350,
+      "difficulty": "medium",
+      "subcategory": "proteins"
+    },
+    {
+      "problem_id": "cook-007",
+      "title": "Slice meat against the grain",
+      "category": "COOKING",
+      "search_volume": 900,
+      "difficulty": "easy",
+      "subcategory": "prep"
+    },
+    {
+      "problem_id": "cook-008",
+      "title": "Thicken a thin sauce quickly",
+      "category": "COOKING",
+      "search_volume": 950,
+      "difficulty": "easy",
+      "subcategory": "sauces"
+    },
+    {
+      "problem_id": "cook-009",
+      "title": "Fix oversalty food that's already cooked",
+      "category": "COOKING",
+      "search_volume": 1200,
+      "difficulty": "easy",
+      "subcategory": "recovery"
+    },
+    {
+      "problem_id": "cook-010",
+      "title": "Make crispy bacon without splattering grease",
+      "category": "COOKING",
+      "search_volume": 1100,
+      "difficulty": "easy",
+      "subcategory": "breakfast"
+    },
+    {
+      "problem_id": "well-001",
+      "title": "Sleep better without medication",
+      "category": "WELLNESS",
+      "search_volume": 2100,
+      "difficulty": "medium",
+      "subcategory": "sleep"
+    },
+    {
+      "problem_id": "well-002",
+      "title": "Get rid of headaches naturally",
+      "category": "WELLNESS",
+      "search_volume": 1600,
+      "difficulty": "easy",
+      "subcategory": "pain"
+    },
+    {
+      "problem_id": "well-003",
+      "title": "Have more energy throughout the day",
+      "category": "WELLNESS",
+      "search_volume": 1700,
+      "difficulty": "medium",
+      "subcategory": "energy"
+    },
+    {
+      "problem_id": "well-004",
+      "title": "Get rid of hiccups fast",
+      "category": "WELLNESS",
+      "search_volume": 1250,
+      "difficulty": "easy",
+      "subcategory": "quick-fixes"
+    },
+    {
+      "problem_id": "well-005",
+      "title": "Relieve back pain from sitting too long",
+      "category": "WELLNESS",
+      "search_volume": 1400,
+      "difficulty": "easy",
+      "subcategory": "pain"
+    }
+  ]
+}

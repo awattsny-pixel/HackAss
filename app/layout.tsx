@@ -1,0 +1,22 @@
+import type { Metadata } from 'next';
+import './globals.css';
+
+export const metadata: Metadata = {
+  title: 'HackAss - Life Hacks That Work',
+  description: 'Submit and vote on life hacks. Community-verified solutions that actually work.',
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <head>
+        <script async src="https://www.instagram.com/embed.js"></script>
+      </head>
+      <body>{children}</body>
+    </html>
+  );
+}

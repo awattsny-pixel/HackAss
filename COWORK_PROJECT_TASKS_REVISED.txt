@@ -1,0 +1,824 @@
+================================================================================
+HACK AGGREGATOR PLATFORM - COWORK PROJECT SETUP (REVISED)
+================================================================================
+
+PROJECT NAME: Hack Aggregator
+DURATION: 4 weeks to MVP (realistic with scope adjustments)
+TECH STACK: React + Vite | Node.js + Express + TypeScript | PostgreSQL (Supabase)
+
+KEY CHANGES FROM ORIGINAL:
+✓ Content seeding: 8 hours → 65 hours (realistic curation)
+✓ Admin dashboard: 3 hours → 8 hours (expanded moderation features)
+✓ Added legal review: 15 hours (FTC, attribution, T&C)
+✓ Submission form gating: New decision point
+✓ Realistic growth targets for TikTok
+✓ Team capacity planning included
+
+================================================================================
+PHASE 0: PRE-SPRINT DECISIONS (THIS WEEK)
+================================================================================
+
+[DECISION 1.0] Content Launch Strategy
+   Deadline: EOW
+   Owner: Content Lead + PM
+   Options:
+   - A) Conservative: 300 quality hacks (recommended)
+   - B) Ambitious: 500 hacks (requires 65+ hrs confirmed)
+   Impact on: Task 4.1 (Content Seeding)
+   Recommendation: Option A (quality > quantity)
+
+[DECISION 2.0] Submission Gating Strategy
+   Deadline: EOW
+   Owner: PM + Backend Lead
+   Options:
+   - A) Closed at launch (no submissions Week 1-4)
+   - B) Waitlist at launch (Phase 2, 50 users Week 5)
+   - C) Open at launch (not recommended, spam risk)
+   Impact on: Tasks 3.6, 4.3 (Auth UI, Submission Form)
+   Recommendation: Option A → shift to Option B Week 5
+
+[DECISION 3.0] Monetization at Launch
+   Deadline: EOW
+   Owner: PM + Legal
+   Options:
+   - A) None (focus on traffic first)
+   - B) Affiliate links only + FTC disclosure
+   - C) Ads + affiliate (AdSense approval takes time)
+   Impact on: Task 4.6 (Launch Prep) + legal review hours
+   Recommendation: Option B (affiliate links only at launch)
+
+[DECISION 4.0] Confirm Team Capacity
+   Deadline: EOW
+   Owner: Project Manager
+   Required:
+   - [ ] 1 FT Backend Dev (40 hrs/week, Weeks 1-4)
+   - [ ] 1 FT Frontend Dev (40 hrs/week, Weeks 1-4)
+   - [ ] 1 FT Content Lead (40 hrs/week, Weeks 1-4)
+   - [ ] 1 PT Designer (20 hrs/week, Weeks 1-2, 4)
+   - [ ] External Legal (10-15 hrs, Weeks 2-4) [OPTIONAL]
+   Impact: Timeline adjusts if capacity differs
+   Recommendation: Confirm before Week 1 Day 1
+
+================================================================================
+SPRINT 1: DESIGN & SETUP (Week 1-2) [21 HOURS - REVISED FROM 19]
+================================================================================
+
+[TASK 1.1] Create Database Schema
+   Estimate: 5 hours [REVISED FROM 4]
+   Owner: Backend Dev
+   Description: PostgreSQL schema design, Prisma models, Supabase setup
+   NEW: Include duplicate detection + source attribution fields
+   Subtasks:
+   - Design user, hack, category, vote, submission tables
+   - Add fields: hack_fingerprint (for duplicate detection), source_url,
+     source_type, license_type, attribution_text
+   - Create Prisma schema
+   - Set up Supabase project
+   - Test local connection
+   - Add indexes on: title, category, created_at, votes
+   Dependencies: None
+
+[TASK 1.2] Design Wireframes & UI Components
+   Estimate: 6 hours [NO CHANGE]
+   Owner: Designer
+   Description: Create visual designs for all major pages
+   Subtasks:
+   - Homepage wireframe (hero, featured hack, categories)
+   - Browse page wireframe (hack list, filters, sorting)
+   - Detail page wireframe (full hack, voting, related hacks, SOURCE ATTRIBUTION)
+   - Mobile mockups for all pages
+   - Admin moderation queue wireframe (new)
+   Dependencies: None
+
+[TASK 1.3] API Specification Document
+   Estimate: 3 hours [NO CHANGE]
+   Owner: Backend Dev
+   Description: Define all REST API endpoints and schemas
+   Subtasks:
+   - List all GET, POST, PUT, DELETE endpoints
+   - Define request/response formats (include source, duplicate detection)
+   - Auth flow documentation
+   - Rate limiting & error handling
+   - Moderation workflow API spec (approve/reject submissions)
+   Dependencies: Task 1.1 (schema)
+
+[TASK 1.4] Dev Environment Setup
+   Estimate: 4 hours [NO CHANGE]
+   Owner: Backend Dev
+   Description: Initialize repositories and configure tools
+   Subtasks:
+   - Git repo setup (main, staging, dev branches)
+   - Node.js + Express + TypeScript scaffolding
+   - React + Vite scaffolding
+   - ESLint, Prettier, TypeScript config
+   - .env file template
+   Dependencies: None
+
+[TASK 1.5] Content Rubric & Curation Guide (NEW)
+   Estimate: 2 hours
+   Owner: Content Lead
+   Description: Define what makes a "quality" hack before curation
+   Subtasks:
+   - Create 1-page rubric (Clarity, Testable, Beneficial, Unique, Safe, Attributed, Formatted)
+   - Train team on rubric (30 min sync)
+   - Create Airtable/Google Sheets template for curation
+   - Document source priority (Reddit > Blogs > YouTube > User submissions)
+   Dependencies: None
+   Deliverable: Content_Rubric.md + Curation_Template sheet
+
+================================================================================
+SPRINT 2: BACKEND DEVELOPMENT (Week 2-3) [30 HOURS - REVISED FROM 22]
+================================================================================
+
+[TASK 2.1] User Authentication & Database Connection
+   Estimate: 6 hours [NO CHANGE]
+   Owner: Backend Dev
+   Description: Implement user system and Postgres connection
+   Subtasks:
+   - Prisma connection to PostgreSQL
+   - User model (email, password_hash, created_at, reputation)
+   - Registration endpoint (POST /auth/register)
+   - Login endpoint (POST /auth/login) with JWT
+   - Password hashing (bcrypt)
+   - Unit tests for auth
+   - User reputation scoring (for later moderation)
+   Dependencies: Task 1.1 (schema)
+
+[TASK 2.2] Hack CRUD Operations
+   Estimate: 7 hours [REVISED FROM 6]
+   Owner: Backend Dev
+   Description: Core hack endpoints (with pagination fix)
+   Subtasks:
+   - GET /hacks (list all, cursor-based pagination, not offset)
+   - GET /hacks/:id (single hack with source attribution)
+   - GET /categories (list categories)
+   - GET /hacks?category=cooking (category filter)
+   - POST /hacks/:id/vote (upvote/downvote)
+   - Duplicate detection check (on submit, warn user)
+   - Test all endpoints
+   Dependencies: Task 2.1 (auth)
+
+[TASK 2.3] Search & Sorting
+   Estimate: 6 hours [REVISED FROM 4]
+   Owner: Backend Dev
+   Description: Full-text search and sort functionality (with performance tuning)
+   Subtasks:
+   - Implement PostgreSQL full-text search
+   - Sort by votes, newest, trending (last 7 days)
+   - Pagination (cursor-based, handles large offsets)
+   - Performance optimization (indexes on title, category, created_at)
+   - Load testing with 500+ hacks
+   - Test search queries
+   Dependencies: Task 1.1 (schema), Task 2.2 (CRUD)
+
+[TASK 2.4] Admin Endpoints & Moderation
+   Estimate: 8 hours [REVISED FROM 4]
+   Owner: Backend Dev
+   Description: Moderation and bulk operations (expanded scope)
+   Subtasks:
+   - POST /admin/hacks/bulk-import (CSV/JSON import)
+   - DELETE /hacks/:id (remove hack)
+   - GET /admin/submissions (list pending submissions, with filtering)
+   - PATCH /submissions/:id/approve (admin action)
+   - PATCH /submissions/:id/reject (with reason)
+   - POST /admin/spam-filters (configure auto-filter rules)
+   - POST /admin/users/:id/ban (ban user account)
+   - Admin authentication middleware
+   - Logging for all moderation actions
+   Dependencies: Task 2.1 (auth)
+
+[TASK 2.5] Error Handling, Validation & Input Filtering
+   Estimate: 3 hours [REVISED FROM 2]
+   Owner: Backend Dev
+   Description: Robust input validation, error responses, and spam filtering
+   Subtasks:
+   - Input validation (title, description, steps, category, source)
+   - Error response format (status, message, code)
+   - Logging setup (Winston or Pino)
+   - Rate limiting middleware (prevent brute force)
+   - Auto-spam filter (rejects obvious spam keywords) [NEW]
+   - Duplicate hash generation on every hack submit [NEW]
+   Dependencies: Task 2.1 (auth)
+
+================================================================================
+SPRINT 3: FRONTEND DEVELOPMENT (Week 3-4) [25 HOURS - REVISED FROM 23]
+================================================================================
+
+[TASK 3.1] Homepage & Navigation
+   Estimate: 4 hours [NO CHANGE]
+   Owner: Frontend Dev
+   Description: Main landing page and navigation
+   Subtasks:
+   - Header with logo, nav links, search bar
+   - Hero section with CTA
+   - Featured hack carousel/spotlight
+   - Category grid (10 categories as clickable cards)
+   - Footer with links (About, Contact, Privacy)
+   Dependencies: None
+
+[TASK 3.2] Browse/Category Page
+   Estimate: 5 hours [NO CHANGE]
+   Owner: Frontend Dev
+   Description: View hacks by category with filters
+   Subtasks:
+   - Hack list component (title, preview, upvote count)
+   - Category title and description
+   - Sort dropdown (trending, newest, most upvotes)
+   - Filter by difficulty (optional)
+   - Pagination or infinite scroll
+   - "No results" state
+   Dependencies: Task 2.2 (API), Task 2.3 (search)
+
+[TASK 3.3] Hack Detail Page
+   Estimate: 5 hours [REVISED FROM 4]
+   Owner: Frontend Dev
+   Description: Full hack view with voting and source attribution
+   Subtasks:
+   - Hack title, image, description
+   - Step-by-step instructions
+   - "Why it works" explanation
+   - Upvote/downvote button with count
+   - Related hacks sidebar
+   - Share buttons (TikTok, Twitter, Reddit)
+   - Copy hack text feature
+   - SOURCE ATTRIBUTION SECTION (link to original + license info) [NEW]
+   Dependencies: Task 2.2 (API)
+
+[TASK 3.4] Search & Filtering UI
+   Estimate: 3 hours [NO CHANGE]
+   Owner: Frontend Dev
+   Description: Search bar and filter interface
+   Subtasks:
+   - Search bar with autocomplete
+   - Category filter dropdown
+   - Upvote range slider (optional)
+   - Clear filters button
+   - Active filter chips/tags
+   - Search result count
+   Dependencies: Task 2.3 (search API)
+
+[TASK 3.5] Responsive Design & Mobile
+   Estimate: 4 hours [NO CHANGE]
+   Owner: Frontend Dev
+   Description: Mobile-first responsive design
+   Subtasks:
+   - Test on iPhone/Android (< 480px)
+   - Adjust typography and spacing for mobile
+   - Touch-friendly buttons (48px min)
+   - Mobile nav (hamburger menu)
+   - Image optimization for mobile
+   - Performance optimization (LCP < 2.5s)
+   Dependencies: All UI tasks
+
+[TASK 3.6] User Auth UI & Submission Gating
+   Estimate: 4 hours [REVISED FROM 3]
+   Owner: Frontend Dev
+   Description: Authentication interface and submission form gating
+   Subtasks:
+   - Login modal/page
+   - Registration form
+   - Profile page (voting history, submissions)
+   - Logout button
+   - Protected routes (submissions, voting)
+   - Error messages and validation
+   - GATING LOGIC: Show "Join Waitlist" button (not submit) if submissions closed [NEW]
+   - Waitlist signup form (Phase 2 addition)
+   Dependencies: Task 2.1 (auth API)
+
+================================================================================
+SPRINT 4: CONTENT, LEGAL & LAUNCH (Week 4) [111 HOURS - REVISED FROM 29]
+================================================================================
+
+WEEK 4 has been restructured due to realistic content seeding and legal requirements.
+TEAM WILL RUN SPRINTS 1-3 IN PARALLEL WITH WEEK 2-4 CONTENT WORK.
+
+[TASK 4.1] Content Seeding: Curation & Import
+   Estimate: 65 hours [REVISED FROM 8]
+   Owner: Content Lead (full-time Weeks 1-4) + Designer support
+   Duration: Weeks 1-4 (parallel with backend/frontend)
+   Description: Curate 300+ quality hacks and import into database
+
+   BREAKDOWN:
+   - Collection Phase (Week 1): 20 hours
+     * Search Reddit, blogs, YouTube for top hacks
+     * Target: 400+ hacks found
+     * Create Airtable entries (title, steps, why, source, category)
+     * Average: 150 hacks/day × 2 days + refinement
+
+   - Normalization Phase (Week 1-2): 25 hours
+     * Standardize format: Title + 3-7 steps + Why It Works
+     * Rewrite unclear steps
+     * Add category tags
+     * Remove broken or irrelevant hacks
+
+   - Deduplication Phase (Week 2): 10 hours
+     * Check for duplicate titles/concepts
+     * Merge similar hacks (keep best version)
+     * QA against rubric
+
+   - Verification Phase (Week 2): 5 hours
+     * 10% spot-check (test a few hacks yourself)
+     * Fix formatting issues
+     * Verify attribution
+
+   - Import & Upload (Week 2-3): 5 hours
+     * Write import script (or use admin API)
+     * Bulk upload to database
+     * Verify no import errors
+
+   OUTPUT:
+   - 300 hacks in database (conservative) OR
+   - 500 hacks in database (ambitious, requires 65 hrs confirmed)
+   - All pass rubric (Clarity, Testable, Beneficial, Unique, Safe, Attributed, Formatted)
+   - All have proper source attribution
+   - Categories: Cooking, Cleaning, Money-Saving prioritized
+
+   DECISION REQUIRED: Conservative (300) vs Ambitious (500)
+   Recommendation: Conservative (300) → add 100+ via user submissions post-launch
+
+   Dependencies: Task 1.5 (rubric), Task 2.4 (admin import endpoint)
+
+[TASK 4.2] Admin Dashboard & Moderation Interface
+   Estimate: 8 hours [REVISED FROM 3]
+   Owner: Frontend Dev (with Backend Dev input)
+   Description: Moderation tools for managing submissions and hacks
+   Subtasks:
+   - Admin auth check (role-based access)
+   - Submission moderation queue (table view)
+     * Show: hack title, submitter, date, status
+     * Filter by: pending, approved, rejected, flagged
+     * Sort by: newest, oldest, flags
+   - Approval/rejection buttons with reason input
+   - Auto-spam filter management (enable/disable rules)
+   - View hack statistics (total, by category, trending)
+   - View user statistics (total, submissions, upvotes)
+   - User ban button (with confirmation)
+   - Bulk approve/delete actions
+   - Audit log (who approved/rejected what, when)
+
+   Dependencies: Task 2.4 (API), Task 1.2 (wireframes)
+
+[TASK 4.3] Hack Submission Form & Gating
+   Estimate: 5 hours [REVISED FROM 3]
+   Owner: Frontend Dev (with Backend Dev input)
+   Description: User submission UI with progressive gating
+
+   PHASE 1 (Week 1-4): Closed - Form hidden
+   - No submit button visible
+   - Show: "Submissions open Week 5" message
+
+   PHASE 2 (Week 5+): Waitlist - Form visible, limited access
+   - Submit button visible to waitlist users only
+   - Other users see: "Join Waitlist" button
+
+   FORM FIELDS (when visible):
+   - Hack title (required, validated)
+   - Steps (array: min 2, max 15, each < 200 chars)
+   - Why it works (required, text)
+   - Category dropdown (required)
+   - Image upload (optional, Cloudinary)
+   - Email (pre-filled if logged in)
+   - "Have you tested this?" (Yes/No)
+   - "Agree to CC BY 4.0 license" (required checkbox)
+   - Submit button with loading state
+
+   SUBTASKS:
+   - Form component with validation
+   - Client-side validation (title length, step count, etc)
+   - Image upload integration
+   - Success/error toast messages
+   - Gating logic (check if user is on waitlist/admin)
+   - Redirect to "Thanks, under review" page
+
+   Dependencies: Task 2.2 (API), Task 2.5 (validation), Task 3.6 (auth UI)
+
+[TASK 4.4] Testing & QA
+   Estimate: 8 hours [REVISED FROM 6]
+   Owner: Designer / QA (with dev support)
+   Description: Comprehensive testing before launch
+   Subtasks:
+   - Functional testing (all user flows: browse, vote, submit, moderation)
+   - Edge cases (empty state, large lists, slow network, no results)
+   - Performance testing (Lighthouse score > 85)
+   - Moderation workflow testing (approve, reject, ban, bulk actions)
+   - Spam filter testing (verify auto-rejects work)
+   - Security testing (XSS, SQL injection, CSRF)
+   - Browser compatibility (Chrome, Safari, Firefox, Edge)
+   - Accessibility check (keyboard navigation, screen reader)
+   - Duplicate detection verification
+   - Source attribution display check
+
+   Dependencies: All development tasks
+
+[TASK 4.5] Legal Review & Monetization Setup
+   Estimate: 15 hours [NEW TASK]
+   Owner: PM + Legal (internal or external)
+   Description: Legal compliance and monetization infrastructure
+
+   SUBTASKS:
+   - Attribution & Copyright:
+     * Verify all 300+ curated hacks have source attribution
+     * Create Terms of Service (user submissions CC BY 4.0)
+     * Create Privacy Policy (Google Analytics, email list)
+     * Add copyright notice to footer
+     * Time: 5 hours
+
+   - FTC Compliance:
+     * Create FTC affiliate disclosure page
+     * Add disclaimer to all Amazon links
+     * Document disclaimer process for sponsored hacks
+     * Time: 3 hours
+
+   - Monetization Infrastructure:
+     * Set up Amazon Associates account (get tracking links)
+     * Research affiliate partnerships (5-10 potential brands)
+     * Set up newsletter email provider (Substack or MailChimp)
+     * Create privacy policy addendum for email
+     * Time: 5 hours
+
+   - Email Verification:
+     * Email YouTube/blog creators asking permission (if using their content)
+     * Document permissions received
+     * Time: 2 hours
+
+   DECISION REQUIRED: Monetization strategy at launch
+   Recommendation: Affiliate links only (no ads or sponsored at launch)
+
+   Dependencies: Task 4.1 (content seeding)
+
+[TASK 4.6] Deployment & Infrastructure
+   Estimate: 4 hours [NO CHANGE]
+   Owner: Backend Dev / DevOps
+   Description: Production deployment setup
+   Subtasks:
+   - Backend: Deploy to Railway/Render (with CI/CD)
+   - Frontend: Deploy to Vercel
+   - Environment variables setup (prod vs dev vs staging)
+   - Database migrations in production
+   - Backups and disaster recovery plan
+   - Monitoring/alerts (error tracking via Sentry, uptime)
+   - Custom domain setup (if available)
+   - SSL/HTTPS verification
+   - Test end-to-end on staging before prod push
+
+   Dependencies: Tasks 2.x, 3.x, 4.1-4.5
+
+[TASK 4.7] Launch Prep & Growth Assets
+   Estimate: 4 hours [NO CHANGE, WAS 4.6]
+   Owner: Content Lead + Designer
+   Description: Marketing materials and initial growth strategy
+   Subtasks:
+   - Write launch blog post / announcement (500 words)
+   - Create 10 TikTok video templates (title cards, music, effects)
+   - TikTok account setup (profile, bio, link in bio)
+   - Twitter/X account setup
+   - Instagram account setup (optional)
+   - Email list signup form (embed on site)
+   - Set up Substack/MailChimp for newsletter template
+   - Create "How it works" explainer video (optional)
+
+   Note: Actual TikTok videos start WEEK 5 (after launch)
+
+   Dependencies: Task 4.1 (content seeding)
+
+================================================================================
+POST-LAUNCH (Week 5+) - ONGOING TASKS
+================================================================================
+
+[TASK 5.1] TikTok & Short-Form Video Strategy
+   Frequency: Daily (1-2 videos/day)
+   Owner: Content Lead (or dedicated Video Editor)
+   Estimate: ~1 hour/day ongoing
+   Description: Post and manage short-form video content
+
+   REVISED TARGETS (Conservative):
+   - Week 5-8 target: 5-10K followers (not 50K)
+   - Month 3 target: 30-50K followers (not 50K)
+   - Month 6 target: 100-150K followers (not 150K)
+
+   KEY METRICS (focus on these):
+   - Engagement rate: Target 1%+ (likes + comments / followers)
+   - Click-through rate: Track via UTM (utm_source=tiktok)
+   - Retention: % of users who return 2+ times/week
+
+   Details:
+   - Create 15-30 second videos from top hacks (highest voted)
+   - Format: text overlay + quick demo/before-after
+   - Use trending audio when relevant
+   - Hashtags: #LifeHack #CleaningHack #TravelHack #MoneySavingHack
+   - Post same time daily (algorithm favors consistency)
+   - Track views, shares, clicks to site
+   - A/B test formats and times
+   - Link in bio to site with UTM tracking
+
+   LAUNCH TIMING: Start Week 5 (after launch, have working product)
+
+[TASK 5.2] Reddit Seeding & Community Engagement
+   Frequency: 1-2 posts per day
+   Owner: Content Lead
+   Estimate: ~1 hour/day ongoing
+   Description: Engage with hack communities
+   Details:
+   - Post 1 good hack per day to relevant subreddits
+   - Never spam; always provide genuine value
+   - Subreddits: r/lifeprotips, r/cooking, r/personalfinance, r/cleaning, r/travel
+   - Link naturally in comments (not forced)
+   - Respond to comments and questions
+   - Track upvotes and traffic (via UTM)
+   - Document successful posts for TikTok ideas
+
+   TARGET:
+   - 10-20 upvoted comments/week = 100-500 clicks/week
+   - This is lower effort, high ROI (community seeding)
+
+[TASK 5.3] User Submission Moderation
+   Frequency: 2x daily (morning, evening) → escalate if needed
+   Owner: Moderation Lead + Volunteer Mods (post-Week 8)
+   Estimate: 30-60 min/day ongoing
+   Description: Review and approve user-submitted hacks
+
+   CAPACITY PLANNING:
+   - Week 5-7: 5-10 submissions/day → 1 person, 30 min/day
+   - Week 8-12: 20-50 submissions/day → 1 person + volunteers
+   - Month 3+: 100+ submissions/day → 1 paid mod + 3-5 volunteers
+
+   Details:
+   - Check "Pending" submissions queue
+   - Verify quality (clear steps, beneficial, original)
+   - Use rubric (Clarity, Testable, Beneficial, Unique, Safe, Attributed, Formatted)
+   - Approve and publish or request changes
+   - Reject spam/duplicates with reason
+   - Ban repeat offenders (3 strikes)
+   - Document moderation decisions (patterns, trends)
+
+[TASK 5.4] Newsletter Setup & Management
+   Frequency: Weekly (Friday)
+   Owner: Content Lead
+   Estimate: 1-2 hours/week ongoing
+   Description: Email newsletter with top hacks
+
+   TIMELINE:
+   - Week 5: Set up Substack/MailChimp
+   - Week 6: Send first newsletter (to 0-100 subscribers)
+   - Ongoing: Every Friday
+
+   Details:
+   - Curate top 5 hacks from the week (by votes + engagement)
+   - Write short email copy (200-300 words)
+   - Send via Substack/MailChimp
+   - Track open rate, clicks, unsub rate
+   - Grow subscriber list organically (site signup form)
+   - Test send times, subject lines
+
+   TARGET:
+   - Month 1: 100-200 subscribers
+   - Month 3: 5K subscribers
+   - Month 6: 15K subscribers
+
+[TASK 5.5] Analytics & Monitoring
+   Frequency: Daily check-in
+   Owner: PM or Analytics person
+   Estimate: 30 min/day ongoing
+   Description: Track growth and site health
+
+   SETUP (Week 4-5):
+   - Google Analytics 4 (GA4) setup
+   - Sentry or Rollbar for error tracking
+   - Uptime monitoring (Pingdom, UptimeRobot)
+   - Custom dashboard (Google Sheets or Looker)
+
+   METRICS TO TRACK:
+   - Daily/weekly visitors
+   - Top 10 hacks (by views, votes)
+   - Traffic sources (TikTok, Reddit, direct, search)
+   - User retention (day 1, 7, 30)
+   - Hack submissions + approval rate
+   - Email open rate, click rate
+
+   REPORTING:
+   - Daily: Quick check (site up? major errors?)
+   - Weekly: Growth metrics report (visitors, hacks, submissions)
+   - Monthly: Strategic review (trends, opportunities, challenges)
+
+[TASK 5.6] Premium Tier Development
+   Timeline: 2 weeks post-launch (Week 6-7)
+   Owner: Backend Dev + Frontend Dev
+   Estimate: 20-30 hours
+   Description: Paid subscription features
+
+   PHASES:
+   - Week 1-4: Focus on free tier (user acquisition)
+   - Week 6-7: Build premium features
+   - Week 8: Launch premium tier
+
+   Subtasks:
+   - Design premium tier (ad-free, exclusive hacks, early access)
+   - Integrate Stripe payment processing
+   - Subscription management page (pause, cancel, update card)
+   - Premium badge on hacks (visual indicator)
+   - Email campaigns to free users (converting cohort testing)
+   - Price testing ($4.99, $9.99/month)
+
+   GOALS:
+   - 5-10% of users convert to premium by Month 3
+   - $500-1K/month revenue by Month 3
+
+================================================================================
+SUCCESS METRICS & MILESTONES
+================================================================================
+
+WEEK 4 (Launch):
+  ☐ 300+ hacks in database (curated, high quality)
+  ☐ MVP features complete (browse, vote, submit form hidden)
+  ☐ Site live, stable, passing Lighthouse > 85
+  ☐ All legal docs in place (T&C, Privacy, FTC disclosure)
+  ☐ Analytics + monitoring set up
+  ☐ TikTok account created, 10 video templates ready
+  ☐ Reddit seeding ready to launch (first posts scheduled)
+
+WEEK 6 (Post-Launch):
+  ☐ 5K-15K site visitors
+  ☐ 5-10K TikTok followers (conservative target, NOT 50K)
+  ☐ 5-10 TikTok videos posted
+  ☐ 100+ email subscribers
+  ☐ 5-10 organic Reddit upvotes (hacks performing well)
+  ☐ 0 spam submissions (form still gated)
+  ☐ Site stability: 99.5%+ uptime
+
+WEEK 8 (Enable Submissions):
+  ☐ Enable submission form (Phase 2 waitlist opens)
+  ☐ First 50 user submissions received
+  ☐ Moderation queue tested + working
+  ☐ 10-20K TikTok followers
+  ☐ 500+ email subscribers
+  ☐ 1-2K monthly hacks viewed
+
+MONTH 3 (Growth Phase):
+  ☐ 20-50K site visitors (conservative)
+  ☐ 30-50K TikTok followers (conservative)
+  ☐ 200+ user-submitted hacks (approved)
+  ☐ 5K email subscribers
+  ☐ $200-500 monthly revenue (affiliate links)
+  ☐ Volunteer mods in place
+
+MONTH 6 (Scale Phase):
+  ☐ 100-200K site visitors (if engagement high)
+  ☐ 100-150K TikTok followers (growth trajectory)
+  ☐ 500+ user-submitted hacks
+  ☐ 15K email subscribers
+  ☐ $1-2K monthly revenue (affiliate + ads + premium)
+  ☐ Premium tier launched, 5-10% conversion
+
+================================================================================
+TEAM RECOMMENDATIONS
+================================================================================
+
+MINIMUM VIABLE TEAM (3.5 FTE):
+- 1 Backend Developer (Node.js/Express/PostgreSQL) - 40 hrs/week
+- 1 Frontend Developer (React/Vite) - 40 hrs/week
+- 1 Content Lead (Curation, Reddit, TikTok) - 40 hrs/week
+- 1 Designer (part-time, 20 hrs/week Weeks 1-2, 4)
+- Legal/Compliance support (10-15 hrs, external or internal)
+
+SCALING (POST-LAUNCH):
+- Add Video Editor (TikTok production) - Week 5
+- Add Moderation Lead + Volunteers - Week 8
+- Add Growth/Analytics person - Week 8
+
+DECISION: Can team dedicate 140 hrs/week Weeks 1-4?
+Recommendation: Confirm capacity before Day 1 of Week 1
+
+================================================================================
+RISK MITIGATION
+================================================================================
+
+RISK: Curated hacks database is empty or low quality at launch
+MITIGATION: Define rubric Week 1, allocate 65 hours to curation (not 8)
+  → Launch with 300 strong hacks vs 500 mediocre ones
+  → User submissions fill gaps post-launch
+
+RISK: Spam overruns submissions queue
+MITIGATION: Gate submissions until moderation capacity confirmed
+  → Phase 1 (closed) Weeks 1-4
+  → Phase 2 (waitlist) Week 5-7
+  → Phase 3 (open) Week 8+
+  → Auto-spam filters active from Day 1
+
+RISK: Slow TikTok growth / viral content isn't reliable
+MITIGATION: Set realistic targets, focus on consistency + quality
+  → Target: 5-10K followers by Week 8 (not 50K)
+  → Commit to 1-2 videos daily, track engagement not just follower count
+  → Treat Reddit as secondary growth channel (higher ROI than viral chasing)
+
+RISK: User submissions are low quality
+MITIGATION: Moderation queue + upvote system filters junk
+  → Human review first 8 weeks (establish standards)
+  → Auto-filters catch spam by Week 3
+  → Volunteer mods scale moderation by Month 2
+  → Ban repeat offenders
+
+RISK: Legal liability (plagiarism, FTC violations, health claims)
+MITIGATION: Legal review Week 2-4, documentation of all sources
+  → Verify attribution on all 300+ hacks before launch
+  → Create T&C that clarifies user disclaimers
+  → FTC disclosure on all affiliate links
+  → No health claims (or clearly mark as unverified)
+
+RISK: Deployment issues on launch day
+MITIGATION: Staging environment testing, rollback plan, monitoring
+  → Deploy to staging Week 3, run full test
+  → Dry-run deployment script
+  → 24/7 monitoring set up Week 4
+  → Rollback plan documented and tested
+  → Start with traffic ramp (25% traffic, then 50%, then 100%)
+
+RISK: Team capacity lower than estimated
+MITIGATION: Adjust scope, not timeline
+  → If 2 FTE instead of 3.5 FTE: Launch with 200 hacks (not 300)
+  → If capacity confirmed late: Extend Week 1 planning
+  → Prioritize: Backend + Frontend > Content > Polish
+
+================================================================================
+DECISION CHECKLIST (DO THIS WEEK)
+================================================================================
+
+PRE-SPRINT 1:
+
+Content Strategy:
+  [ ] Content Lead confirms: Can curate 300+ quality hacks in 65 hours?
+      Yes → Conservative launch (300 hacks)
+      No → Reduce to 200 hacks, extend timeline to Week 5
+  [ ] Create content rubric (Clarity, Testable, Beneficial, Unique, Safe, Attributed, Formatted)
+  [ ] Set up Airtable/Google Sheets for curation
+
+Submissions Strategy:
+  [ ] Decide: Phase 1 (closed) vs Phase 2 (waitlist) at launch?
+      Recommendation: Phase 1 (closed at launch, enable Week 5)
+  [ ] Backend Dev confirms: Can build gating logic by Week 2?
+
+Legal & Monetization:
+  [ ] PM + Legal: Which monetization strategy?
+      Option A: None at launch (focus on traffic)
+      Option B: Affiliate links only + FTC disclosure (recommended)
+      Option C: Ads + affiliate (requires AdSense approval, slower)
+  [ ] Estimate legal review hours (5-15 hours depending on scope)
+  [ ] Confirm: Can handle attribution verification for 300+ hacks?
+
+Team Capacity:
+  [ ] Backend Dev: Confirmed 40 hrs/week, Weeks 1-4?
+  [ ] Frontend Dev: Confirmed 40 hrs/week, Weeks 1-4?
+  [ ] Content Lead: Confirmed 40 hrs/week, Weeks 1-4?
+  [ ] Designer: Confirmed 20 hrs/week, Weeks 1-2, 4?
+  [ ] Legal: Have 10-15 hours available Weeks 2-4?
+  [ ] If NO to any: Adjust timeline or scope
+
+NEXT STEPS:
+
+1. Copy this document to team Slack / project management tool
+2. Call 1-hour sync: Review decisions, assign owners, lock timeline
+3. Content Lead: Start rubric + Airtable setup
+4. Backend Dev: Start database schema design (Task 1.1)
+5. Frontend Dev: Start wireframes (Task 1.2)
+6. Designer: Create content rubric visual, curation training deck
+7. Set up daily standups (15 min, async or sync)
+8. Create Cowork / Jira project with tasks linked to this doc
+9. Schedule weekly Sprint planning (30 min, every Monday)
+
+================================================================================
+APPENDIX: Spam Keywords for Auto-Filter
+================================================================================
+
+Words/phrases that trigger auto-rejection for submissions:
+- "make money fast", "get rich", "crypto", "NFT"
+- "click here", "limited time", "act now", "hurry"
+- "dm for details", "link in bio", "contact me"
+- "sponsored", "ad", "affiliate" (unless in proper attribution)
+- Excessive URLs (allow max 1, unless in attribution)
+- EXCESSIVE CAPS or emoji spam (>5 emojis per hack)
+
+These filters are auto-enforced by Task 2.5 validation layer.
+
+================================================================================
+FINAL NOTES
+================================================================================
+
+PHILOSOPHY:
+- Quality > Quantity: Launch with 300 great hacks, not 500 mediocre ones
+- Trust first: Build community trust before enabling user submissions
+- Realistic targets: 5-10K TikTok followers is success, 50K is luck
+- Legal compliance: Attribution + FTC disclosure avoid future pain
+- Sustainable scaling: Moderation + volunteers scale more than 1 person
+
+TIMELINE:
+- This Week: Make 4 decisions, confirm team capacity
+- Week 1-4: Execute Sprints 1-4 in parallel (realistic 187 hours total)
+- Week 5: Soft launch, enable Phase 2 (waitlist submissions)
+- Week 8: Enable Phase 3 (open submissions), launch premium tier
+- Month 3: Scale with volunteers + paid mod
+
+SUCCESS:
+- Week 4: Live, stable, 300+ quality hacks, legal compliant
+- Month 3: 20-50K visitors, 30-50K TikTok followers, 5K email subscribers
+- Month 6: 100-200K visitors, 100-150K TikTok followers, profitable
+
+================================================================================

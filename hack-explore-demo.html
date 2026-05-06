@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Explore - Hack Aggregator</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: #fff;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef } = React;
+
+        const HackExplore = () => {
+            const [selectedCategory, setSelectedCategory] = useState('All');
+            const [searchQuery, setSearchQuery] = useState('');
+            const [hoveredCard, setHoveredCard] = useState(null);
+            const [likedHacks, setLikedHacks] = useState(new Set());
+            const scrollContainerRef = useRef(null);
+
+            const categories = ['All', 'AI/ML', 'Design', 'Dev Tools', 'Audio', 'AR/VR', 'Web3', 'Mobile'];
+
+            const allHacks = [
+                {
+                    id: 1,
+                    title: 'Neural Canvas',
+                    category: 'AI/ML',
+                    image: 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400&h=400&fit=crop',
+                    creator: 'Maya Chen',
+                    votes: 3427
+                },
+                {
+                    id: 2,
+                    title: 'Flow State',
+                    category: 'Audio',
+                    image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&h=400&fit=crop',
+                    creator: 'Alex Rivera',
+                    votes: 2891
+                },
+                {
+                    id: 3,
+                    title: 'Gesture Control 3D',
+                    category: 'AR/VR',
+                    image: 'https://images.unsplash.com/photo-1633356122544-f134324ef6db?w=400&h=400&fit=crop',
+                    creator: 'Jordan Smith',
+                    votes: 4102
+                },
+                {
+                    id: 4,
+                    title: 'Code Mentor Pro',
+                    category: 'Dev Tools',
+                    image: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=400&h=400&fit=crop',
+                    creator: 'Sam Patel',
+                    votes: 5230
+                },
+                {
+                    id: 5,
+                    title: 'Chromatic UI',
+                    category: 'Design',
+                    image: 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400&h=400&fit=crop',
+                    creator: 'Casey Morgan',
+                    votes: 2156
+                },
+                {
+                    id: 6,
+                    title: 'Web3 Bridge',
+                    category: 'Web3',
+                    image: 'https://images.unsplash.com/photo-1639762681057-408e46e6aad1?w=400&h=400&fit=crop',
+                    creator: 'Taylor Chen',
+                    votes: 1876
+                },
+                {
+                    id: 7,
+                    title: 'Mobile First',
+                    category: 'Mobile',
+                    image: 'https://images.unsplash.com/photo-1512941691920-25bda36dc643?w=400&h=400&fit=crop',
+                    creator: 'Alex Jordan',
+                    votes: 2543
+                },
+                {
+                    id: 8,
+                    title: 'AI Assistant',
+                    category: 'AI/ML',
+                    image: 'https://images.unsplash.com/photo-1677442d019cecf8978567ee70c647bda1ef50914?w=400&h=400&fit=crop',
+                    creator: 'Jordan Lee',
+                    votes: 3891
+                },
+                {
+                    id: 9,
+                    title: 'Design System',
+                    category: 'Design',
+                    image: 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400&h=400&fit=crop',
+                    creator: 'Sam Wilson',
+                    votes: 2234
+                },
+                {
+                    id: 10,
+                    title: 'Audio Suite',
+                    category: 'Audio',
+                    image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&h=400&fit=crop',
+                    creator: 'Casey Smith',
+                    votes: 1998
+                },
+                {
+                    id: 11,
+                    title: 'AR Experience',
+                    category: 'AR/VR',
+                    image: 'https://images.unsplash.com/photo-1633356122544-f134324ef6db?w=400&h=400&fit=crop',
+                    creator: 'Morgan Lee',
+                    votes: 3456
+                },
+                {
+                    id: 12,
+                    title: 'Dev Tools Pro',
+                    category: 'Dev Tools',
+                    image: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=400&h=400&fit=crop',
+                    creator: 'Riley Chen',
+                    votes: 2876
+                }
+            ];
+
+            const filteredHacks = allHacks.filter(hack => {
+                const matchesCategory = selectedCategory === 'All' || hack.category === selectedCategory;
+                const matchesSearch = hack.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    hack.creator.toLowerCase().includes(searchQuery.toLowerCase());
+                return matchesCategory && matchesSearch;
+            });
+
+            const scrollCategories = (direction) => {
+                if (scrollContainerRef.current) {
+                    const scrollAmount = 200;
+                    scrollContainerRef.current.scrollBy({
+                        left: direction === 'left' ? -scrollAmount : scrollAmount,
+                        behavior: 'smooth'
+                    });
+                }
+            };
+
+            const toggleLike = (hackId) => {
+                const newLiked = new Set(likedHacks);
+                if (newLiked.has(hackId)) {
+                    newLiked.delete(hackId);
+                } else {
+                    newLiked.add(hackId);
+                }
+                setLikedHacks(newLiked);
+            };
+
+            return (
+                <div className="relative w-full min-h-screen" style={{ background: '#0a0a0a' }}>
+                    {/* Header */}
+                    <div className="fixed top-0 left-0 right-0 z-50 px-6 py-4" style={{
+                        background: 'rgba(10, 10, 10, 0.7)',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                        backdropFilter: 'blur(20px)'
+                    }}>
+                        <div className="max-w-6xl mx-auto">
+                            <h1 className="text-2xl font-black text-white mb-4" style={{
+                                fontFamily: 'Unbounded, sans-serif',
+                                background: 'linear-gradient(135deg, #2563EB 0%, #10B981 100%)',
+                                backgroundClip: 'text',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                                letterSpacing: '-0.02em'
+                            }}>
+                                Explore
+                            </h1>
+
+                            {/* Search Bar */}
+                            <div className="relative">
+                                <span style={{ position: 'absolute', left: '16px', top: '12px', color: '#9ca3af' }}>🔍</span>
+                                <input
+                                    type="text"
+                                    placeholder="Search hacks, creators..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full px-4 py-3 pl-10 rounded-lg text-sm text-white placeholder-gray-500 outline-none transition-all"
+                                    style={{
+                                        background: 'rgba(255, 255, 255, 0.08)',
+                                        border: '1px solid rgba(255, 255, 255, 0.1)'
+                                    }}
+                                    onFocus={(e) => {
+                                        e.target.style.borderColor = 'rgba(37, 99, 235, 0.5)';
+                                        e.target.style.boxShadow = '0 0 0 2px rgba(37, 99, 235, 0.1)';
+                                    }}
+                                    onBlur={(e) => {
+                                        e.target.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                                        e.target.style.boxShadow = 'none';
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Category Filter Tabs */}
+                    <div className="fixed top-24 left-0 right-0 z-40 px-6 py-3" style={{
+                        background: 'rgba(10, 10, 10, 0.5)',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                        backdropFilter: 'blur(20px)'
+                    }}>
+                        <div className="max-w-6xl mx-auto">
+                            <div className="relative flex items-center gap-2">
+                                {/* Left Scroll Button */}
+                                <button
+                                    onClick={() => scrollCategories('left')}
+                                    className="absolute left-0 z-10 p-2 rounded-lg transition-all hover:bg-white/10"
+                                    style={{ background: 'rgba(10, 10, 10, 0.9)' }}
+                                >
+                                    ‹
+                                </button>
+
+                                {/* Category Scroll Container */}
+                                <div
+                                    ref={scrollContainerRef}
+                                    className="scrollbar-hide flex gap-2 overflow-x-auto px-10"
+                                    style={{ scrollBehavior: 'smooth' }}
+                                >
+                                    {categories.map((category) => (
+                                        <button
+                                            key={category}
+                                            onClick={() => setSelectedCategory(category)}
+                                            className="px-4 py-2 rounded-full whitespace-nowrap transition-all text-sm font-medium"
+                                            style={{
+                                                background: selectedCategory === category
+                                                    ? 'linear-gradient(135deg, #2563EB 0%, #10B981 100%)'
+                                                    : 'rgba(255, 255, 255, 0.08)',
+                                                border: selectedCategory === category
+                                                    ? 'none'
+                                                    : '1px solid rgba(255, 255, 255, 0.1)',
+                                                color: selectedCategory === category ? '#fff' : '#9ca3af'
+                                            }}
+                                        >
+                                            {category}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Right Scroll Button */}
+                                <button
+                                    onClick={() => scrollCategories('right')}
+                                    className="absolute right-0 z-10 p-2 rounded-lg transition-all hover:bg-white/10"
+                                    style={{ background: 'rgba(10, 10, 10, 0.9)' }}
+                                >
+                                    ›
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Grid Content */}
+                    <div className="relative pt-40 px-6 pb-12">
+                        <div className="max-w-6xl mx-auto">
+                            {filteredHacks.length > 0 ? (
+                                <div style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+                                    gap: '16px'
+                                }}>
+                                    {filteredHacks.map((hack) => (
+                                        <div
+                                            key={hack.id}
+                                            className="group relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:scale-105"
+                                            onMouseEnter={() => setHoveredCard(hack.id)}
+                                            onMouseLeave={() => setHoveredCard(null)}
+                                            style={{
+                                                aspectRatio: '1',
+                                                background: '#1a1a2e'
+                                            }}
+                                        >
+                                            {/* Image */}
+                                            <div
+                                                className="absolute inset-0"
+                                                style={{
+                                                    backgroundImage: `url('${hack.image}')`,
+                                                    backgroundSize: 'cover',
+                                                    backgroundPosition: 'center',
+                                                    transition: 'transform 0.5s ease'
+                                                }}
+                                            />
+
+                                            {/* Overlay */}
+                                            <div
+                                                className="absolute inset-0"
+                                                style={{
+                                                    background: 'rgba(0, 0, 0, 0.3)',
+                                                    transition: 'opacity 0.3s ease'
+                                                }}
+                                            />
+
+                                            {/* Glassmorphic Overlay */}
+                                            <div
+                                                className="absolute inset-0 flex flex-col justify-end p-4"
+                                                style={{
+                                                    background: hoveredCard === hack.id
+                                                        ? 'rgba(0, 0, 0, 0.6)'
+                                                        : 'rgba(0, 0, 0, 0)',
+                                                    backdropFilter: hoveredCard === hack.id ? 'blur(20px)' : 'blur(0px)',
+                                                    transition: 'background 0.3s ease',
+                                                    opacity: hoveredCard === hack.id ? 1 : 0.7
+                                                }}
+                                            >
+                                                {/* Category Badge */}
+                                                <div
+                                                    className="inline-flex items-center gap-1 mb-2 px-2 py-1 rounded-full w-fit"
+                                                    style={{
+                                                        background: 'rgba(16, 185, 129, 0.2)',
+                                                        border: '1px solid rgba(16, 185, 129, 0.4)',
+                                                        backdropFilter: 'blur(10px)',
+                                                        animation: hoveredCard === hack.id ? 'slideUp 0.3s ease' : 'none'
+                                                    }}
+                                                >
+                                                    <span style={{ fontSize: '12px' }}>⚡</span>
+                                                    <span style={{ fontSize: '12px', fontWeight: '500', color: '#34d399', letterSpacing: '0.05em' }}>
+                                                        {hack.category}
+                                                    </span>
+                                                </div>
+
+                                                {/* Title */}
+                                                <h3
+                                                    className="text-sm font-black text-white leading-tight mb-2"
+                                                    style={{
+                                                        fontFamily: 'Unbounded, sans-serif',
+                                                        letterSpacing: '-0.01em',
+                                                        animation: hoveredCard === hack.id ? 'slideUp 0.3s ease 0.05s both' : 'none'
+                                                    }}
+                                                >
+                                                    {hack.title}
+                                                </h3>
+
+                                                {/* Creator */}
+                                                <p
+                                                    className="text-xs text-gray-300 mb-3"
+                                                    style={{
+                                                        animation: hoveredCard === hack.id ? 'slideUp 0.3s ease 0.1s both' : 'none'
+                                                    }}
+                                                >
+                                                    by {hack.creator}
+                                                </p>
+
+                                                {/* Action Buttons */}
+                                                {hoveredCard === hack.id && (
+                                                    <div
+                                                        className="flex items-center gap-2"
+                                                        style={{
+                                                            animation: 'slideUp 0.3s ease 0.15s both'
+                                                        }}
+                                                    >
+                                                        <button
+                                                            onClick={() => toggleLike(hack.id)}
+                                                            className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-lg transition-all text-xs font-medium"
+                                                            style={{
+                                                                background: likedHacks.has(hack.id)
+                                                                    ? 'rgba(37, 99, 235, 0.3)'
+                                                                    : 'rgba(255, 255, 255, 0.1)',
+                                                                border: `1px solid ${likedHacks.has(hack.id) ? 'rgba(37, 99, 235, 0.5)' : 'rgba(255, 255, 255, 0.2)'}`
+                                                            }}
+                                                        >
+                                                            <span style={{ fontSize: '14px', color: likedHacks.has(hack.id) ? '#60a5fa' : '#9ca3af' }}>❤️</span>
+                                                            {hack.votes}
+                                                        </button>
+
+                                                        <button
+                                                            className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-lg transition-all text-xs font-medium"
+                                                            style={{
+                                                                background: 'rgba(255, 255, 255, 0.1)',
+                                                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                                                color: '#fff'
+                                                            }}
+                                                        >
+                                                            <span style={{ fontSize: '14px' }}>📤</span>
+                                                            Share
+                                                        </button>
+
+                                                        <button
+                                                            className="flex-1 flex items-center justify-center gap-1 px-2 py-2 rounded-lg transition-all text-xs font-medium"
+                                                            style={{
+                                                                background: 'rgba(255, 255, 255, 0.1)',
+                                                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                                                color: '#fff'
+                                                            }}
+                                                        >
+                                                            <span style={{ fontSize: '14px' }}>🔖</span>
+                                                            Save
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Vote Count */}
+                                            {hoveredCard !== hack.id && (
+                                                <div
+                                                    className="absolute bottom-3 left-3 text-xs font-bold text-white"
+                                                    style={{
+                                                        textShadow: '0 2px 8px rgba(0, 0, 0, 0.5)'
+                                                    }}
+                                                >
+                                                    <span style={{ fontSize: '16px', marginRight: '4px' }}>❤️</span>
+                                                    {hack.votes}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-20 text-center">
+                                    <p className="text-gray-400 text-lg mb-2">No hacks found</p>
+                                    <p className="text-gray-500 text-sm">Try adjusting your filters or search</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <style>{`
+                        @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700;900&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+                        @keyframes slideUp {
+                            from {
+                                opacity: 0;
+                                transform: translateY(8px);
+                            }
+                            to {
+                                opacity: 1;
+                                transform: translateY(0);
+                            }
+                        }
+                    `}</style>
+                </div>
+            );
+        };
+
+        function App() {
+            return <HackExplore />;
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
