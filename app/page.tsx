@@ -4,7 +4,6 @@ import Categories from './components/Landing/Categories';
 import HowItWorks from './components/Landing/HowItWorks';
 import Trending from './components/Landing/Trending';
 import CTA from './components/Landing/CTA';
-import Footer from './components/Landing/Footer';
 
 export const metadata = {
   title: 'HackAss - Life hacks that don\'t suck',
@@ -13,14 +12,13 @@ export const metadata = {
 
 export default function Home() {
   return (
-    <main className="bg-black">
+    <div className="bg-black">
       <Hero />
       <Stats />
       <Categories />
       <HowItWorks />
       <Trending />
       <CTA />
-      <Footer />
-    </main>
+    </div>
   );
 }
