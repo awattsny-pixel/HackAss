@@ -82,7 +82,7 @@ export default function BrowsePage() {
   const filteredHacks =
     selectedCategory === 'All'
       ? hacks
-      : hacks.filter((h) => h.category === selectedCategory);
+      : hacks.filter((h) => h.category?.toLowerCase() === selectedCategory.toLowerCase());
 
   return (
     <div className="min-h-screen bg-black">
