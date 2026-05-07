@@ -91,7 +91,7 @@ export default function SubmitPage() {
     }
 
     try {
-      const submitData = { ...formData };
+      const submitData: any = { ...formData };
 
       // Include media (photo or video) as base64 if provided
       if (mediaFile && mediaPreview) {
