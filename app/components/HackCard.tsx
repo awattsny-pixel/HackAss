@@ -8,6 +8,7 @@ export interface Hack {
   id: string;
   title: string;
   description: string;
+  category?: string;
   content_type: 'video' | 'photo' | 'link';
   content_url: string;
   content_thumbnail?: string;
