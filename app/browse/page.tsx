@@ -49,19 +49,19 @@ export default function BrowsePage() {
 
       // Sort client-side
       if (selectedSort === 'best') {
-        newHacks = newHacks.sort((a, b) => {
+        newHacks = newHacks.sort((a: Hack, b: Hack) => {
           const aRate = a.worked_votes / (a.worked_votes + a.failed_votes) || 0;
           const bRate = b.worked_votes / (b.worked_votes + b.failed_votes) || 0;
           return bRate - aRate;
         });
       } else if (selectedSort === 'trending') {
         newHacks = newHacks.sort(
-          (a, b) =>
+          (a: Hack, b: Hack) =>
             (b.worked_votes + b.failed_votes) - (a.worked_votes + a.failed_votes)
         );
       } else if (selectedSort === 'newest') {
         newHacks = newHacks.sort(
-          (a, b) =>
+          (a: Hack, b: Hack) =>
             new Date(b.created_at).getTime() -
             new Date(a.created_at).getTime()
         );
