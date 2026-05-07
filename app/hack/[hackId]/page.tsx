@@ -54,9 +54,15 @@ export default async function HackDetailPage({ params }: HackDetailPageProps) {
     notFound();
   }
 
+  // Convert users array to single user object (take first user)
+  const hackData = {
+    ...hack,
+    users: Array.isArray(hack.users) ? hack.users[0] : hack.users,
+  };
+
   return (
     <div className="bg-black min-h-screen">
-      <HackDetailContent hack={hack} />
+      <HackDetailContent hack={hackData} />
     </div>
   );
 }

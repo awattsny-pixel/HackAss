@@ -34,7 +34,14 @@ interface Hack {
     is_verified: boolean;
     real_name: string;
     bio: string;
-  };
+  } | {
+    id: any;
+    username: any;
+    avatar: any;
+    is_verified: any;
+    real_name: any;
+    bio: any;
+  }[];
 }
 
 interface HackDetailContentProps {
