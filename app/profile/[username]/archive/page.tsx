@@ -59,7 +59,7 @@ export default async function ArchivePage({ params }: ArchivePageProps) {
   }
 
   const hacks = (archivedHacks || [])
-    .flatMap(item => item.hacks ? [item.hacks] : []) as Hack[];
+    .flatMap(item => item.hacks || []) as Hack[];
 
   return (
     <div className="bg-black min-h-screen text-white">
