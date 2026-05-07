@@ -5,14 +5,14 @@ export function useHackerCardData(username: string) {
   const [data, setData] = useState<HackerCardData | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const fetch = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     if (data) return; // Already loaded
-    
+
     setLoading(true);
     try {
       const response = await fetch(`/api/users/${username}/card-data`);
       if (!response.ok) throw new Error('Failed to fetch card data');
-      
+
       const cardData = await response.json();
       setData(cardData);
     } catch (error) {
@@ -22,5 +22,5 @@ export function useHackerCardData(username: string) {
     }
   }, [username, data]);
 
-  return { data, loading, fetch };
+  return { data, loading, fetch: fetchData };
 }
