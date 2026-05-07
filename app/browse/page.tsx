@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import HackCard, { Hack } from '../components/HackCard';
+import HackDetailModal from '../components/HackDetail/HackDetailModal';
 
 const CATEGORIES = [
   'All',
@@ -30,6 +31,7 @@ export default function BrowsePage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedSort, setSelectedSort] = useState('best');
+  const [selectedHackId, setSelectedHackId] = useState<string | null>(null);
 
   const fetchHacks = async () => {
     setLoading(true);
@@ -162,7 +164,13 @@ export default function BrowsePage() {
         {/* Hacks Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           {filteredHacks.map((hack) => (
-            <HackCard key={hack.id} hack={hack} onVote={() => fetchHacks()} />
+            <div
+              key={hack.id}
+              onClick={() => setSelectedHackId(hack.id)}
+              className="cursor-pointer"
+            >
+              <HackCard hack={hack} onVote={() => fetchHacks()} />
+            </div>
           ))}
         </div>
 
@@ -198,6 +206,15 @@ export default function BrowsePage() {
           </div>
         )}
       </div>
+
+      {/* Hack Detail Modal */}
+      {selectedHackId && (
+        <HackDetailModal
+          hackId={selectedHackId}
+          isOpen={!!selectedHackId}
+          onClose={() => setSelectedHackId(null)}
+        />
+      )}
     </div>
   );
 }

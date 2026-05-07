@@ -6,14 +6,14 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-// POST /api/hacks/[id]/validate - Record a user's validation vote
+// POST /api/hacks/[hackId]/validate - Record a user's validation vote
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ hackId: string }> }
 ) {
   try {
     const { worked } = await request.json();
-    const { id: hackId } = await params;
+    const { hackId } = await params;
 
     if (typeof worked !== 'boolean') {
       return NextResponse.json(

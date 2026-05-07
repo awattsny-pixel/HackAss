@@ -57,21 +57,101 @@ export default function Hero() {
           </div>
         </div>
 
-        {/* Right: Phone mockup placeholder (we'll add a real preview later) */}
-        <div className="flex-1 h-[600px] rounded-3xl border-2 border-gray-700 bg-gradient-to-br from-gray-900 to-black flex items-center justify-center relative overflow-hidden">
+        {/* Right: Hack Feed Preview */}
+        <div className="flex-1 h-[600px] rounded-3xl border-2 border-gray-700 bg-gradient-to-br from-gray-900 to-black flex flex-col relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 to-transparent"></div>
-          <div className="relative z-10 text-center">
-            <div className="text-gray-600 text-sm font-mono mb-4">// HACK FEED PREVIEW</div>
-            <div className="space-y-3 w-full px-4">
-              <div className="bg-gray-800 rounded-lg p-4 animate-pulse">
-                <div className="h-3 bg-gray-700 rounded w-3/4 mb-2"></div>
-                <div className="h-2 bg-gray-700 rounded w-1/2"></div>
+
+          {/* Header */}
+          <div className="relative z-10 p-6 border-b border-gray-800">
+            <div className="text-gray-600 text-xs font-mono tracking-wider">// HACK FEED PREVIEW</div>
+          </div>
+
+          {/* Feed Cards */}
+          <div className="relative z-10 flex-1 overflow-y-auto space-y-3 p-4">
+            {/* Hack Card 1 */}
+            <Link href="/categories/cooking" className="bg-gray-800/40 rounded-2xl border border-gray-700 hover:border-emerald-600/50 transition overflow-hidden flex min-h-28 cursor-pointer">
+              {/* Left: Text content */}
+              <div className="flex-1 p-4 flex flex-col justify-between">
+                <div>
+                  <div className="inline-block px-2 py-1 rounded text-xs font-semibold text-white bg-gradient-to-r from-orange-500 to-orange-600 mb-2 w-fit">
+                    Cooking
+                  </div>
+                  <h4 className="text-sm font-bold text-white mb-1">
+                    Remove burnt rice in 30 seconds
+                  </h4>
+                  <p className="text-xs text-gray-400 mb-2">
+                    Add water and heat. The burnt layer comes right off.
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500">by Sarah Chen</p>
+                  <p className="text-emerald-400 font-mono text-xs">▲ 2.8k votes</p>
+                </div>
               </div>
-              <div className="bg-gray-800 rounded-lg p-4 animate-pulse">
-                <div className="h-3 bg-gray-700 rounded w-4/5 mb-2"></div>
-                <div className="h-2 bg-gray-700 rounded w-2/3"></div>
+              {/* Right: Image thumbnail */}
+              <div className="w-40 h-40 bg-gradient-to-br from-orange-500/30 via-orange-400/20 to-amber-600/30 flex items-center justify-center border-l border-gray-700 flex-shrink-0">
+                <span className="text-8xl">🍚</span>
               </div>
-            </div>
+            </Link>
+
+            {/* Hack Card 2 */}
+            <Link href="/categories/money" className="bg-gray-800/40 rounded-2xl border border-gray-700 hover:border-emerald-600/50 transition overflow-hidden flex min-h-28 cursor-pointer">
+              {/* Left: Text content */}
+              <div className="flex-1 p-4 flex flex-col justify-between">
+                <div>
+                  <div className="inline-block px-2 py-1 rounded text-xs font-semibold text-white bg-gradient-to-r from-cyan-500 to-cyan-600 mb-2 w-fit">
+                    Money
+                  </div>
+                  <h4 className="text-sm font-bold text-white mb-1">
+                    Save $50/month on phone bill
+                  </h4>
+                  <p className="text-xs text-gray-400 mb-2">
+                    Call customer service. Ask for loyalty discount.
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500">by Mike Torres</p>
+                  <p className="text-emerald-400 font-mono text-xs">▲ 1.2k votes</p>
+                </div>
+              </div>
+              {/* Right: Image thumbnail */}
+              <div className="w-40 h-40 bg-gradient-to-br from-cyan-500/30 via-blue-400/20 to-blue-600/30 flex items-center justify-center border-l border-gray-700 flex-shrink-0">
+                <span className="text-8xl">💰</span>
+              </div>
+            </Link>
+
+            {/* Hack Card 3 */}
+            <Link href="/categories/cleaning" className="bg-gray-800/40 rounded-2xl border border-gray-700 hover:border-emerald-600/50 transition overflow-hidden flex min-h-28 cursor-pointer">
+              {/* Left: Text content */}
+              <div className="flex-1 p-4 flex flex-col justify-between">
+                <div>
+                  <div className="inline-block px-2 py-1 rounded text-xs font-semibold text-white bg-gradient-to-r from-green-500 to-green-600 mb-2 w-fit">
+                    Cleaning
+                  </div>
+                  <h4 className="text-sm font-bold text-white mb-1">
+                    Clean shower in 5 minutes
+                  </h4>
+                  <p className="text-xs text-gray-400 mb-2">
+                    Vinegar spray + squeegee. That's it.
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500">by Jessica Park</p>
+                  <p className="text-emerald-400 font-mono text-xs">▲ 3.4k votes</p>
+                </div>
+              </div>
+              {/* Right: Image thumbnail */}
+              <div className="w-40 h-40 bg-gradient-to-br from-green-500/30 via-emerald-400/20 to-teal-600/30 flex items-center justify-center border-l border-gray-700 flex-shrink-0">
+                <span className="text-8xl">✨</span>
+              </div>
+            </Link>
+          </div>
+
+          {/* Footer CTA */}
+          <div className="relative z-10 border-t border-gray-800 bg-black/40 p-4">
+            <button className="w-full text-xs text-center text-emerald-400 hover:text-emerald-300 font-semibold transition py-2">
+              See all 2,847 hacks →
+            </button>
           </div>
         </div>
       </div>
