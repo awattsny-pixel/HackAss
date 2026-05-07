@@ -26,33 +26,47 @@ export async function GET(
       return Response.json({ message: 'User not found' }, { status: 404 });
     }
 
-    let query = supabase
-      .from('hacks')
-      .select('id, title, description, category, content_type, content_thumbnail, created_at, worked_votes, failed_votes')
-      .eq('user_id', user.id)
-      .eq('status', 'approved')
-      .order('created_at', { ascending: false });
+    let result: any;
+    let error: any;
 
-    if (tab === 'videos') {
-      query = query.in('content_type', ['video/mp4', 'video/youtube', 'video/webm']);
-    } else if (tab === 'bookmarks') {
-      query = supabase
+    if (tab === 'bookmarks') {
+      const { data, error: err } = await supabase
         .from('bookmarks')
         .select('hacks(id, title, description, category, content_type, content_thumbnail, created_at, worked_votes, failed_votes)')
         .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(limit + 1);
+      result = data;
+      error = err;
+      // Flatten bookmarks response to just hacks
+      if (result) {
+        result = result.map((item: any) => item.hacks).filter(Boolean);
+      }
+    } else {
+      let query = supabase
+        .from('hacks')
+        .select('id, title, description, category, content_type, content_thumbnail, created_at, worked_votes, failed_votes')
+        .eq('user_id', user.id)
+        .eq('status', 'approved')
         .order('created_at', { ascending: false });
-    }
 
-    if (cursor) {
-      query = query.lt('created_at', cursor);
-    }
+      if (tab === 'videos') {
+        query = query.in('content_type', ['video/mp4', 'video/youtube', 'video/webm']);
+      }
 
-    const { data: hacks, error } = await query.limit(limit + 1);
+      if (cursor) {
+        query = query.lt('created_at', cursor);
+      }
+
+      const response = await query.limit(limit + 1);
+      result = response.data;
+      error = response.error;
+    }
 
     if (error) throw error;
 
-    const hasMore = (hacks?.length || 0) > limit;
-    const data = (hacks || []).slice(0, limit);
+    const hasMore = (result?.length || 0) > limit;
+    const data = (result || []).slice(0, limit);
     const nextCursor = data.length > 0 ? data[data.length - 1].created_at : null;
 
     return Response.json({
