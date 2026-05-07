@@ -176,6 +176,8 @@ export default function AdminDashboard() {
                 return null;
               };
 
+              const embedUrl = hack.content_type === 'video' ? getEmbedUrl() : null;
+
               return (
                 <div key={hack.id} className="bg-white rounded-lg shadow overflow-hidden">
                   {/* Thumbnail/Video Preview */}
@@ -188,9 +190,9 @@ export default function AdminDashboard() {
                           fill
                           className="object-cover"
                         />
-                      ) : hack.content_type === 'video' && getEmbedUrl() ? (
+                      ) : embedUrl ? (
                         <iframe
-                          src={getEmbedUrl()}
+                          src={embedUrl}
                           width="100%"
                           height="100%"
                           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
