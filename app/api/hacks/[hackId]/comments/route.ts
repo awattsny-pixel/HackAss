@@ -186,15 +186,22 @@ export async function POST(
       throw insertError;
     }
 
+    // Handle users data (could be array or object depending on query response)
+    const userInfo = Array.isArray(newComment.users) ? newComment.users[0] : newComment.users;
+
     return NextResponse.json({
       id: newComment.id,
       content: newComment.content,
       created_at: newComment.created_at,
-      user_id: newComment.users.id,
-      users: {
-        id: newComment.users.id,
-        username: newComment.users.username,
-        avatar: newComment.users.avatar,
+      user_id: userInfo?.id,
+      users: userInfo ? {
+        id: userInfo.id,
+        username: userInfo.username,
+        avatar: userInfo.avatar,
+      } : {
+        id: userId,
+        username: 'Unknown',
+        avatar: null,
       },
     }, { status: 201 });
   } catch (error) {
