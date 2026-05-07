@@ -32,7 +32,6 @@ export async function POST(request: NextRequest) {
           headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; HackAss/1.0)'
           },
-          timeout: 5000,
         });
 
         if (response.ok) {
@@ -71,7 +70,6 @@ export async function POST(request: NextRequest) {
           headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; HackAss/1.0)'
           },
-          timeout: 5000,
         });
         if (response.ok) {
           const html = await response.text();
