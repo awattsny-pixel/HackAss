@@ -86,7 +86,7 @@ export default function CategoryPage() {
         if (!response.ok) throw new Error('Failed to fetch');
         const data = await response.json();
         const filtered = (data.hacks || []).filter((h: Hack) =>
-          h.category.toLowerCase() === slug.toLowerCase()
+          h.category?.toLowerCase() === slug.toLowerCase()
         );
         setHacks(filtered);
       } catch (err) {
