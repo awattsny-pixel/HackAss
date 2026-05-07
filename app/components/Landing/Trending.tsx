@@ -54,7 +54,7 @@ export default async function Trending() {
   let error = null;
 
   try {
-    const res = await fetch('http://localhost:3000/api/hacks', { next: { revalidate: 60 } });
+    const res = await fetch('/api/hacks', { next: { revalidate: 60 } });
     if (res.ok) {
       const data = await res.json();
       hacks = data.hacks
