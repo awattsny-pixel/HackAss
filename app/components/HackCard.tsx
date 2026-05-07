@@ -12,6 +12,7 @@ export interface Hack {
   content_url: string;
   content_thumbnail?: string;
   source_attribution?: string;
+  created_at?: string;
   worked_votes: number;
   failed_votes: number;
   unique_users_who_validated: number;
