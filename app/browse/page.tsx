@@ -62,8 +62,8 @@ export default function BrowsePage() {
       } else if (selectedSort === 'newest') {
         newHacks = newHacks.sort(
           (a: Hack, b: Hack) =>
-            new Date(b.created_at).getTime() -
-            new Date(a.created_at).getTime()
+            new Date(b.created_at || 0).getTime() -
+            new Date(a.created_at || 0).getTime()
         );
       }
 
