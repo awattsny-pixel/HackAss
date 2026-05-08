@@ -58,14 +58,15 @@ export default async function Trending() {
       ? `https://${process.env.VERCEL_URL}`
       : 'http://localhost:3000';
     const res = await fetch(`${baseUrl}/api/hacks`, { next: { revalidate: 60 } });
-    if (res.ok) {
-      const data = await res.json();
-      hacks = data.hacks
-        ?.sort((a: any, b: any) => {
-          return (b.worked_votes + b.failed_votes) - (a.worked_votes + a.failed_votes);
-        })
-        ?.slice(0, 5) || [];
+    if (!res.ok) {
+      throw new Error(`API returned ${res.status}`);
     }
+    const data = await res.json();
+    hacks = data.hacks
+      ?.sort((a: any, b: any) => {
+        return (b.worked_votes + b.failed_votes) - (a.worked_votes + a.failed_votes);
+      })
+      ?.slice(0, 5) || [];
   } catch (err) {
     error = 'Failed to load trending hacks';
     console.error('Trending fetch error:', err);
