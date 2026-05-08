@@ -113,24 +113,6 @@ export default async function Trending() {
   if (hacks.length === 0) {
     return null;
   }
-        hacks = data.hacks
-          ?.sort((a: any, b: any) => {
-            return (b.worked_votes + b.failed_votes) - (a.worked_votes + a.failed_votes);
-          })
-          ?.slice(0, 5) || [];
-      }
-    } catch (fetchErr: any) {
-      clearTimeout(timeout);
-      console.error('Trending fetch error:', fetchErr);
-    }
-  } catch (err) {
-    console.error('Trending error:', err);
-  }
-
-  // Return empty section if no hacks loaded - don't show error or loading state
-  if (hacks.length === 0) {
-    return null;
-  }
 
   return (
     <section className="bg-black py-24">
