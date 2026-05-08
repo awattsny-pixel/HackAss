@@ -78,15 +78,14 @@ export default async function Trending() {
   let hacks = [];
 
   try {
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000';
+  
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
 
     try {
-      const res = await fetch(`${baseUrl}/api/hacks`, {
+      
+      const res = await fetch('/api/hacks', {
         next: { revalidate: 60 },
         signal: controller.signal
       });
