@@ -51,7 +51,6 @@ function getCategoryBackgroundColor(category: string): string {
 
 export default async function Trending() {
   let hacks = [];
-  let error = null;
 
   try {
     const baseUrl = process.env.VERCEL_URL
@@ -68,27 +67,25 @@ export default async function Trending() {
       });
       clearTimeout(timeout);
 
-      if (!res.ok) {
-        throw new Error(`API returned ${res.status}`);
+      if (res.ok) {
+        const data = await res.json();
+        hacks = data.hacks
+          ?.sort((a: any, b: any) => {
+            return (b.worked_votes + b.failed_votes) - (a.worked_votes + a.failed_votes);
+          })
+          ?.slice(0, 5) || [];
       }
-      const data = await res.json();
-      hacks = data.hacks
-        ?.sort((a: any, b: any) => {
-          return (b.worked_votes + b.failed_votes) - (a.worked_votes + a.failed_votes);
-        })
-        ?.slice(0, 5) || [];
     } catch (fetchErr: any) {
       clearTimeout(timeout);
-      if (fetchErr.name === 'AbortError') {
-        console.warn('Trending API timeout');
-      } else {
-        console.error('Trending fetch error:', fetchErr);
-      }
-      // Silently fail - show empty state instead of error
-      hacks = [];
+      console.error('Trending fetch error:', fetchErr);
     }
   } catch (err) {
     console.error('Trending error:', err);
+  }
+
+  // Return empty section if no hacks loaded - don't show error or loading state
+  if (hacks.length === 0) {
+    return null;
   }
 
   return (
