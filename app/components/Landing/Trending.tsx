@@ -78,36 +78,51 @@ export default async function Trending() {
   let hacks = [];
 
   try {
-    // Build the absolute URL correctly for server-side rendering
+    console.log('[Trending] Component rendering, VERCEL_URL:', process.env.VERCEL_URL);
+    console.log('[Trending] NODE_ENV:', process.env.NODE_ENV);
+
     const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
     const host = process.env.VERCEL_URL || 'localhost:3000';
     const baseUrl = `${protocol}://${host}`;
+    console.log('[Trending] Constructed baseUrl:', baseUrl);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const res = await fetch(`${baseUrl}/api/hacks`, {
+      const fetchUrl = `${baseUrl}/api/hacks`;
+      console.log('[Trending] Fetching from:', fetchUrl);
+
+      const res = await fetch(fetchUrl, {
         next: { revalidate: 60 },
         signal: controller.signal
       });
       clearTimeout(timeout);
 
+      console.log('[Trending] Response status:', res.status);
+
       if (res.ok) {
         const data = await res.json();
+        console.log('[Trending] Received hacks:', data.hacks?.length);
         hacks = data.hacks
           ?.sort((a: any, b: any) => {
             return (b.worked_votes + b.failed_votes) - (a.worked_votes + a.failed_votes);
           })
           ?.slice(0, 5) || [];
+        console.log('[Trending] After processing:', hacks.length);
+      } else {
+        console.log('[Trending] Response not ok:', res.statusText);
       }
     } catch (fetchErr: any) {
       clearTimeout(timeout);
-      // Silently fail - component will return null
+      console.error('[Trending] Fetch error:', fetchErr.message);
+      console.error('[Trending] Error code:', fetchErr.code);
     }
   } catch (err) {
-    // Silently fail - component will return null
+    console.error('[Trending] Outer error:', err);
   }
+
+  console.log('[Trending] Final hacks count:', hacks.length);
 
   // Return empty section if no hacks loaded - don't show error or loading state
   if (hacks.length === 0) {
