@@ -68,7 +68,6 @@ function normalizeCategoryToStyle(rawCategory: string): string {
           technology: 'Tech',
           beauty: 'Beauty',
           fitness: 'Fitness',
-          wellness: 'Productivity',
     };
 
     const normalized = rawCategory.toLowerCase().trim();
