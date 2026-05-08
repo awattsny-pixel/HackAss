@@ -49,6 +49,32 @@ function getCategoryBackgroundColor(category: string): string {
   return bgColors[category] || '#8B6F47';
 }
 
+function normalizeCategoryToStyle(rawCategory: string): string {
+    const categoryMap: Record<string, string> = {
+          kitchen: 'Cooking',
+          'cooking & food': 'Cooking',
+          'cooking': 'Cooking',
+          health: 'Productivity',
+          wellness: 'Productivity',
+          'cleaning & laundry': 'Cleaning',
+          cleaning: 'Cleaning',
+          laundry: 'Laundry',
+          money: 'Money',
+          finance: 'Money',
+          travel: 'Travel',
+          productivity: 'Productivity',
+          home: 'Home',
+          tech: 'Tech',
+          technology: 'Tech',
+          beauty: 'Beauty',
+          fitness: 'Fitness',
+          wellness: 'Productivity',
+    };
+
+    const normalized = rawCategory.toLowerCase().trim();
+    return categoryMap[normalized] || 'Cooking'; // Default to Cooking if no match
+}
+
 export default async function Trending() {
   let hacks = [];
 
@@ -111,7 +137,7 @@ export default async function Trending() {
         {hacks.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {hacks.map((hack: any) => {
-              const normalizedCategory = hack.category.charAt(0).toUpperCase() + hack.category.slice(1).toLowerCase();
+              const normalizedCategory = normalizeCategoryToStyle(hack.category);
               const slug = hack.category.toLowerCase();
               const catColor = getCategoryColor(normalizedCategory);
               const catStyle = CATEGORY_STYLES[normalizedCategory] || CATEGORY_STYLES['Cooking'];
