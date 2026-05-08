@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useAuth } from '@/app/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { HackerCardTrigger } from '@/app/components/HackerCard/HackerCardTrigger';
+import { DEFAULT_HACKER_AVATAR } from '@/app/lib/constants';
 
 interface Comment {
   id: string;
@@ -221,7 +222,7 @@ export default function CommentSection({ hackId }: CommentSectionProps) {
           <div key={comment.id} className="bg-gray-900 rounded-lg p-4">
             <div className="flex gap-3 mb-3">
               <Image
-                src={comment.users.avatar || '/default-avatar.svg'}
+                src={comment.users.avatar || DEFAULT_HACKER_AVATAR}
                 alt={comment.users.username}
                 width={40}
                 height={40}

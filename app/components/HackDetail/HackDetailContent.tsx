@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/app/context/AuthContext';
 import { HackerCardTrigger } from '@/app/components/HackerCard/HackerCardTrigger';
 import { VerificationBadge } from '@/app/components/Common/VerificationBadge';
+import { DEFAULT_HACKER_AVATAR } from '@/app/lib/constants';
 import EngagementBar from './EngagementBar';
 import CommentSection from './CommentSection';
 
@@ -167,7 +168,7 @@ export default function HackDetailContent({ hack }: HackDetailContentProps) {
 
             <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-700">
               <Image
-                src={hack.users.avatar || '/default-avatar.svg'}
+                src={hack.users.avatar || DEFAULT_HACKER_AVATAR}
                 alt={hack.users.username}
                 width={48}
                 height={48}

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useAuth } from '@/app/context/AuthContext';
 import { FollowButton } from '@/app/components/Common/FollowButton';
 import { VerificationBadge } from '@/app/components/Common/VerificationBadge';
+import { DEFAULT_HACKER_AVATAR } from '@/app/lib/constants';
 
 interface UserStats {
   id: string;
@@ -33,7 +34,7 @@ export default function ProfileHeader({ user }: ProfileHeaderProps) {
         {/* Profile Image */}
         <div className="flex-shrink-0">
           <Image
-            src={user.profile_image_url || user.avatar || '/default-avatar.svg'}
+            src={user.profile_image_url || user.avatar || DEFAULT_HACKER_AVATAR}
             alt={user.username}
             width={160}
             height={160}

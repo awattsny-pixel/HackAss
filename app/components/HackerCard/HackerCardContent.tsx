@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { FollowButton } from '@/app/components/Common/FollowButton';
 import { VerificationBadge } from '@/app/components/Common/VerificationBadge';
 import { type HackerCardData } from '@/app/lib/user-cache';
+import { DEFAULT_HACKER_AVATAR } from '@/app/lib/constants';
 
 interface HackerCardContentProps {
   data: HackerCardData;
@@ -18,7 +19,7 @@ export function HackerCardContent({ data, onFollowChange }: HackerCardContentPro
       <div className="flex items-start gap-4 mb-6">
         <div className="flex-shrink-0">
           <Image
-            src={data.profile_image_small_url || data.avatar || '/default-avatar.svg'}
+            src={data.profile_image_small_url || data.avatar || DEFAULT_HACKER_AVATAR}
             alt={data.username}
             width={80}
             height={80}
