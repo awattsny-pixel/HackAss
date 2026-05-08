@@ -108,18 +108,6 @@ export default async function Trending() {
           </Link>
         </div>
 
-        {error && (
-          <div className="text-center py-12 text-gray-500">
-            {error}
-          </div>
-        )}
-
-        {!error && hacks.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            Loading trending hacks...
-          </div>
-        )}
-
         {hacks.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {hacks.map((hack: any) => {
