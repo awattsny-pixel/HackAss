@@ -78,14 +78,16 @@ export default async function Trending() {
   let hacks = [];
 
   try {
-  
+    // Build the absolute URL correctly for server-side rendering
+    const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+    const host = process.env.VERCEL_URL || 'localhost:3000';
+    const baseUrl = `${protocol}://${host}`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
 
     try {
-      
-      const res = await fetch('/api/hacks', {
+      const res = await fetch(`${baseUrl}/api/hacks`, {
         next: { revalidate: 60 },
         signal: controller.signal
       });
@@ -93,6 +95,24 @@ export default async function Trending() {
 
       if (res.ok) {
         const data = await res.json();
+        hacks = data.hacks
+          ?.sort((a: any, b: any) => {
+            return (b.worked_votes + b.failed_votes) - (a.worked_votes + a.failed_votes);
+          })
+          ?.slice(0, 5) || [];
+      }
+    } catch (fetchErr: any) {
+      clearTimeout(timeout);
+      // Silently fail - component will return null
+    }
+  } catch (err) {
+    // Silently fail - component will return null
+  }
+
+  // Return empty section if no hacks loaded - don't show error or loading state
+  if (hacks.length === 0) {
+    return null;
+  }
         hacks = data.hacks
           ?.sort((a: any, b: any) => {
             return (b.worked_votes + b.failed_votes) - (a.worked_votes + a.failed_votes);
