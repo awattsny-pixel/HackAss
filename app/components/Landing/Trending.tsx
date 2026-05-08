@@ -54,7 +54,10 @@ export default async function Trending() {
   let error = null;
 
   try {
-    const res = await fetch('/api/hacks', { next: { revalidate: 60 } });
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'http://localhost:3000';
+    const res = await fetch(`${baseUrl}/api/hacks`, { next: { revalidate: 60 } });
     if (res.ok) {
       const data = await res.json();
       hacks = data.hacks
