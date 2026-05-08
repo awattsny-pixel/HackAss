@@ -1,5 +1,5 @@
 // Avatar fallback for unknown hackers
-export const DEFAULT_HACKER_AVATAR = '/mascot-hacker.png';
+export const DEFAULT_HACKER_AVATAR = '/default-hacker-avatar.png';
 
 // Category styles
 export const CATEGORY_STYLES = {
