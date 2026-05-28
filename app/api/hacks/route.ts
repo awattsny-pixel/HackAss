@@ -47,12 +47,10 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Validate required fields
-    if (!title || !description || !category || !why_it_works) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
+    if (!title) return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+    if (!description) return NextResponse.json({ error: 'Description is required' }, { status: 400 });
+    if (!category) return NextResponse.json({ error: 'Category is required' }, { status: 400 });
+    if (!why_it_works) return NextResponse.json({ error: 'Why It Works explanation is required' }, { status: 400 });
 
     // For MVP: link-type content requires a URL; file uploads handled in Phase 2
     if (content_type === 'link' && !content_url) {
