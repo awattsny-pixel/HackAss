@@ -193,7 +193,21 @@ export default function SubmitHackForm() {
       }
       setForm({ ...form, file });
       setError(null);
-    }
+    }const handleDrop = (e: React.DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const file = e.dataTransfer.files?.[0];
+          if (file) {
+                  const errorMsg = validateFile(file, form.content_type);
+                  if (errorMsg) {
+                            setError(errorMsg);
+                            return;
+                  }
+                  setForm({ ...form, file });
+                  setError(null);
+          }
+    };
   };
 
   if (success) {
