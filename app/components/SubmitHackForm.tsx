@@ -149,7 +149,7 @@ export default function SubmitHackForm() {
         difficulty: form.difficulty,
         why_it_works: form.why_it_works,
         content_type: form.content_type,
-        content_url: form.content_url || form.file?.name || '',
+        content_url: form.content_url || '', // For file uploads, content_url will be empty (Phase 2)
       };
 
       const response = await fetch('/api/hacks', {

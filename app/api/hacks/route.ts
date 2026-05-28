@@ -54,9 +54,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!content_url && (content_type === 'video' || content_type === 'photo')) {
+    // For MVP: link-type content requires a URL; file uploads handled in Phase 2
+    if (content_type === 'link' && !content_url) {
       return NextResponse.json(
-        { error: 'Content URL required for video/photo' },
+        { error: 'URL required for link submissions' },
         { status: 400 }
       );
     }
