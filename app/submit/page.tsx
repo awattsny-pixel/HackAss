@@ -91,16 +91,16 @@ export default function SubmitPage() {
     }
 
     try {
-      const submitData: any = { ...formData };
-
-      // Include media (photo or video) as base64 if provided
-      if (mediaFile && mediaPreview) {
-        if (mediaType === 'video') {
-          submitData.videoUpload = mediaPreview;
-        } else {
-          submitData.photo = mediaPreview;
-        }
-      }
+      // Map form data to API schema
+      const submitData = {
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+        difficulty: 'easy', // Default difficulty for now
+        why_it_works: formData.summary, // Map summary → why_it_works
+        content_type: mediaType === 'video' ? 'video' : mediaType === 'image' ? 'photo' : 'link',
+        content_url: mediaPreview || '', // Base64 encoded media or empty for now (Phase 2 will handle file storage)
+      };
 
       const response = await fetch('/api/hacks', {
         method: 'POST',
