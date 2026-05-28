@@ -68,9 +68,9 @@ export default function SubmitHackForm() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const validationError = validateFile(file, form.content_type);
-    if (validationError) {
-      setError(validationError);
+    const fileError = validateFile(file, form.content_type);
+    if (fileError) {
+      setError(fileError);
       return;
     }
 
@@ -186,9 +186,9 @@ export default function SubmitHackForm() {
 
     const file = e.dataTransfer.files?.[0];
     if (file) {
-      const validationError = validateFile(file, form.content_type);
-      if (validationError) {
-        setError(validationError);
+      const fileError = validateFile(file, form.content_type);
+      if (fileError) {
+        setError(fileError);
         return;
       }
       setForm({ ...form, file });
