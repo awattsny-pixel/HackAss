@@ -118,9 +118,10 @@ export default function SubmitHackForm() {
     setError(null);
 
     // Validate required fields
-    if (!form.title || !form.description || !form.category) {
-      setError('Please fill all required fields');
+    if (!form.title || !form.description || !form.category || !form.why_it_works) {
+      setError('Please fill all required fields (including "Why It Works")');
       return;
+    }
     }
 
     // Validate content
