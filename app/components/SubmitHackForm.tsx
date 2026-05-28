@@ -122,7 +122,6 @@ export default function SubmitHackForm() {
       setError('Please fill all required fields (including "Why It Works")');
       return;
     }
-    }
 
     // Validate content
     if (form.content_type === 'link' && !form.content_url) {
