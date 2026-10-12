@@ -28,19 +28,30 @@ export const tables = () => ({
   ],
   bookmarks: [{ id: 'b1', user_id: IDS.alice, hack_id: IDS.pending, created_at: '2026-03-01' }],
   archive: [{ id: 'a1', user_id: IDS.alice, hack_id: IDS.pending, created_at: '2026-03-01' }],
-  user_stats: [{ id: IDS.alice, username: 'alice', followers: 2, following: 1, hacks_count: 2 }],
+  // Aggregate that counts unpublished hacks (4) and disagrees on followers; the app must never use it.
+  user_stats: [{ id: IDS.alice, username: 'alice', followers: 99, following: 99, hacks_count: 4 }],
   auth_tokens: [{ token: 'TOKEN-PRIVATE', user_id: IDS.alice }], follows: [], likes: [],
 });
+
+export const CANARY = 'DB-DETAIL-LEAK-CANARY';
 
 export function startFake() {
   const data = tables();
   const log = [];
+  // Failure injection. Keys: 'table' fails non-count requests, 'table:head' fails HEAD (count) requests.
+  const failing = new Set();
   const server = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x');
+    if (u.pathname === '/__fail') { failing.clear(); for (const k of (u.searchParams.get('keys') || '').split(',').filter(Boolean)) failing.add(k); res.writeHead(204); return res.end(); }
     const m = u.pathname.match(/^\/rest\/v1\/([a-z_]+)$/);
     log.push({ method: req.method, table: m ? m[1] : u.pathname, query: u.search });
     if (!m || !data[m[1]]) { res.writeHead(404, { 'content-type': 'application/json' }); return res.end('{"message":"not found"}'); }
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end('{"message":"writes not allowed in smoke fixture"}'); }
+    if (failing.has(req.method === 'HEAD' ? `${m[1]}:head` : m[1])) {
+      log[log.length - 1].failed = true;
+      res.writeHead(500, { 'content-type': 'application/json' });
+      return res.end(req.method === 'HEAD' ? undefined : JSON.stringify({ code: 'XX000', message: CANARY, details: CANARY, hint: null }));
+    }
     let rows = [...data[m[1]]];
     let select = '*', limit = Infinity, offset = 0; const orders = [];
     for (const [k, v] of u.searchParams) {
@@ -64,5 +75,9 @@ export function startFake() {
     }
     res.writeHead(200, headers); res.end(JSON.stringify(rows));
   });
-  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, log, port: server.address().port, close: () => new Promise((r) => server.close(r)) })));
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({
+    server, log, port: server.address().port,
+    fail: (...keys) => fetch(`http://127.0.0.1:${server.address().port}/__fail?keys=${keys.join(',')}`),
+    close: () => new Promise((r) => server.close(r)),
+  })));
 }

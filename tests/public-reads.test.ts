@@ -14,13 +14,17 @@ const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')
 const H_APPROVED = ID(1), H_PENDING = ID(2), H_REJECTED = ID(3), H_MISSING = ID(99);
 const U1 = ID(101), U2 = ID(102);
 
-function makeDb(tables: Record<string, Row[]>) {
+const CANARY = 'DB-DETAIL-LEAK-CANARY';
+// `fail` keys: 'table' fails non-count queries on that table; 'table:head' fails count (head) queries.
+function makeDb(tables: Record<string, Row[]>, fail: string[] = []) {
   const calls: { table: string; select?: string }[] = [];
   const from = (table: string) => {
     let rows = [...(tables[table] || [])];
     let head = false; let wantCount = false; const orders: [string, boolean][] = [];
     let lo = 0, hi = Infinity; let lim = Infinity; const entry: { table: string; select?: string } = { table };
     calls.push(entry);
+    const failing = () => fail.includes(head ? `${table}:head` : table);
+    const failure = () => ({ data: null, count: null, error: { message: CANARY, code: 'XX000', details: CANARY } });
     const q: any = {
       select(c: string, o?: { count?: string; head?: boolean }) { entry.select = c; head = !!o?.head; wantCount = !!o?.count; return q; },
       eq(c: string, v: unknown) { rows = rows.filter((r) => r[c] === v); return q; },
@@ -29,9 +33,10 @@ function makeDb(tables: Record<string, Row[]>) {
       order(c: string, o: { ascending: boolean }) { orders.push([c, o.ascending]); return q; },
       range(a: number, b: number) { lo = a; hi = b + 1; return q; },
       limit(n: number) { lim = n; return q; },
-      maybeSingle() { return Promise.resolve({ data: rows[0] ?? null, error: null }); },
-      single() { return Promise.resolve({ data: rows[0] ?? null, error: rows[0] ? null : { message: 'none' } }); },
+      maybeSingle() { if (failing()) return Promise.resolve(failure()); return Promise.resolve({ data: rows[0] ?? null, error: null }); },
+      single() { if (failing()) return Promise.resolve(failure()); return Promise.resolve({ data: rows[0] ?? null, error: rows[0] ? null : { message: 'none' } }); },
       then(res: (v: unknown) => unknown) {
+        if (failing()) return Promise.resolve(failure()).then(res);
         const total = rows.length;
         const sorted = [...rows].sort((a, b) => { for (const [c, asc] of orders) { const x = String(a[c]), y = String(b[c]); if (x !== y) return (x < y ? -1 : 1) * (asc ? 1 : -1); } return 0; });
         const data = head ? null : sorted.slice(lo, Math.min(hi, lo + lim === Infinity ? hi : hi)).slice(0, lim);
@@ -52,16 +57,18 @@ const hack = (id: string, status: string, extra: Row = {}): Row => ({
 });
 const user = (id: string, name: string): Row => ({
   id, username: name, email: `${name}@private.test`, password_hash: 'SECRET', real_name: 'Real Name PRIVATE', bio: 'Bio PRIVATE', website_url: 'https://private.example',
-  avatar: null, profile_image_url: null, is_verified: false, followers_count: 0, following_count: 0,
+  avatar: null, profile_image_url: null, is_verified: false, followers_count: name === 'alice' ? 7 : 0, following_count: name === 'alice' ? 2 : 0,
 });
 const comment = (n: number, hackId: string, at: string): Row => ({ id: ID(500 + n), hack_id: hackId, user_id: U1, content: `c${n}`, created_at: at, moderation: 'SECRET' });
 
-const world = () => makeDb({
+const world = (fail: string[] = []) => makeDb({
   hacks: [hack(H_APPROVED, 'approved'), hack(H_PENDING, 'pending'), hack(H_REJECTED, 'rejected')],
   users: [user(U1, 'alice'), user(U2, 'bob')],
   comments: [comment(1, H_APPROVED, 'T1'), comment(2, H_APPROVED, 'T2'), comment(3, H_APPROVED, 'T2'), comment(4, H_PENDING, 'T3')],
   bookmarks: [{ id: 'b1', user_id: U1, hack_id: H_PENDING }],
-});
+  // Aggregate view that counts unpublished hacks and has different follower numbers; must never be used.
+  user_stats: [{ id: U1, username: 'alice', hacks_count: 3, followers: 99, following: 99 }],
+}, fail);
 const FORBIDDEN = ['status', 'created_by', 'updated_at', 'internal_notes', 'email', 'password_hash', 'moderation', 'real_name', 'bio', 'website_url', 'isFollowing'];
 const leaks = (o: unknown) => FORBIDDEN.filter((k) => JSON.stringify(o).includes(`"${k}"`));
 const sp = (s: string) => new URLSearchParams(s);
@@ -142,6 +149,7 @@ test('profile: email and credentials are never returned', async () => {
   assert.equal(res.status, 200);
   assert.equal(body.username, 'alice');
   assert.deepEqual(leaks(body), []);
+  assert.equal(body.posts, 1, 'author has approved, pending and rejected hacks; only the approved one counts');
   assert.equal((await lib.getPublicProfile(world(), 'nobody')).status, 404);
 });
 
@@ -165,6 +173,10 @@ test('card data: no bespoke-token lookup; follow state is explicitly unavailable
   assert.equal(body.follow_state, 'unavailable');
   assert.deepEqual(leaks(body), []);
   assert.ok(!db.calls.some((c) => c.table === 'auth_tokens' || c.table === 'follows'));
+  assert.equal(body.posts, 1, 'public post count excludes pending and rejected hacks (aggregate says 3)');
+  assert.equal(body.followers, 7);
+  assert.equal(body.following, 2);
+  assert.ok(!db.calls.some((c) => c.table === 'user_stats'), 'unverified aggregate view must not be queried');
 });
 
 test('wiring: read routes hold no queries (all DB access is in the tested library) and no route uses auth_tokens', () => {
@@ -200,17 +212,76 @@ test('retained POST stubs in read routes: executing the handler source makes no 
   } finally { globalThis.fetch = realFetch; }
 });
 
-test('server-rendered page loaders: same public projection; unpublished/missing/malformed => null', async () => {
+test('server-rendered page loaders: ok / not_found / error are distinct', async () => {
   const page = await lib.loadPublicHackPage(world(), H_APPROVED);
-  assert.equal(page.id, H_APPROVED);
-  assert.deepEqual(leaks(page), []);
-  assert.equal(page.users.username, 'alice');
-  for (const id of [H_PENDING, H_REJECTED, H_MISSING, 'bad']) assert.equal(await lib.loadPublicHackPage(world(), id), null, id);
+  assert.equal(page.status, 'ok');
+  assert.equal(page.data.id, H_APPROVED);
+  assert.deepEqual(leaks(page.data), []);
+  assert.equal(page.data.users.username, 'alice');
+  for (const id of [H_PENDING, H_REJECTED, H_MISSING, 'bad']) assert.deepEqual(await lib.loadPublicHackPage(world(), id), { status: 'not_found' }, id);
   const prof = await lib.loadPublicProfilePage(world(), 'alice');
-  assert.equal(prof.username, 'alice');
-  assert.deepEqual(leaks(prof), []);
-  assert.deepEqual(Object.keys(prof).sort(), ['avatar', 'followers', 'following', 'id', 'is_verified', 'posts', 'profile_image_url', 'username']);
-  assert.equal(await lib.loadPublicProfilePage(world(), 'nobody'), null);
+  assert.equal(prof.status, 'ok');
+  assert.equal(prof.data.posts, 1);
+  assert.deepEqual(leaks(prof.data), []);
+  assert.deepEqual(Object.keys(prof.data).sort(), ['avatar', 'followers', 'following', 'id', 'is_verified', 'posts', 'profile_image_url', 'username']);
+  assert.deepEqual(await lib.loadPublicProfilePage(world(), 'nobody'), { status: 'not_found' });
+});
+
+test('page loaders: a required query failure is "error", never "not_found", and carries no details', async () => {
+  for (const key of ['hacks', 'users']) {
+    const r = await lib.loadPublicHackPage(world([key]), H_APPROVED);
+    assert.deepEqual(r, { status: 'error' }, `hack page, ${key} failing`);
+  }
+  for (const key of ['users', 'hacks:head']) {
+    const r = await lib.loadPublicProfilePage(world([key]), 'alice');
+    assert.deepEqual(r, { status: 'error' }, `profile page, ${key} failing`);
+    assert.ok(!JSON.stringify(r).includes(CANARY));
+  }
+  // a failing lookup of a nonexistent subject is still an error, not a 404
+  assert.deepEqual(await lib.loadPublicProfilePage(world(['users']), 'nobody'), { status: 'error' });
+});
+
+const GENERIC_500 = '{"error":"Internal server error"}';
+const FAILURE_CASES: [string, string, (db: any) => Promise<Response>][] = [
+  ['hack list', 'hacks', (db) => lib.getApprovedHackList(db)],
+  ['hack detail: hack query', 'hacks', (db) => lib.getPublicHack(db, H_APPROVED)],
+  ['hack detail: author query', 'users', (db) => lib.getPublicHack(db, H_APPROVED)],
+  ['comments: published check', 'hacks', (db) => lib.listPublicComments(db, H_APPROVED, sp(''))],
+  ['comments: list query', 'comments', (db) => lib.listPublicComments(db, H_APPROVED, sp(''))],
+  ['comments: count query', 'comments:head', (db) => lib.listPublicComments(db, H_APPROVED, sp(''))],
+  ['comments: authors query', 'users', (db) => lib.listPublicComments(db, H_APPROVED, sp(''))],
+  ['profile: user query', 'users', (db) => lib.getPublicProfile(db, 'alice')],
+  ['profile: post count', 'hacks:head', (db) => lib.getPublicProfile(db, 'alice')],
+  ['user hacks: user query', 'users', (db) => lib.listUserHacks(db, 'alice', sp(''))],
+  ['user hacks: list query', 'hacks', (db) => lib.listUserHacks(db, 'alice', sp(''))],
+  ['user hacks (videos tab): list query', 'hacks', (db) => lib.listUserHacks(db, 'alice', sp('tab=videos'))],
+  ['card: user query', 'users', (db) => lib.getCardData(db, 'alice')],
+  ['card: post count', 'hacks:head', (db) => lib.getCardData(db, 'alice')],
+  ['card: recent hacks', 'hacks', (db) => lib.getCardData(db, 'alice')],
+];
+
+test('required query failures: generic 500, never an empty list, missing user or zero count; no database details', async () => {
+  for (const [name, key, call] of FAILURE_CASES) {
+    const res = await call(world([key]));
+    const text = await res.text();
+    assert.equal(res.status, 500, `${name}: expected 500, got ${res.status} ${text.slice(0, 80)}`);
+    assert.equal(text, GENERIC_500, `${name}: body must be the generic error`);
+    assert.ok(!text.includes(CANARY) && !/XX000|details|message/i.test(text), `${name}: leaked database details`);
+  }
+});
+
+test('failure handling does not disturb not-found semantics when queries succeed', async () => {
+  assert.equal((await lib.getPublicProfile(world(), 'nobody')).status, 404);
+  assert.equal((await lib.getCardData(world(), 'nobody')).status, 404);
+  assert.equal((await lib.listUserHacks(world(), 'nobody', sp(''))).status, 404);
+  assert.equal((await lib.getPublicHack(world(), H_MISSING)).status, 404);
+  // unaffected tables failing must not matter
+  assert.equal((await lib.getPublicProfile(world(['comments', 'bookmarks']), 'alice')).status, 200);
+});
+
+test('library never reads the unverified user_stats aggregate', () => {
+  const src = readFileSync(join(root, 'app/lib/public-reads.ts'), 'utf8');
+  assert.ok(!/from\('user_stats'\)/.test(src));
 });
 
 test('no page or component queries the database directly; archive page makes no DB access', () => {

@@ -88,7 +88,8 @@ async function fetchPublicHack(db: Db, hackId: string): Promise<Record<string, u
   if (!hack) return null; // identical for missing and unpublished
   let author: Record<string, unknown> | null = null;
   if (hack.user_id) {
-    const { data: u } = await db.from('users').select(cols(AUTHOR_FIELDS)).eq('id', hack.user_id).maybeSingle();
+    const { data: u, error: uErr } = await db.from('users').select(cols(AUTHOR_FIELDS)).eq('id', hack.user_id).maybeSingle();
+    if (uErr) return 'error';
     author = u ? pick(u, AUTHOR_FIELDS) : null;
   }
   return { ...pick(hack, HACK_DETAIL_FIELDS), users: author ?? ANON_AUTHOR(hack.user_id) };
@@ -103,12 +104,14 @@ export async function getPublicHack(db: Db, hackId: string): Promise<Response> {
   } catch { return serverError(); }
 }
 
-/** For server-rendered pages: same projection as the API; null => render notFound(). */
-export async function loadPublicHackPage(db: Db, hackId: string) {
-  try {
-    const r = await fetchPublicHack(db, hackId);
-    return r === 'error' ? null : r;
-  } catch { return null; }
+/** Page-load outcome: a database failure is never reported as not_found. */
+export type PageLoad<T> = { status: 'ok'; data: T } | { status: 'not_found' } | { status: 'error' };
+const toPageLoad = (r: Record<string, unknown> | null | 'error'): PageLoad<Record<string, unknown>> =>
+  r === 'error' ? { status: 'error' } : r ? { status: 'ok', data: r } : { status: 'not_found' };
+
+/** For server-rendered pages: same projection as the API. */
+export async function loadPublicHackPage(db: Db, hackId: string): Promise<PageLoad<Record<string, unknown>>> {
+  try { return toPageLoad(await fetchPublicHack(db, hackId)); } catch { return { status: 'error' }; }
 }
 
 export async function listPublicComments(db: Db, hackId: string, sp: URLSearchParams): Promise<Response> {
@@ -149,15 +152,23 @@ export async function listPublicComments(db: Db, hackId: string, sp: URLSearchPa
 
 const PROFILE_FIELDS = ['id', 'username', 'avatar', 'profile_image_url', 'is_verified', 'followers_count', 'following_count'] as const; // no email, real_name, bio, website_url
 
+/** Public post count: approved hacks only, counted directly (never from an aggregate view). */
+async function countApprovedHacks(db: Db, userId: string): Promise<number | 'error'> {
+  const { count, error } = await db.from('hacks').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'approved');
+  if (error || count === null || count === undefined) return 'error';
+  return count;
+}
+
 async function fetchPublicProfile(db: Db, username: string): Promise<Record<string, unknown> | null | 'error'> {
   if (!username || username.length > 100) return null;
   const { data: user, error } = await db.from('users').select(cols(PROFILE_FIELDS)).eq('username', username).maybeSingle();
   if (error) return 'error';
   if (!user) return null;
-  const { count } = await db.from('hacks').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'approved');
+  const posts = await countApprovedHacks(db, user.id);
+  if (posts === 'error') return 'error';
   return {
     id: user.id, username: user.username, avatar: user.avatar, profile_image_url: user.profile_image_url,
-    is_verified: user.is_verified, followers: user.followers_count || 0, following: user.following_count || 0, posts: count || 0,
+    is_verified: user.is_verified, followers: user.followers_count || 0, following: user.following_count || 0, posts,
   };
 }
 
@@ -170,16 +181,12 @@ export async function getPublicProfile(db: Db, username: string): Promise<Respon
   } catch { return serverError(); }
 }
 
-/** For the server-rendered profile page (replaces select('*') from user_stats). null => notFound(). */
-export async function loadPublicProfilePage(db: Db, username: string) {
-  try {
-    const r = await fetchPublicProfile(db, username);
-    return r === 'error' ? null : r;
-  } catch { return null; }
+/** For the server-rendered profile page (replaces select('*') from user_stats). */
+export async function loadPublicProfilePage(db: Db, username: string): Promise<PageLoad<Record<string, unknown>>> {
+  try { return toPageLoad(await fetchPublicProfile(db, username)); } catch { return { status: 'error' }; }
 }
 
 export async function listUserHacks(db: Db, username: string, sp: URLSearchParams): Promise<Response> {
-  const empty = () => json({ data: [], meta: { hasMore: false, cursor: null } });
   try {
     const l = intParam(sp, 'limit');
     if (l === 'invalid' || l === 0) return json({ error: 'Invalid pagination parameters' }, 400);
@@ -189,33 +196,41 @@ export async function listUserHacks(db: Db, username: string, sp: URLSearchParam
     if (!username || username.length > 100) return userNotFound();
     const tab = sp.get('tab') || 'grid';
     // Private bookmarks are never served from a public, unauthenticated route.
-    if (tab === 'bookmarks') return empty();
-    const { data: user } = await db.from('users').select('id').eq('username', username).maybeSingle();
+    if (tab === 'bookmarks') return json({ data: [], meta: { hasMore: false, cursor: null } });
+    const { data: user, error: userErr } = await db.from('users').select('id').eq('username', username).maybeSingle();
+    if (userErr) return serverError();
     if (!user) return userNotFound();
     let q = db.from('hacks').select(cols(USER_HACK_CARD_FIELDS)).eq('user_id', user.id).eq('status', 'approved')
       .order('created_at', { ascending: false }).order('id', { ascending: false });
     if (tab === 'videos') q = q.in('content_type', ['video/mp4', 'video/youtube', 'video/webm']);
     if (cursor) q = q.lt('created_at', cursor);
     const { data, error } = await q.limit(limit + 1);
-    if (error) return empty();
+    if (error) return serverError(); // never report a failed query as an empty collection
     const rows = (data || []).map((h: Record<string, unknown>) => pick(h, USER_HACK_CARD_FIELDS));
     const page = rows.slice(0, limit);
     return json({ data: page, meta: { hasMore: rows.length > limit, cursor: page.length ? page[page.length - 1].created_at : null } });
-  } catch { return empty(); }
+  } catch { return serverError(); }
 }
+
+const CARD_USER_FIELDS = ['id', 'username', 'avatar', 'profile_image_url', 'is_verified', 'followers_count', 'following_count'] as const;
 
 export async function getCardData(db: Db, username: string): Promise<Response> {
   try {
     if (!username || username.length > 100) return userNotFound();
-    const { data: user } = await db.from('users').select('id, username, avatar, profile_image_url, is_verified').eq('username', username).maybeSingle();
+    const { data: user, error: userErr } = await db.from('users').select(cols(CARD_USER_FIELDS)).eq('username', username).maybeSingle();
+    if (userErr) return serverError();
     if (!user) return userNotFound();
-    const { data: stats } = await db.from('user_stats').select('followers, following, hacks_count').eq('id', user.id).maybeSingle();
-    const { data: recent } = await db.from('hacks').select('id, title, content_thumbnail').eq('user_id', user.id).eq('status', 'approved')
+    // Counts come from the users row and a direct approved-only count; the user_stats aggregate is not used
+    // because its publication filtering is unverified.
+    const posts = await countApprovedHacks(db, user.id);
+    if (posts === 'error') return serverError();
+    const { data: recent, error: recentErr } = await db.from('hacks').select('id, title, content_thumbnail').eq('user_id', user.id).eq('status', 'approved')
       .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(6);
+    if (recentErr) return serverError();
     return json({
       id: user.id, username: user.username, avatar: user.avatar, profile_image_small_url: user.profile_image_url,
       is_verified: user.is_verified,
-      posts: stats?.hacks_count || 0, followers: stats?.followers || 0, following: stats?.following || 0,
+      posts, followers: user.followers_count || 0, following: user.following_count || 0,
       recentHacks: (recent || []).map((h: Record<string, unknown>) => pick(h, ['id', 'title', 'content_thumbnail'] as const)),
       // Follow state cannot be established without a verified visitor identity; do not claim a value.
       follow_state: 'unavailable',

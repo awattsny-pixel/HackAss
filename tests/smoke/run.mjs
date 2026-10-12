@@ -4,7 +4,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
-import { startFake, IDS } from './fake-postgrest.mjs';
+import { startFake, IDS, CANARY } from './fake-postgrest.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const fake = await startFake();
@@ -42,10 +42,12 @@ check('GET comments on pending hack: 404, same body as hack not found', nfc.stat
 for (const q of ['limit=abc', 'limit=0', 'limit=-1', 'offset=10001', 'limit=99999999999']) { const x = await get(`/api/hacks/${IDS.approved1}/comments?${q}`); check(`GET comments ?${q}: 400`, x.status === 400); }
 r = await get(`/api/hacks/${IDS.approved1}/comments?limit=500`); check('GET comments ?limit=500: capped to 50', r.status === 200 && r.json().meta.limit === 50);
 r = await get('/api/users/alice'); check('GET profile: no email/real_name/bio/website', r.status === 200 && leaks(r.text).length === 0 && !/"email"|"real_name"|"bio"|"website_url"/.test(r.text));
+check('GET profile: posts counts approved hacks only (2, not the aggregate 4)', r.json().posts === 2, `posts=${r.json().posts}`);
 r = await get('/api/users/alice/hacks?tab=bookmarks'); check('GET user hacks ?tab=bookmarks: empty, nothing private', r.status === 200 && r.json().data.length === 0 && leaks(r.text).length === 0);
 r = await get('/api/users/alice/hacks'); check('GET user hacks: approved only', r.status === 200 && r.json().data.every((h) => h.id !== IDS.pending && h.id !== IDS.rejected) && leaks(r.text).length === 0);
 r = await get('/api/users/alice/card-data', { headers: { authorization: 'Bearer TOKEN-PRIVATE' } }); j = r.json();
 check('GET card-data: follow_state unavailable, isFollowing absent, no bio', r.status === 200 && j.follow_state === 'unavailable' && !('isFollowing' in j) && !('bio' in j) && leaks(r.text).length === 0);
+check('GET card-data: posts=2 (approved only), followers/following from the user row (2/1), not the aggregate', j.posts === 2 && j.followers === 2 && j.following === 1, JSON.stringify({ p: j.posts, f: j.followers, g: j.following }));
 // --- disabled mutations
 const muts = [['POST', '/api/auth/login', { email: 'demo@hackass.com', password: 'demo123' }], ['POST', '/api/auth/signup', { username: 'x', email: 'x@x', password: 'secret1' }], ['GET', '/api/admin/hacks'], ['POST', `/api/admin/hacks/${IDS.pending}/approve`, { approved: true }], ['POST', '/api/admin/extract-url', { url: `http://127.0.0.1:${fake.port}/ssrf` }], ['POST', '/api/hacks', { title: 't' }], ['POST', `/api/hacks/${IDS.approved1}/validate`, { worked: true }], ['POST', `/api/hacks/${IDS.approved1}/like`], ['POST', `/api/hacks/${IDS.approved1}/bookmark`], ['POST', `/api/hacks/${IDS.approved1}/comments`, { content: 'hi' }], ['POST', `/api/follow/${IDS.bob}`], ['DELETE', `/api/follow/${IDS.bob}`], ['PATCH', '/api/me/profile']];
 const before = fake.log.length;
@@ -62,12 +64,31 @@ const prof = await get('/profile/alice'); check('profile page: follow control re
 const imgBefore = fake.log.length;
 const img = await get(`/_next/image?url=${encodeURIComponent(`http://127.0.0.1:${fake.port}/x.png`)}&w=64&q=75`);
 check('image optimizer refuses non-allow-listed URL (400) and does not fetch it', img.status === 400 && fake.log.length === imgBefore, `status ${img.status}`);
+// --- database failure scenarios: must be errors (500), never empty/404/zero, with no database details
+const GENERIC = '{"error":"Internal server error"}';
+const failApi = [
+  ['hacks', ['/api/hacks', `/api/hacks/${IDS.approved1}`, `/api/hacks/${IDS.approved1}/comments`, '/api/users/alice/hacks', '/api/users/alice/card-data']],
+  ['users', [`/api/hacks/${IDS.approved1}`, '/api/users/alice', '/api/users/alice/hacks', '/api/users/alice/card-data']],
+  ['hacks:head', ['/api/users/alice', '/api/users/alice/card-data']],
+  ['comments', [`/api/hacks/${IDS.approved1}/comments`]],
+];
+for (const [key, paths] of failApi) {
+  await fake.fail(key);
+  for (const p of paths) { const x = await get(p); check(`DB failure (${key}) ${p.replace(/[0-9a-f-]{36}/g, ':id')}: generic 500, no details`, x.status === 500 && x.text === GENERIC && !x.text.includes(CANARY), `status ${x.status} ${x.text.slice(0, 60)}`); }
+}
+for (const [key, p] of [['hacks', `/hack/${IDS.approved1}`], ['users', `/hack/${IDS.approved1}`], ['users', '/profile/alice'], ['hacks:head', '/profile/alice'], ['users', '/profile/nobody']]) {
+  await fake.fail(key); const x = await get(p);
+  check(`DB failure (${key}) page ${p.replace(/[0-9a-f-]{36}/g, ':id')}: 500 error (not 404), no details`, x.status === 500 && !x.text.includes(CANARY), `status ${x.status}`);
+}
+await fake.fail(); // clear
+r = await get('/api/users/alice'); check('recovery after clearing failures: profile 200 again', r.status === 200);
+r = await get(`/hack/${IDS.approved1}`); check('recovery after clearing failures: hack page 200 again', r.status === 200);
 // --- global fixture-database assertions
 const writes = fake.log.filter((l) => l.method !== 'GET' && l.method !== 'HEAD');
-const forbidden = fake.log.filter((l) => ['auth_tokens', 'bookmarks', 'archive', 'follows', 'likes'].includes(l.table));
+const forbidden = fake.log.filter((l) => ['auth_tokens', 'bookmarks', 'archive', 'follows', 'likes', 'user_stats'].includes(l.table));
 const stars = fake.log.filter((l) => /select=\*/.test(l.query) && l.method === 'GET');
 check('no write requests reached the fixture database', writes.length === 0, JSON.stringify(writes));
-check('no query touched auth_tokens/bookmarks/archive/follows/likes', forbidden.length === 0, forbidden.map((l) => l.table).join());
+check('no query touched auth_tokens/bookmarks/archive/follows/likes/user_stats', forbidden.length === 0, forbidden.map((l) => l.table).join());
 check("no query used select=*", stars.length === 0, stars.map((l) => l.table).join());
 console.log(`\nfixture-database requests: ${fake.log.length}; tables: ${[...new Set(fake.log.map((l) => l.table))].join(', ')}`);
 
