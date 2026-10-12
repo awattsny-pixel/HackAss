@@ -1,35 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
-import { NextRequest, NextResponse } from 'next/server';
+import { serverDb } from '@/app/lib/supabase-server';
+import { getApprovedHackList } from '@/app/lib/public-reads';
 
-// Use service role key if available (server-side), otherwise fallback to anon key
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-// GET /api/hacks - Fetch approved hacks for the feed
-export async function GET(request: NextRequest) {
-  try {
-    const { data: hacks, error } = await supabase
-      .from('hacks')
-      .select('*')
-      .eq('status', 'approved')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ hacks });
-  } catch (err) {
-    return NextResponse.json(
-      { error: 'Failed to fetch hacks' },
-      { status: 500 }
-    );
-  }
+// GET /api/hacks - approved hacks only, explicit field allowlist
+export async function GET() {
+  return getApprovedHackList(serverDb());
 }
 
 // POST /api/hacks - Submit a new hack
