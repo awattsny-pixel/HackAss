@@ -10,10 +10,9 @@ export interface HackerCardData {
   avatar: string | null;
   profile_image_small_url: string | null;
   is_verified: boolean;
-  bio: string | null;
   posts: number;
   followers: number;
   following: number;
   recentHacks: RecentHack[];
-  isFollowing: boolean;
+  follow_state: 'unavailable';
 }

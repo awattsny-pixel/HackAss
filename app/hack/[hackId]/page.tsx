@@ -1,11 +1,7 @@
 import { notFound } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
 import HackDetailContent from '@/app/components/HackDetail/HackDetailContent';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { serverDb } from '@/app/lib/supabase-server';
+import { loadPublicHackPage } from '@/app/lib/public-reads';
 
 interface HackDetailPageProps {
   params: Promise<{ hackId: string }>;
@@ -14,55 +10,15 @@ interface HackDetailPageProps {
 export default async function HackDetailPage({ params }: HackDetailPageProps) {
   const { hackId } = await params;
 
-  // Fetch hack detail
-  const { data: hack, error } = await supabase
-    .from('hacks')
-    .select(`
-      id,
-      title,
-      description,
-      category,
-      difficulty,
-      why_it_works,
-      content_type,
-      content_url,
-      content_thumbnail,
-      status,
-      created_at,
-      worked_votes,
-      failed_votes,
-      view_count,
-      share_count,
-      like_count,
-      bookmark_count,
-      user_id,
-      source_attribution,
-      users!inner (
-        id,
-        username,
-        avatar,
-        is_verified,
-        real_name,
-        bio
-      )
-    `)
-    .eq('id', hackId)
-    .eq('status', 'approved')
-    .single();
-
-  if (error || !hack) {
+  // Approved hacks only, explicit public projection (no status, real_name, bio).
+  const hack = await loadPublicHackPage(serverDb(), hackId);
+  if (!hack) {
     notFound();
   }
 
-  // Convert users array to single user object (take first user)
-  const hackData = {
-    ...hack,
-    users: Array.isArray(hack.users) ? hack.users[0] : hack.users,
-  };
-
   return (
     <div className="bg-black min-h-screen">
-      <HackDetailContent hack={hackData} />
+      <HackDetailContent hack={hack as unknown as React.ComponentProps<typeof HackDetailContent>['hack']} />
     </div>
   );
 }

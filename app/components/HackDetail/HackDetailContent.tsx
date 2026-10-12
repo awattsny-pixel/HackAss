@@ -31,10 +31,8 @@ interface Hack {
   users: {
     id: string;
     username: string;
-    avatar: string;
+    avatar: string | null;
     is_verified: boolean;
-    real_name: string;
-    bio: string;
   };
 }
 

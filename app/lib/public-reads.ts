@@ -17,7 +17,9 @@ export const HACK_DETAIL_FIELDS = [
   'content_url', 'content_thumbnail', 'created_at', 'worked_votes', 'failed_votes', 'view_count',
   'share_count', 'like_count', 'bookmark_count', 'source_attribution', 'user_id',
 ] as const;
-export const AUTHOR_FIELDS = ['id', 'username', 'avatar', 'profile_image_url', 'is_verified', 'real_name', 'bio'] as const;
+// real_name, bio and website_url are NOT public: no consent/visibility flag exists yet (CTO review).
+// Attribution uses username only until managed profile settings exist.
+export const AUTHOR_FIELDS = ['id', 'username', 'avatar', 'profile_image_url', 'is_verified'] as const;
 export const COMMENT_AUTHOR_FIELDS = ['id', 'username', 'avatar', 'profile_image_url'] as const;
 export const USER_HACK_CARD_FIELDS = ['id', 'title', 'description', 'category', 'content_type', 'content_thumbnail', 'created_at', 'worked_votes', 'failed_votes'] as const;
 
@@ -75,24 +77,38 @@ export async function getApprovedHackList(db: Db): Promise<Response> {
   } catch { return serverError(); }
 }
 
+const ANON_AUTHOR = (id: unknown) => ({ id: id ?? null, username: 'Unknown', avatar: null, profile_image_url: null, is_verified: false });
+
+/** Approved hack plus public author, allowlisted. null = not found/unpublished/malformed; 'error' = DB failure. */
+async function fetchPublicHack(db: Db, hackId: string): Promise<Record<string, unknown> | null | 'error'> {
+  if (!UUID.test(hackId)) return null;
+  const { data: hack, error } = await db
+    .from('hacks').select(cols(HACK_DETAIL_FIELDS)).eq('id', hackId).eq('status', 'approved').maybeSingle();
+  if (error) return 'error';
+  if (!hack) return null; // identical for missing and unpublished
+  let author: Record<string, unknown> | null = null;
+  if (hack.user_id) {
+    const { data: u } = await db.from('users').select(cols(AUTHOR_FIELDS)).eq('id', hack.user_id).maybeSingle();
+    author = u ? pick(u, AUTHOR_FIELDS) : null;
+  }
+  return { ...pick(hack, HACK_DETAIL_FIELDS), users: author ?? ANON_AUTHOR(hack.user_id) };
+}
+
 export async function getPublicHack(db: Db, hackId: string): Promise<Response> {
   try {
-    if (!UUID.test(hackId)) return hackNotFound();
-    const { data: hack, error } = await db
-      .from('hacks').select(cols(HACK_DETAIL_FIELDS)).eq('id', hackId).eq('status', 'approved').maybeSingle();
-    if (error) return serverError();
-    if (!hack) return hackNotFound(); // identical for missing and unpublished
-    const out = pick(hack, HACK_DETAIL_FIELDS);
-    let author: Record<string, unknown> | null = null;
-    if (hack.user_id) {
-      const { data: u } = await db.from('users').select(cols(AUTHOR_FIELDS)).eq('id', hack.user_id).maybeSingle();
-      author = u ? pick(u, AUTHOR_FIELDS) : null;
-    }
-    return json({
-      ...out,
-      users: author ?? { id: hack.user_id ?? null, username: 'Unknown', avatar: null, profile_image_url: null, is_verified: false, real_name: null, bio: null },
-    });
+    const r = await fetchPublicHack(db, hackId);
+    if (r === 'error') return serverError();
+    if (!r) return hackNotFound();
+    return json(r);
   } catch { return serverError(); }
+}
+
+/** For server-rendered pages: same projection as the API; null => render notFound(). */
+export async function loadPublicHackPage(db: Db, hackId: string) {
+  try {
+    const r = await fetchPublicHack(db, hackId);
+    return r === 'error' ? null : r;
+  } catch { return null; }
 }
 
 export async function listPublicComments(db: Db, hackId: string, sp: URLSearchParams): Promise<Response> {
@@ -131,21 +147,35 @@ export async function listPublicComments(db: Db, hackId: string, sp: URLSearchPa
   } catch { return serverError(); }
 }
 
-const PROFILE_FIELDS = ['id', 'username', 'real_name', 'bio', 'website_url', 'avatar', 'profile_image_url', 'is_verified', 'followers_count', 'following_count'] as const; // no email
+const PROFILE_FIELDS = ['id', 'username', 'avatar', 'profile_image_url', 'is_verified', 'followers_count', 'following_count'] as const; // no email, real_name, bio, website_url
+
+async function fetchPublicProfile(db: Db, username: string): Promise<Record<string, unknown> | null | 'error'> {
+  if (!username || username.length > 100) return null;
+  const { data: user, error } = await db.from('users').select(cols(PROFILE_FIELDS)).eq('username', username).maybeSingle();
+  if (error) return 'error';
+  if (!user) return null;
+  const { count } = await db.from('hacks').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'approved');
+  return {
+    id: user.id, username: user.username, avatar: user.avatar, profile_image_url: user.profile_image_url,
+    is_verified: user.is_verified, followers: user.followers_count || 0, following: user.following_count || 0, posts: count || 0,
+  };
+}
 
 export async function getPublicProfile(db: Db, username: string): Promise<Response> {
   try {
-    if (!username || username.length > 100) return userNotFound();
-    const { data: user, error } = await db.from('users').select(cols(PROFILE_FIELDS)).eq('username', username).maybeSingle();
-    if (error) return serverError();
-    if (!user) return userNotFound();
-    const { count } = await db.from('hacks').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'approved');
-    return json({
-      id: user.id, username: user.username, real_name: user.real_name, bio: user.bio, website_url: user.website_url,
-      avatar: user.avatar, profile_image_url: user.profile_image_url, is_verified: user.is_verified,
-      followers: user.followers_count || 0, following: user.following_count || 0, posts: count || 0,
-    });
+    const r = await fetchPublicProfile(db, username);
+    if (r === 'error') return serverError();
+    if (!r) return userNotFound();
+    return json(r);
   } catch { return serverError(); }
+}
+
+/** For the server-rendered profile page (replaces select('*') from user_stats). null => notFound(). */
+export async function loadPublicProfilePage(db: Db, username: string) {
+  try {
+    const r = await fetchPublicProfile(db, username);
+    return r === 'error' ? null : r;
+  } catch { return null; }
 }
 
 export async function listUserHacks(db: Db, username: string, sp: URLSearchParams): Promise<Response> {
@@ -177,17 +207,18 @@ export async function listUserHacks(db: Db, username: string, sp: URLSearchParam
 export async function getCardData(db: Db, username: string): Promise<Response> {
   try {
     if (!username || username.length > 100) return userNotFound();
-    const { data: user } = await db.from('users').select('id, username, avatar, profile_image_url, bio, is_verified').eq('username', username).maybeSingle();
+    const { data: user } = await db.from('users').select('id, username, avatar, profile_image_url, is_verified').eq('username', username).maybeSingle();
     if (!user) return userNotFound();
     const { data: stats } = await db.from('user_stats').select('followers, following, hacks_count').eq('id', user.id).maybeSingle();
     const { data: recent } = await db.from('hacks').select('id, title, content_thumbnail').eq('user_id', user.id).eq('status', 'approved')
       .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(6);
     return json({
       id: user.id, username: user.username, avatar: user.avatar, profile_image_small_url: user.profile_image_url,
-      is_verified: user.is_verified, bio: user.bio,
+      is_verified: user.is_verified,
       posts: stats?.hacks_count || 0, followers: stats?.followers || 0, following: stats?.following || 0,
       recentHacks: (recent || []).map((h: Record<string, unknown>) => pick(h, ['id', 'title', 'content_thumbnail'] as const)),
-      isFollowing: false, // follow state needs verified identity; bespoke-token lookup removed (M01-A containment)
+      // Follow state cannot be established without a verified visitor identity; do not claim a value.
+      follow_state: 'unavailable',
     });
   } catch { return serverError(); }
 }

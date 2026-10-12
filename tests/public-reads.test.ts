@@ -51,7 +51,7 @@ const hack = (id: string, status: string, extra: Row = {}): Row => ({
   user_id: U1, status, created_by: 'admin', updated_at: '2026-01-02', internal_notes: 'SECRET', ...extra,
 });
 const user = (id: string, name: string): Row => ({
-  id, username: name, email: `${name}@private.test`, password_hash: 'SECRET', real_name: null, bio: 'b', website_url: null,
+  id, username: name, email: `${name}@private.test`, password_hash: 'SECRET', real_name: 'Real Name PRIVATE', bio: 'Bio PRIVATE', website_url: 'https://private.example',
   avatar: null, profile_image_url: null, is_verified: false, followers_count: 0, following_count: 0,
 });
 const comment = (n: number, hackId: string, at: string): Row => ({ id: ID(500 + n), hack_id: hackId, user_id: U1, content: `c${n}`, created_at: at, moderation: 'SECRET' });
@@ -62,7 +62,7 @@ const world = () => makeDb({
   comments: [comment(1, H_APPROVED, 'T1'), comment(2, H_APPROVED, 'T2'), comment(3, H_APPROVED, 'T2'), comment(4, H_PENDING, 'T3')],
   bookmarks: [{ id: 'b1', user_id: U1, hack_id: H_PENDING }],
 });
-const FORBIDDEN = ['status', 'created_by', 'updated_at', 'internal_notes', 'email', 'password_hash', 'moderation'];
+const FORBIDDEN = ['status', 'created_by', 'updated_at', 'internal_notes', 'email', 'password_hash', 'moderation', 'real_name', 'bio', 'website_url', 'isFollowing'];
 const leaks = (o: unknown) => FORBIDDEN.filter((k) => JSON.stringify(o).includes(`"${k}"`));
 const sp = (s: string) => new URLSearchParams(s);
 
@@ -158,10 +158,11 @@ test('user hacks: bookmarks tab is never served; only approved; limit validated 
   assert.equal((await lib.listUserHacks(world(), 'alice', sp('limit=100000'))).status, 200);
 });
 
-test('card data: no bespoke-token lookup; isFollowing is false; no private fields', async () => {
+test('card data: no bespoke-token lookup; follow state is explicitly unavailable (not false); no private fields', async () => {
   const db = world();
   const body = await (await lib.getCardData(db, 'alice')).json();
-  assert.equal(body.isFollowing, false);
+  assert.equal('isFollowing' in body, false, 'must not claim a follow state');
+  assert.equal(body.follow_state, 'unavailable');
   assert.deepEqual(leaks(body), []);
   assert.ok(!db.calls.some((c) => c.table === 'auth_tokens' || c.table === 'follows'));
 });
@@ -197,4 +198,38 @@ test('retained POST stubs in read routes: executing the handler source makes no 
     }
     assert.equal(outbound, 0);
   } finally { globalThis.fetch = realFetch; }
+});
+
+test('server-rendered page loaders: same public projection; unpublished/missing/malformed => null', async () => {
+  const page = await lib.loadPublicHackPage(world(), H_APPROVED);
+  assert.equal(page.id, H_APPROVED);
+  assert.deepEqual(leaks(page), []);
+  assert.equal(page.users.username, 'alice');
+  for (const id of [H_PENDING, H_REJECTED, H_MISSING, 'bad']) assert.equal(await lib.loadPublicHackPage(world(), id), null, id);
+  const prof = await lib.loadPublicProfilePage(world(), 'alice');
+  assert.equal(prof.username, 'alice');
+  assert.deepEqual(leaks(prof), []);
+  assert.deepEqual(Object.keys(prof).sort(), ['avatar', 'followers', 'following', 'id', 'is_verified', 'posts', 'profile_image_url', 'username']);
+  assert.equal(await lib.loadPublicProfilePage(world(), 'nobody'), null);
+});
+
+test('no page or component queries the database directly; archive page makes no DB access', () => {
+  const walk = (d: string, out: string[] = []): string[] => { for (const n of readdirSync(d)) { const p = join(d, n); if (statSync(p).isDirectory()) { if (n !== 'api') walk(p, out); } else if (/\.(ts|tsx)$/.test(n)) out.push(p); } return out; };
+  for (const f of walk(join(root, 'app'))) {
+    if (f.endsWith('app/lib/supabase-server.ts')) continue;
+    const src = readFileSync(f, 'utf8');
+    assert.ok(!/@supabase\/supabase-js|createClient\(/.test(src), `${f} accesses the database directly`);
+  }
+  const archive = readFileSync(join(root, 'app/profile/[username]/archive/page.tsx'), 'utf8');
+  assert.ok(!/supabase|serverDb|\.from\(/.test(archive));
+});
+
+test('follow UI: unavailable state is a disabled control and makes no request', () => {
+  const fb = readFileSync(join(root, 'app/components/Common/FollowButton.tsx'), 'utf8');
+  assert.ok(/unavailable\?: boolean/.test(fb) && /disabled=\{loading \|\| unavailable\}/.test(fb) && /if \(unavailable\) return;/.test(fb));
+  for (const f of ['app/components/Profile/ProfileHeader.tsx', 'app/components/HackerCard/HackerCardContent.tsx']) {
+    const src = readFileSync(join(root, f), 'utf8');
+    assert.ok(/<FollowButton[\s\S]*?unavailable/.test(src), `${f} must render FollowButton as unavailable`);
+    assert.ok(!/isFollowing=\{false\}/.test(src), `${f} claims isFollowing=false`);
+  }
 });

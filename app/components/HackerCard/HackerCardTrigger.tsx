@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { Popover } from '@/app/components/Common/Popover';
 import { HackerCardContent } from './HackerCardContent';
@@ -18,7 +17,6 @@ export function HackerCardTrigger({
   showVerificationBadge = false,
 }: HackerCardTriggerProps) {
   const { data, loading, fetch } = useHackerCardData(username);
-  const [isFollowing, setIsFollowing] = useState(data?.isFollowing || false);
 
   const handlePopoverOpen = () => {
     if (!data) {
@@ -45,10 +43,7 @@ export function HackerCardTrigger({
         loading ? (
           <div className="p-4 text-gray-400 text-sm">Loading profile...</div>
         ) : data ? (
-          <HackerCardContent
-            data={{ ...data, isFollowing }}
-            onFollowChange={setIsFollowing}
-          />
+          <HackerCardContent data={data} />
         ) : (
           <div className="p-4 text-gray-400 text-sm">Profile not found</div>
         )
