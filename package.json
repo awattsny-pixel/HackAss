@@ -7,13 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --test tests/*.test.ts"
+    "test": "node --test tests/*.test.ts",
+    "smoke": "node tests/smoke/run.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.3",
     "autoprefixer": "^10.4.0",
     "dotenv": "^17.4.2",
-    "next": "^16.0.0",
+    "next": "^16.3.8",
     "node-fetch": "^2.7.0",
     "postcss": "^8.4.0",
     "react": "^19.0.0",
