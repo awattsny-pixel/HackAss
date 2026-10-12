@@ -8,3 +8,8 @@ node_modules/
 dist/
 build/
 # Rebuild trigger
+
+# Environment files: never commit real values. Use .env.example for names only.
+.env
+.env.*
+!.env.example

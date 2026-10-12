@@ -117,98 +117,10 @@ export async function GET(
   }
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ hackId: string }> }
-) {
-  try {
-    const { hackId } = await params;
-    const body = await request.json();
-    const { content } = body;
-
-    // Get current user from auth header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-
-    // Look up user by token
-    const { data: authTokenData, error: tokenError } = await supabase
-      .from('auth_tokens')
-      .select('user_id')
-      .eq('token', token)
-      .single();
-
-    if (tokenError || !authTokenData) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const userId = authTokenData.user_id;
-
-    // Validate content
-    if (!content || content.trim().length === 0 || content.length > 500) {
-      return NextResponse.json(
-        { error: 'Comment must be 1-500 characters' },
-        { status: 400 }
-      );
-    }
-
-    // Insert comment
-    const { data: newComment, error: insertError } = await supabase
-      .from('comments')
-      .insert({
-        hack_id: hackId,
-        user_id: userId,
-        content: content.trim(),
-      })
-      .select(`
-        id,
-        content,
-        created_at,
-        users:user_id (
-          id,
-          username,
-          avatar,
-          is_verified
-        )
-      `)
-      .single();
-
-    if (insertError) {
-      throw insertError;
-    }
-
-    // Handle users data (could be array or object depending on query response)
-    const userInfo = Array.isArray(newComment.users) ? newComment.users[0] : newComment.users;
-
-    return NextResponse.json({
-      id: newComment.id,
-      content: newComment.content,
-      created_at: newComment.created_at,
-      user_id: userInfo?.id,
-      users: userInfo ? {
-        id: userInfo.id,
-        username: userInfo.username,
-        avatar: userInfo.avatar,
-      } : {
-        id: userId,
-        username: 'Unknown',
-        avatar: null,
-      },
-    }, { status: 201 });
-  } catch (error) {
-    console.error('Error creating comment:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
+// M01-A containment: bespoke-token writes disabled (fails closed, before any DB access).
+export async function POST() {
+  return Response.json(
+    { error: 'temporarily_unavailable', message: 'This endpoint is temporarily unavailable.' },
+    { status: 503, headers: { 'Cache-Control': 'no-store' } }
+  );
 }

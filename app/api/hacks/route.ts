@@ -33,64 +33,10 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/hacks - Submit a new hack
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const {
-      title,
-      description,
-      category,
-      difficulty,
-      why_it_works,
-      content_type,
-      content_url,
-    } = body;
-
-    // Validate required fields
-    if (!title) return NextResponse.json({ error: 'Title is required' }, { status: 400 });
-    if (!description) return NextResponse.json({ error: 'Description is required' }, { status: 400 });
-    if (!category) return NextResponse.json({ error: 'Category is required' }, { status: 400 });
-    if (!why_it_works) return NextResponse.json({ error: 'Why It Works explanation is required' }, { status: 400 });
-
-    // For MVP: link-type content requires a URL; file uploads handled in Phase 2
-    if (content_type === 'link' && !content_url) {
-      return NextResponse.json(
-        { error: 'URL required for link submissions' },
-        { status: 400 }
-      );
-    }
-
-    // Insert hack with pending status
-    const { data, error } = await supabase
-      .from('hacks')
-      .insert({
-        title,
-        description,
-        category,
-        difficulty,
-        why_it_works,
-        content_type,
-        content_url: content_url || null,
-        status: 'pending',
-      })
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(
-      { message: 'Hack submitted successfully', hack: data },
-      { status: 201 }
-    );
-  } catch (err) {
-    return NextResponse.json(
-      { error: 'Failed to submit hack' },
-      { status: 500 }
-    );
-  }
+// M01-A containment: unauthenticated writes disabled (fails closed, before any DB access).
+export async function POST() {
+  return Response.json(
+    { error: 'temporarily_unavailable', message: 'This endpoint is temporarily unavailable.' },
+    { status: 503, headers: { 'Cache-Control': 'no-store' } }
+  );
 }
