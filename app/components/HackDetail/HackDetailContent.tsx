@@ -2,8 +2,6 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
-import { useAuth } from '@/app/context/AuthContext';
 import { HackerCardTrigger } from '@/app/components/HackerCard/HackerCardTrigger';
 import { VerificationBadge } from '@/app/components/Common/VerificationBadge';
 import { DEFAULT_HACKER_AVATAR } from '@/app/lib/constants';
@@ -41,7 +39,6 @@ interface HackDetailContentProps {
 }
 
 export default function HackDetailContent({ hack }: HackDetailContentProps) {
-  const { user } = useAuth();
   const [liked, setLiked] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
 

@@ -22,10 +22,6 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchPendingHacks();
-  }, []);
-
   const fetchPendingHacks = async () => {
     setLoading(true);
     setError(null);
@@ -45,6 +41,11 @@ export default function AdminDashboard() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount; moving to a data-loading pattern is deferred (admin is disabled until managed auth)
+    fetchPendingHacks();
+  }, []);
 
   const handleApprove = async (hackId: string) => {
     setProcessing(hackId);

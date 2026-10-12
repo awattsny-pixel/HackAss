@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -128,7 +127,7 @@ export default function LoginPage() {
 
         {/* Sign up link */}
         <p className="text-center text-gray-400 text-sm">
-          Don't have an account?{' '}
+          Don&apos;t have an account?{' '}
           <Link href="/auth/signup" className="text-blue-400 hover:text-blue-300">
             Sign up
           </Link>

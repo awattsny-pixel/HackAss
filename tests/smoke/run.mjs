@@ -1,97 +1,130 @@
-// Local public-page smoke check. Builds the app against the local fixture server (NEXT_PUBLIC_* values are
-// inlined at build time, so the build must see the fixture URL), then starts it. Dummy keys only; no calls to
-// any real service. Run: node tests/smoke/run.mjs  (takes ~1 minute; rebuilds .next)
-import { spawn, spawnSync } from 'node:child_process';
+// Isolated local smoke check of the built application against controlled fixtures.
+//
+//   node tests/smoke/run.mjs [--build-timeout-ms=N] [--startup-timeout-ms=N] [--request-timeout-ms=N]
+//                            [--total-timeout-ms=N] [--state-file=PATH]
+//                            [--build-script=PATH --app-script=PATH]   (test hooks: replace next build / next start)
+//
+// Isolation: every child process gets an environment built from scratch (harness.mjs buildTestEnv) and a
+// preloaded network guard that refuses non-loopback destinations; the run fails if the guard recorded any.
+// Cleanup: children run in their own process groups and are terminated and awaited in `finally`.
+// Exit codes: 0 ok, 1 checks failed, 2 build failed/timed out, 3 startup failed/timed out,
+//             4 request timeout or harness error, 5 total deadline, 6 network-guard violation, 7 usage.
 import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import { mkdtemp, mkdir, rm, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { startFake, IDS, CANARY } from './fake-postgrest.mjs';
+import { runChecks } from './checks.mjs';
+import { EXIT, HarnessFailure, Managed, buildTestEnv, parseArgs } from './harness.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
-const fake = await startFake();
-const freePort = () => new Promise((r) => { const s = net.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => r(p)); }); });
-const port = await freePort();
-const env = { ...process.env, NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1',
-  NEXT_PUBLIC_SUPABASE_URL: `http://127.0.0.1:${fake.port}`, SUPABASE_URL: `http://127.0.0.1:${fake.port}`,
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon', SUPABASE_SERVICE_KEY: 'dummy-service', SUPABASE_SERVICE_ROLE_KEY: 'dummy-service' };
-const build = spawnSync(process.execPath, ['node_modules/next/dist/bin/next', 'build'], { cwd: root, env, encoding: 'utf8' });
-if (build.status !== 0) { console.log(build.stdout.slice(-1500), build.stderr.slice(-1500)); await fake.close(); process.exit(2); }
-const app = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-p', String(port), '-H', '127.0.0.1'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
-let appLog = ''; app.stdout.on('data', (d) => (appLog += d)); app.stderr.on('data', (d) => (appLog += d));
-const base = `http://127.0.0.1:${port}`;
-for (let i = 0; i < 60; i++) { try { const r = await fetch(`${base}/api/hacks`); if (r.status < 500) break; } catch {} await new Promise((r) => setTimeout(r, 500)); }
+const netGuardPath = fileURLToPath(new URL('./net-guard.cjs', import.meta.url));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const freePort = () => new Promise((res, rej) => { const s = net.createServer(); s.on('error', rej); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); });
 
+let opts;
+try { opts = parseArgs(process.argv.slice(2)); } catch (e) { console.error(e.message); process.exit(EXIT.USAGE); }
+
+const children = [];
+let fake = null;
+let tmpRoot = null;
+let cleanupPromise = null;
+let forcedExit = null; // set by deadline/signal/error handlers; always wins over the main flow's own outcome
+const state = { fixturePort: null, appPort: null, tmpRoot: null, children: [] };
+const saveState = async () => { if (opts.stateFile) await writeFile(opts.stateFile, JSON.stringify(state)).catch(() => {}); };
+
+// Idempotent and shared: every caller awaits the same completed cleanup before the process exits.
+function cleanup() {
+  cleanupPromise ??= (async () => {
+    for (const c of children.slice().reverse()) await c.terminate().catch(() => {});
+    if (fake) await fake.close().catch(() => {});
+    if (tmpRoot) await rm(tmpRoot, { recursive: true, force: true }).catch(() => {});
+  })();
+  return cleanupPromise;
+}
+async function die(code) { forcedExit ??= code; await cleanup(); process.exit(forcedExit); }
+
+// Whole-run deadline, signal handling and unexpected errors all go through cleanup.
+setTimeout(() => { console.error(`FAIL  total deadline of ${opts.totalTimeoutMs}ms exceeded`); die(EXIT.TOTAL_DEADLINE); }, opts.totalTimeoutMs).unref();
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => die(128 + (sig === 'SIGINT' ? 2 : 15)));
+process.on('unhandledRejection', (e) => { console.error('FAIL  unhandled rejection:', e?.message || e); die(EXIT.TIMEOUT_OR_ERROR); });
+process.on('uncaughtException', (e) => { console.error('FAIL  uncaught exception:', e?.message || e); die(EXIT.TIMEOUT_OR_ERROR); });
+
+function track(label, file, args, env) {
+  const m = new Managed(label, file, args, { cwd: root, env });
+  children.push(m);
+  state.children.push({ label, pid: m.pid });
+  return m;
+}
+
+let exitCode = EXIT.TIMEOUT_OR_ERROR;
 const results = []; let failed = 0;
-const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); if (!ok) failed++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  — ' + detail : ''}`); };
-const get = async (p, init) => { const r = await fetch(base + p, init); const t = await r.text(); return { status: r.status, text: t, json: () => JSON.parse(t) }; };
-const PRIVATE = ['Real Name PRIVATE', 'Bio PRIVATE', 'private.test', 'private.example', 'HASH-PRIVATE', 'INTERNAL-NOTE-PRIVATE', 'TOKEN-PRIVATE', 'COMMENT-ON-UNPUBLISHED'];
-const leaks = (t) => PRIVATE.filter((s) => t.includes(s));
+try {
+  fake = await startFake();
+  state.fixturePort = fake.port;
+  tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'hackass-smoke-'));
+  state.tmpRoot = tmpRoot;
+  const home = path.join(tmpRoot, 'home'); const tmp = path.join(tmpRoot, 'tmp');
+  await mkdir(home); await mkdir(tmp);
+  const netGuardLog = path.join(tmpRoot, 'netguard.log');
+  await writeFile(netGuardLog, '');
+  const appPort = await freePort();
+  state.appPort = appPort;
+  await saveState();
+  const env = buildTestEnv({ fakePort: fake.port, netGuardPath, netGuardLog, home, tmp });
+  const nextBin = path.join(root, 'node_modules/next/dist/bin/next');
 
-// --- API reads
-let r = await get('/api/hacks'); let j = r.json();
-check('GET /api/hacks: 200, approved only', r.status === 200 && j.hacks.length === 2 && j.hacks.every((h) => [IDS.approved1, IDS.approved2].includes(h.id)));
-check('GET /api/hacks: no private fields/values', leaks(r.text).length === 0 && !/"status"|"created_by"|"user_id"/.test(r.text), leaks(r.text).join());
-r = await get(`/api/hacks/${IDS.approved1}`); j = r.json();
-check('GET hack approved: 200, author attributed by username only', r.status === 200 && j.users.username === 'alice' && !('real_name' in j.users) && !('bio' in j.users) && leaks(r.text).length === 0);
-const nf = [];
-for (const id of [IDS.pending, IDS.rejected, IDS.missing, 'not-a-uuid']) { const x = await get(`/api/hacks/${id}`); nf.push(`${x.status}|${x.text}`); }
-check('GET hack pending/rejected/missing/malformed: identical 404', new Set(nf).size === 1 && nf[0].startsWith('404|'), nf[0]);
-r = await get(`/api/hacks/${IDS.approved1}/comments`); j = r.json();
-check('GET comments approved: 200, newest first', r.status === 200 && j.data.map((c) => c.content).join() === 'second,first' && leaks(r.text).length === 0);
-const nfc = await get(`/api/hacks/${IDS.pending}/comments`);
-check('GET comments on pending hack: 404, same body as hack not found', nfc.status === 404 && nfc.text === nf[0].split('|').slice(1).join('|') && !nfc.text.includes('COMMENT-ON-UNPUBLISHED'));
-for (const q of ['limit=abc', 'limit=0', 'limit=-1', 'offset=10001', 'limit=99999999999']) { const x = await get(`/api/hacks/${IDS.approved1}/comments?${q}`); check(`GET comments ?${q}: 400`, x.status === 400); }
-r = await get(`/api/hacks/${IDS.approved1}/comments?limit=500`); check('GET comments ?limit=500: capped to 50', r.status === 200 && r.json().meta.limit === 50);
-r = await get('/api/users/alice'); check('GET profile: no email/real_name/bio/website', r.status === 200 && leaks(r.text).length === 0 && !/"email"|"real_name"|"bio"|"website_url"/.test(r.text));
-check('GET profile: posts counts approved hacks only (2, not the aggregate 4)', r.json().posts === 2, `posts=${r.json().posts}`);
-r = await get('/api/users/alice/hacks?tab=bookmarks'); check('GET user hacks ?tab=bookmarks: empty, nothing private', r.status === 200 && r.json().data.length === 0 && leaks(r.text).length === 0);
-r = await get('/api/users/alice/hacks'); check('GET user hacks: approved only', r.status === 200 && r.json().data.every((h) => h.id !== IDS.pending && h.id !== IDS.rejected) && leaks(r.text).length === 0);
-r = await get('/api/users/alice/card-data', { headers: { authorization: 'Bearer TOKEN-PRIVATE' } }); j = r.json();
-check('GET card-data: follow_state unavailable, isFollowing absent, no bio', r.status === 200 && j.follow_state === 'unavailable' && !('isFollowing' in j) && !('bio' in j) && leaks(r.text).length === 0);
-check('GET card-data: posts=2 (approved only), followers/following from the user row (2/1), not the aggregate', j.posts === 2 && j.followers === 2 && j.following === 1, JSON.stringify({ p: j.posts, f: j.followers, g: j.following }));
-// --- disabled mutations
-const muts = [['POST', '/api/auth/login', { email: 'demo@hackass.com', password: 'demo123' }], ['POST', '/api/auth/signup', { username: 'x', email: 'x@x', password: 'secret1' }], ['GET', '/api/admin/hacks'], ['POST', `/api/admin/hacks/${IDS.pending}/approve`, { approved: true }], ['POST', '/api/admin/extract-url', { url: `http://127.0.0.1:${fake.port}/ssrf` }], ['POST', '/api/hacks', { title: 't' }], ['POST', `/api/hacks/${IDS.approved1}/validate`, { worked: true }], ['POST', `/api/hacks/${IDS.approved1}/like`], ['POST', `/api/hacks/${IDS.approved1}/bookmark`], ['POST', `/api/hacks/${IDS.approved1}/comments`, { content: 'hi' }], ['POST', `/api/follow/${IDS.bob}`], ['DELETE', `/api/follow/${IDS.bob}`], ['PATCH', '/api/me/profile']];
-const before = fake.log.length;
-for (const [m, p, body] of muts) { const x = await get(p, { method: m, headers: { 'content-type': 'application/json', authorization: 'Bearer TOKEN-PRIVATE' }, body: body ? JSON.stringify(body) : undefined }); check(`${m} ${p.replace(/[0-9a-f-]{36}/g, ':id')}: 503, no token`, x.status === 503 && !/token/i.test(x.text.replace('temporarily_unavailable', '')), `status ${x.status}`); }
-check('disabled mutations made zero fixture-database requests', fake.log.length === before, `${fake.log.length - before} requests`);
-// --- pages
-for (const [p, expect] of [['/', 200], ['/browse', 200], [`/hack/${IDS.approved1}`, 200], [`/hack/${IDS.pending}`, 404], [`/hack/${IDS.missing}`, 404], ['/profile/alice', 200], ['/profile/alice/archive', 200], ['/profile/nobody', 404]]) {
-  const x = await get(p); check(`page ${p.replace(/[0-9a-f-]{36}/g, ':id')}: ${expect}`, x.status === expect, `got ${x.status}`);
-  check(`page ${p.replace(/[0-9a-f-]{36}/g, ':id')}: no private strings in HTML/RSC payload`, leaks(x.text).length === 0, leaks(x.text).join());
-}
-const pg = await get(`/hack/${IDS.approved1}`); check('hack page renders fixture title and author username', pg.text.includes('Fixture hack 1') && pg.text.includes('alice'));
-const prof = await get('/profile/alice'); check('profile page: follow control rendered as unavailable', /unavailable/i.test(prof.text) && !/>Following</.test(prof.text));
-// --- image optimizer: non-allow-listed upstream must be refused, with no fetch of it
-const imgBefore = fake.log.length;
-const img = await get(`/_next/image?url=${encodeURIComponent(`http://127.0.0.1:${fake.port}/x.png`)}&w=64&q=75`);
-check('image optimizer refuses non-allow-listed URL (400) and does not fetch it', img.status === 400 && fake.log.length === imgBefore, `status ${img.status}`);
-// --- database failure scenarios: must be errors (500), never empty/404/zero, with no database details
-const GENERIC = '{"error":"Internal server error"}';
-const failApi = [
-  ['hacks', ['/api/hacks', `/api/hacks/${IDS.approved1}`, `/api/hacks/${IDS.approved1}/comments`, '/api/users/alice/hacks', '/api/users/alice/card-data']],
-  ['users', [`/api/hacks/${IDS.approved1}`, '/api/users/alice', '/api/users/alice/hacks', '/api/users/alice/card-data']],
-  ['hacks:head', ['/api/users/alice', '/api/users/alice/card-data']],
-  ['comments', [`/api/hacks/${IDS.approved1}/comments`]],
-];
-for (const [key, paths] of failApi) {
-  await fake.fail(key);
-  for (const p of paths) { const x = await get(p); check(`DB failure (${key}) ${p.replace(/[0-9a-f-]{36}/g, ':id')}: generic 500, no details`, x.status === 500 && x.text === GENERIC && !x.text.includes(CANARY), `status ${x.status} ${x.text.slice(0, 60)}`); }
-}
-for (const [key, p] of [['hacks', `/hack/${IDS.approved1}`], ['users', `/hack/${IDS.approved1}`], ['users', '/profile/alice'], ['hacks:head', '/profile/alice'], ['users', '/profile/nobody']]) {
-  await fake.fail(key); const x = await get(p);
-  check(`DB failure (${key}) page ${p.replace(/[0-9a-f-]{36}/g, ':id')}: 500 error (not 404), no details`, x.status === 500 && !x.text.includes(CANARY), `status ${x.status}`);
-}
-await fake.fail(); // clear
-r = await get('/api/users/alice'); check('recovery after clearing failures: profile 200 again', r.status === 200);
-r = await get(`/hack/${IDS.approved1}`); check('recovery after clearing failures: hack page 200 again', r.status === 200);
-// --- global fixture-database assertions
-const writes = fake.log.filter((l) => l.method !== 'GET' && l.method !== 'HEAD');
-const forbidden = fake.log.filter((l) => ['auth_tokens', 'bookmarks', 'archive', 'follows', 'likes', 'user_stats'].includes(l.table));
-const stars = fake.log.filter((l) => /select=\*/.test(l.query) && l.method === 'GET');
-check('no write requests reached the fixture database', writes.length === 0, JSON.stringify(writes));
-check('no query touched auth_tokens/bookmarks/archive/follows/likes/user_stats', forbidden.length === 0, forbidden.map((l) => l.table).join());
-check("no query used select=*", stars.length === 0, stars.map((l) => l.table).join());
-console.log(`\nfixture-database requests: ${fake.log.length}; tables: ${[...new Set(fake.log.map((l) => l.table))].join(', ')}`);
+  // --- build (asynchronous so the fixture server can answer requests made during the build)
+  const buildArgs = opts.buildScript ? [path.resolve(root, opts.buildScript)] : [nextBin, 'build'];
+  const build = track('build', process.execPath, buildArgs, env); await saveState();
+  const { timedOut: buildTimedOut } = await build.waitExit(opts.buildTimeoutMs);
+  if (buildTimedOut) throw new HarnessFailure(EXIT.BUILD_FAILED, `build exceeded ${opts.buildTimeoutMs}ms deadline\n--- build log tail ---\n${build.log}`);
+  if (build.exitCode !== 0) throw new HarnessFailure(EXIT.BUILD_FAILED, `build exited with code ${build.exitCode}\n--- build log tail ---\n${build.log}`);
 
-app.kill('SIGTERM'); await fake.close();
-console.log(`\n${results.length - failed}/${results.length} passed`);
-if (failed) { console.log('--- app log tail ---\n' + appLog.slice(-1500)); process.exit(1); }
+  // --- start and wait for readiness
+  const appArgs = opts.appScript ? [path.resolve(root, opts.appScript), '-p', String(appPort), '-H', '127.0.0.1'] : [nextBin, 'start', '-p', String(appPort), '-H', '127.0.0.1'];
+  const app = track('app', process.execPath, appArgs, env); await saveState();
+  const base = `http://127.0.0.1:${appPort}`;
+  const deadline = Date.now() + opts.startupTimeoutMs;
+  let ready = false;
+  while (Date.now() < deadline) {
+    if (app.exited) throw new HarnessFailure(EXIT.STARTUP_FAILED, `app exited during startup with code ${app.exitCode}\n--- app log tail ---\n${app.log}`);
+    try { const r = await fetch(`${base}/api/hacks`, { signal: AbortSignal.timeout(Math.min(opts.requestTimeoutMs, 2000)) }); await r.arrayBuffer(); if (r.status < 500) { ready = true; break; } } catch { /* not up yet */ }
+    await sleep(250);
+  }
+  if (!ready) throw new HarnessFailure(EXIT.STARTUP_FAILED, `app not ready within ${opts.startupTimeoutMs}ms\n--- app log tail ---\n${app.log}`);
+
+  // --- checks (every request has a deadline; a timeout throws and aborts the run)
+  const get = async (p, init = {}) => {
+    const signal = AbortSignal.timeout(opts.requestTimeoutMs);
+    try {
+      const r = await fetch(base + p, { ...init, signal });
+      const t = await r.text();
+      return { status: r.status, text: t, json: () => JSON.parse(t) };
+    } catch (e) {
+      if (e?.name === 'TimeoutError' || e?.name === 'AbortError') throw new HarnessFailure(EXIT.TIMEOUT_OR_ERROR, `request timeout after ${opts.requestTimeoutMs}ms: ${init.method || 'GET'} ${p}`);
+      throw e;
+    }
+  };
+  const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); if (!ok) failed++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  — ' + detail : ''}`); };
+  try {
+    await runChecks({ fake, IDS, CANARY, get, check });
+  } catch (e) {
+    if (e instanceof HarnessFailure) throw e;
+    throw new HarnessFailure(EXIT.TIMEOUT_OR_ERROR, `check raised ${e?.name}: ${e?.message}\n--- app log tail ---\n${app.log}`);
+  }
+  console.log(`\n${results.length - failed}/${results.length} passed`);
+  exitCode = failed ? EXIT.CHECKS_FAILED : EXIT.OK;
+  if (failed) console.log('--- app log tail ---\n' + app.log.slice(-1500));
+} catch (e) {
+  exitCode = e instanceof HarnessFailure ? e.exitCode : EXIT.TIMEOUT_OR_ERROR;
+  console.error(`FAIL  ${e?.message || e}`);
+} finally {
+  // Network-guard verdict is read before the temp dir is removed; it overrides other outcomes.
+  let violations = [];
+  try { if (tmpRoot) violations = (await readFile(path.join(tmpRoot, 'netguard.log'), 'utf8')).split('\n').filter(Boolean); } catch { /* no log */ }
+  await cleanup();
+  if (violations.length) { console.error(`FAIL  network guard blocked ${violations.length} non-loopback attempt(s): ${violations.slice(0, 5).join(' ')}`); exitCode = EXIT.NET_GUARD; }
+}
+process.exit(forcedExit ?? exitCode);

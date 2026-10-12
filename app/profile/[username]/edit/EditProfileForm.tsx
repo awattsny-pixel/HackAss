@@ -126,7 +126,7 @@ export default function EditProfileForm({ username }: EditProfileFormProps) {
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorData.message || errorMessage;
-        } catch (e) {
+        } catch {
           // If response body is not JSON, use default message
         }
         throw new Error(errorMessage);

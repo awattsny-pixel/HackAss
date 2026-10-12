@@ -14,7 +14,7 @@ export default function HackDetailModal({
   isOpen,
   onClose,
 }: HackDetailModalProps) {
-  const [hack, setHack] = useState<any>(null);
+  const [hack, setHack] = useState<React.ComponentProps<typeof HackDetailContent>['hack'] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

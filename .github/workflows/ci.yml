@@ -1,0 +1,53 @@
+name: CI
+
+# Verification only: no deployment, no secrets, no live-service credentials. All configuration used by the
+# build and the smoke run is dummy or generated locally by the test harness.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install (lockfile only, no lifecycle scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and containment tests
+        run: npm test
+
+      - name: Production build (dummy configuration)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:9
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
+          SUPABASE_URL: http://127.0.0.1:9
+          SUPABASE_SERVICE_KEY: dummy
+          SUPABASE_SERVICE_ROLE_KEY: dummy
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
+
+      - name: Isolated smoke checks (local fixture server only)
+        run: npm run smoke

@@ -28,7 +28,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 async function executeSql(sql, description) {
   console.log(`\n📝 ${description}...`);
   try {
-    const { data, error } = await supabase.rpc('query', {
+    const { error } = await supabase.rpc('query', {
       query: sql
     }).catch(() => {
       // Fallback: try raw query if rpc doesn't work
@@ -97,7 +97,7 @@ async function setupDatabase() {
 
     console.log(`✅ Database verified! ${data?.length || 0} approved hacks found`);
     console.log('\n🎉 Database setup complete!');
-  } catch (err) {
+  } catch {
     console.log('⚠️  Could not verify - but migrations may have succeeded');
     console.log('Check Supabase dashboard to confirm');
   }

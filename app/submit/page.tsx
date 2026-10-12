@@ -26,7 +26,7 @@ export default function SubmitPage() {
     videoUrl: '',
   });
 
-  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string>('');
   const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
   const [submitted, setSubmitted] = useState(false);
@@ -346,11 +346,11 @@ export default function SubmitPage() {
           <ul className="space-y-3 text-gray-300 text-sm">
             <li className="flex gap-3">
               <span className="text-emerald-400 flex-shrink-0">✓</span>
-              <span>Make sure you've actually tried this hack yourself</span>
+              <span>Make sure you&apos;ve actually tried this hack yourself</span>
             </li>
             <li className="flex gap-3">
               <span className="text-emerald-400 flex-shrink-0">✓</span>
-              <span>Be honest about what works and what doesn't</span>
+              <span>Be honest about what works and what doesn&apos;t</span>
             </li>
             <li className="flex gap-3">
               <span className="text-emerald-400 flex-shrink-0">✓</span>

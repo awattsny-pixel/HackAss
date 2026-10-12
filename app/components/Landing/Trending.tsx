@@ -13,10 +13,6 @@ const CATEGORY_STYLES: Record<string, { color: string; emoji: string; bgGradient
   Fitness: { color: 'bg-red-500', emoji: '💪', bgGradient: 'from-red-700 via-red-600 to-orange-700', borderColor: 'border-red-500', badgeColor: 'bg-red-500' },
 };
 
-function getCategoryColor(category: string): string {
-  return CATEGORY_STYLES[category]?.color || 'bg-gray-500';
-}
-
 function getCategoryGlowColor(category: string): string {
   const glowColors: Record<string, string> = {
     Cooking: '#FF9500',
@@ -74,8 +70,19 @@ function normalizeCategoryToStyle(rawCategory: string): string {
     return categoryMap[normalized] || 'Cooking'; // Default to Cooking if no match
 }
 
+interface TrendingHack {
+  id: string;
+  title: string;
+  description?: string;
+  summary?: string;
+  category: string;
+  worked_votes?: number;
+  failed_votes?: number;
+  source_attribution?: string | null;
+}
+
 export default async function Trending() {
-  let hacks = [];
+  let hacks: TrendingHack[] = [];
 
   try {
     console.log('[Trending] Component rendering, VERCEL_URL:', process.env.VERCEL_URL);
@@ -105,18 +112,19 @@ export default async function Trending() {
         const data = await res.json();
         console.log('[Trending] Received hacks:', data.hacks?.length);
         hacks = data.hacks
-          ?.sort((a: any, b: any) => {
-            return (b.worked_votes + b.failed_votes) - (a.worked_votes + a.failed_votes);
+          ?.sort((a: TrendingHack, b: TrendingHack) => {
+            return ((b.worked_votes || 0) + (b.failed_votes || 0)) - ((a.worked_votes || 0) + (a.failed_votes || 0));
           })
           ?.slice(0, 5) || [];
         console.log('[Trending] After processing:', hacks.length);
       } else {
         console.log('[Trending] Response not ok:', res.statusText);
       }
-    } catch (fetchErr: any) {
+    } catch (fetchErr: unknown) {
       clearTimeout(timeout);
-      console.error('[Trending] Fetch error:', fetchErr.message);
-      console.error('[Trending] Error code:', fetchErr.code);
+      const e = fetchErr as { message?: string; code?: string };
+      console.error('[Trending] Fetch error:', e.message);
+      console.error('[Trending] Error code:', e.code);
     }
   } catch (err) {
     console.error('[Trending] Outer error:', err);
@@ -151,10 +159,9 @@ export default async function Trending() {
 
         {hacks.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {hacks.map((hack: any) => {
+            {hacks.map((hack) => {
               const normalizedCategory = normalizeCategoryToStyle(hack.category);
               const slug = hack.category.toLowerCase();
-              const catColor = getCategoryColor(normalizedCategory);
               const catStyle = CATEGORY_STYLES[normalizedCategory] || CATEGORY_STYLES['Cooking'];
               const totalVotes = (hack.worked_votes || 0) + (hack.failed_votes || 0);
 

@@ -32,7 +32,7 @@ export default function ManifestoPage() {
           <section>
             <h2 className="text-4xl font-bold text-white mb-6">The Problem</h2>
             <p className="text-lg text-gray-300 leading-relaxed mb-4">
-              In 2024, the internet's best life hacks are buried in a thousand places:
+              In 2024, the internet&apos;s best life hacks are buried in a thousand places:
             </p>
             <ul className="space-y-3 text-lg text-gray-300">
               <li className="flex items-start gap-4">
@@ -49,7 +49,7 @@ export default function ManifestoPage() {
               </li>
               <li className="flex items-start gap-4">
                 <span className="text-emerald-400 font-bold flex-shrink-0">✓</span>
-                <span>Your mom's group chat, which is actually sometimes the best source.</span>
+                <span>Your mom&apos;s group chat, which is actually sometimes the best source.</span>
               </li>
             </ul>
           </section>
@@ -61,35 +61,35 @@ export default function ManifestoPage() {
               <div className="p-8 border border-gray-800 rounded-lg bg-gradient-to-br from-gray-900 to-black">
                 <h3 className="text-2xl font-bold text-white mb-3">Hacks should be short.</h3>
                 <p className="text-gray-300">
-                  If it takes more than 30 seconds to explain a hack, it's not a hack. It's an essay. We want: title, problem, 3–5 steps, why it works. Nothing else.
+                  If it takes more than 30 seconds to explain a hack, it&apos;s not a hack. It&apos;s an essay. We want: title, problem, 3–5 steps, why it works. Nothing else.
                 </p>
               </div>
 
               <div className="p-8 border border-gray-800 rounded-lg bg-gradient-to-br from-gray-900 to-black">
                 <h3 className="text-2xl font-bold text-white mb-3">Curation by crowd, not by editor.</h3>
                 <p className="text-gray-300">
-                  Editorial judgment is one person's opinion. We trust people who actually tried it. If 10,000 people upvoted a hack because it worked, that means something. If an editor's assistant wrote it because it would rank on Google, it means less.
+                  Editorial judgment is one person&apos;s opinion. We trust people who actually tried it. If 10,000 people upvoted a hack because it worked, that means something. If an editor&apos;s assistant wrote it because it would rank on Google, it means less.
                 </p>
               </div>
 
               <div className="p-8 border border-gray-800 rounded-lg bg-gradient-to-br from-gray-900 to-black">
                 <h3 className="text-2xl font-bold text-white mb-3">Real people, real feedback.</h3>
                 <p className="text-gray-300">
-                  When someone submits a hack, the community tries it. They vote on whether it actually works. They add their own variations. That's how the best hacks rise. It's not perfect, but it's more honest than most.
+                  When someone submits a hack, the community tries it. They vote on whether it actually works. They add their own variations. That&apos;s how the best hacks rise. It&apos;s not perfect, but it&apos;s more honest than most.
                 </p>
               </div>
 
               <div className="p-8 border border-gray-800 rounded-lg bg-gradient-to-br from-gray-900 to-black">
                 <h3 className="text-2xl font-bold text-white mb-3">Mobile first. No ads.</h3>
                 <p className="text-gray-300">
-                  You should be able to scroll through hacks on your phone. Snappy. Fast. Without waiting for 12 ads to load. We're building for the experience, not the ad revenue.
+                  You should be able to scroll through hacks on your phone. Snappy. Fast. Without waiting for 12 ads to load. We&apos;re building for the experience, not the ad revenue.
                 </p>
               </div>
 
               <div className="p-8 border border-gray-800 rounded-lg bg-gradient-to-br from-gray-900 to-black">
                 <h3 className="text-2xl font-bold text-white mb-3">Categories that matter.</h3>
                 <p className="text-gray-300">
-                  We didn't invent 47 niche categories. We started with what people actually search for: Cooking. Cleaning. Money. Travel. Productivity. Home. Tech. Beauty. Fitness. And a few others. That's it.
+                  We didn&apos;t invent 47 niche categories. We started with what people actually search for: Cooking. Cleaning. Money. Travel. Productivity. Home. Tech. Beauty. Fitness. And a few others. That&apos;s it.
                 </p>
               </div>
             </div>
@@ -115,7 +115,7 @@ export default function ManifestoPage() {
               </li>
               <li className="flex items-start gap-4">
                 <span className="text-blue-400 font-bold flex-shrink-0">→</span>
-                <span>Never add ads. We'll figure out money differently.</span>
+                <span>Never add ads. We&apos;ll figure out money differently.</span>
               </li>
               <li className="flex items-start gap-4">
                 <span className="text-blue-400 font-bold flex-shrink-0">→</span>
@@ -139,7 +139,7 @@ export default function ManifestoPage() {
                 Help us build this.
               </h3>
               <p className="text-lg text-gray-400 mb-8 max-w-2xl mx-auto">
-                We're just getting started. Have a hack that changed your life? Submit it. Try someone else's hack. Vote on what works. That's how we build the internet's best shortcut.
+                We&apos;re just getting started. Have a hack that changed your life? Submit it. Try someone else&apos;s hack. Vote on what works. That&apos;s how we build the internet&apos;s best shortcut.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link

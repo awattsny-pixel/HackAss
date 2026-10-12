@@ -185,7 +185,7 @@ async function seedHacks(): Promise<void> {
       seed_problem_id: solution.problem_id,
     }));
 
-    const { data: insertedHacks, error: insertError } = await supabase
+    const { error: insertError } = await supabase
       .from('hacks')
       .insert(hacksToInsert);
 

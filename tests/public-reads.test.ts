@@ -16,6 +16,19 @@ const U1 = ID(101), U2 = ID(102);
 
 const CANARY = 'DB-DETAIL-LEAK-CANARY';
 // `fail` keys: 'table' fails non-count queries on that table; 'table:head' fails count (head) queries.
+interface QueryBuilder {
+  select(c: string, o?: { count?: string; head?: boolean }): QueryBuilder;
+  eq(c: string, v: unknown): QueryBuilder;
+  in(c: string, vs: unknown[]): QueryBuilder;
+  lt(c: string, v: string): QueryBuilder;
+  order(c: string, o: { ascending: boolean }): QueryBuilder;
+  range(a: number, b: number): QueryBuilder;
+  limit(n: number): QueryBuilder;
+  maybeSingle(): Promise<unknown>;
+  single(): Promise<unknown>;
+  then(res: (v: unknown) => unknown): Promise<unknown>;
+}
+
 function makeDb(tables: Record<string, Row[]>, fail: string[] = []) {
   const calls: { table: string; select?: string }[] = [];
   const from = (table: string) => {
@@ -25,7 +38,7 @@ function makeDb(tables: Record<string, Row[]>, fail: string[] = []) {
     calls.push(entry);
     const failing = () => fail.includes(head ? `${table}:head` : table);
     const failure = () => ({ data: null, count: null, error: { message: CANARY, code: 'XX000', details: CANARY } });
-    const q: any = {
+    const q: QueryBuilder = {
       select(c: string, o?: { count?: string; head?: boolean }) { entry.select = c; head = !!o?.head; wantCount = !!o?.count; return q; },
       eq(c: string, v: unknown) { rows = rows.filter((r) => r[c] === v); return q; },
       in(c: string, vs: unknown[]) { rows = rows.filter((r) => vs.includes(r[c])); return q; },
@@ -181,7 +194,7 @@ test('card data: no bespoke-token lookup; follow state is explicitly unavailable
 
 test('wiring: read routes hold no queries (all DB access is in the tested library) and no route uses auth_tokens', () => {
   const files: string[] = [];
-  const walk = (d: string) => { for (const n of readdirSync(d)) { const p = join(d, n); statSync(p).isDirectory() ? walk(p) : n === 'route.ts' && files.push(p); } };
+  const walk = (d: string) => { for (const n of readdirSync(d)) { const p = join(d, n); if (statSync(p).isDirectory()) walk(p); else if (n === 'route.ts') files.push(p); } };
   walk(join(root, 'app/api'));
   const READ = ['app/api/hacks/route.ts', 'app/api/hacks/[hackId]/route.ts', 'app/api/hacks/[hackId]/comments/route.ts', 'app/api/users/[username]/route.ts', 'app/api/users/[username]/hacks/route.ts', 'app/api/users/[username]/card-data/route.ts'];
   for (const f of files) {
@@ -242,7 +255,8 @@ test('page loaders: a required query failure is "error", never "not_found", and 
 });
 
 const GENERIC_500 = '{"error":"Internal server error"}';
-const FAILURE_CASES: [string, string, (db: any) => Promise<Response>][] = [
+type TestDb = ReturnType<typeof makeDb>;
+const FAILURE_CASES: [string, string, (db: TestDb) => Promise<Response>][] = [
   ['hack list', 'hacks', (db) => lib.getApprovedHackList(db)],
   ['hack detail: hack query', 'hacks', (db) => lib.getPublicHack(db, H_APPROVED)],
   ['hack detail: author query', 'users', (db) => lib.getPublicHack(db, H_APPROVED)],

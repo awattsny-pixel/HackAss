@@ -77,7 +77,7 @@ export function startFake() {
   });
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({
     server, log, port: server.address().port,
-    fail: (...keys) => fetch(`http://127.0.0.1:${server.address().port}/__fail?keys=${keys.join(',')}`),
-    close: () => new Promise((r) => server.close(r)),
+    fail: (...keys) => fetch(`http://127.0.0.1:${server.address().port}/__fail?keys=${keys.join(',')}`, { signal: AbortSignal.timeout(5000) }),
+    close: () => new Promise((r) => { server.closeAllConnections?.(); server.close(r); }),
   })));
 }

@@ -14,7 +14,6 @@ interface HackerCardTriggerProps {
 export function HackerCardTrigger({
   username,
   children,
-  showVerificationBadge = false,
 }: HackerCardTriggerProps) {
   const { data, loading, fetch } = useHackerCardData(username);
 
