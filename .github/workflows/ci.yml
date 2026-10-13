@@ -97,6 +97,9 @@ jobs:
       - name: Local Auth, session and MFA checks
         run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-auth-spikes.mjs
 
+      - name: Local F2-A authority checks (direct JWT RPC, worker login, rollback rehearsal)
+        run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-f2a-checks.mjs
+
       - name: Stop the stack
         if: always()
         run: supabase stop --no-backup

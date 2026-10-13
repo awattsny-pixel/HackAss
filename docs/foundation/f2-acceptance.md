@@ -27,3 +27,14 @@ shim) in CI, plus the generic requirements. "Real stack" rows need the Auth serv
 
 Generic: containment, privacy and smoke suites stay green; no application schema is applied outside migrations; no secret in
 the repository (`npm run scan:secrets`).
+
+## F2-A progress (database authority foundations)
+| Row | F2-A evidence | Status |
+|---|---|---|
+| G-1 Replay | the three migrations apply from empty on every `supabase db reset` / `start`; idempotent role creation | partly (no full replay-twice test yet) |
+| G-2 Grant allowlist | golden inventory in `supabase/tests/database/010_roles_and_grants.test.sql` (roles, schemas, tables, functions) | done for F2-A objects; extend per slice |
+| G-3 Function conformance | owner, SECURITY DEFINER, `search_path = ''`, EXECUTE grantees, guard-first body, qualified references (same file) | done for F2-A functions |
+| G-4 Forbidden writes | members and `anon`/`service_role`/worker cannot write accounts or staff assignments (`020`, `010`) | done for the two tables |
+| I-3 Direct RPC authorization | `020_authorization.test.sql` (claims matrix) and `scripts/local-f2a-checks.mjs` (real JWTs via PostgREST): signed-out unexpired token, missing session, user/session mismatch (claims level), banned/deleted user, disabled account, removed staff, aal1, stale MFA | done locally; hosted pending |
+| Worker confinement | `hackass_worker` logs in with a password and can execute only `worker.healthcheck()` | done locally; pooler pending |
+| I-1, I-2, I-4, I-5, S-*, H-1, P-1, R-1 | need tables and functions that do not exist yet | not started |

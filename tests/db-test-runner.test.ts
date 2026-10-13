@@ -224,3 +224,28 @@ test('the local Auth check script prints facts only: it never logs keys, tokens 
   for (const m of src.matchAll(/console\.(?:log|error)\(([^;]*)\);/g)) assert.ok(!/\b(PUB|SECRET|JWT_SECRET|password|access_token|refresh_token|token)\b(?!\s*:)/i.test(m[1].replace(/`[^`]*`/g, (t) => t.replace(/\$\{[^}]*\}/g, (e) => (/(PUB|SECRET|JWT_SECRET|\.password|access_token|refresh_token|\btoken\b)/.test(e) ? e : '')))), `possible secret in log call: ${m[1].slice(0, 80)}`);
   assert.match(src, /drop function if exists public\.hackass_probe_claims\(\), public\.hackass_probe_session_alive\(\)/);
 });
+
+test('probeCommand is bounded: a hung `docker --version` is killed at the timeout and counts as unavailable (regression: the probe used to have no timeout)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hackass-probe-'));
+  try {
+    const hung = join(dir, 'hung-docker'); writeFileSync(hung, '#!/bin/sh\nexec sleep 30\n'); chmodSync(hung, 0o755);
+    const good = join(dir, 'good-docker'); writeFileSync(good, '#!/bin/sh\necho Docker version 0\n'); chmodSync(good, 0o755);
+    const bad = join(dir, 'bad-docker'); writeFileSync(bad, '#!/bin/sh\nexit 3\n'); chmodSync(bad, 0o755);
+    const t0 = Date.now();
+    assert.equal(dbTest.probeCommand(hung, 400), false);
+    assert.ok(Date.now() - t0 < 5000, `the hung probe took ${Date.now() - t0}ms`);
+    assert.equal(dbTest.probeCommand(good, 2000), true);
+    assert.equal(dbTest.probeCommand(bad, 2000), false);
+    assert.equal(dbTest.probeCommand(join(dir, 'does-not-exist'), 2000), false);
+    assert.ok(Number.isFinite(DEFAULT_TIMEOUTS.probeMs) && DEFAULT_TIMEOUTS.probeMs > 0 && DEFAULT_TIMEOUTS.probeMs <= 30_000, 'a default probe timeout exists');
+    // resolveTools falls back to Docker Desktop's CLI when the probe reports the PATH docker unavailable (as a hung one does)
+    const r = dbTest.resolveTools({ env: { PATH: '/usr/bin' }, exists: (p: string) => p.endsWith('/Docker.app/Contents/Resources/bin/docker'), home: '/h', probe: (c: string) => dbTest.probeCommand(c === 'docker' ? hung : c, 300) });
+    assert.match(r.docker, /Docker\.app\/Contents\/Resources\/bin\/docker$/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the CLI wires the bounded probe: no unbounded spawnSync(..., --version) remains in the runner', () => {
+  const src = readFileSync(join(root, 'scripts/db-test.mjs'), 'utf8');
+  assert.match(src, /const probe = \(d\) => probeCommand\(d, timeouts\.probeMs\);/);
+  for (const m of src.matchAll(/spawnSync\([^)]*\)/g)) assert.match(m[0] + src.slice(src.indexOf(m[0]), src.indexOf(m[0]) + 220), /timeout/, `spawnSync without a timeout: ${m[0].slice(0, 60)}`);
+});

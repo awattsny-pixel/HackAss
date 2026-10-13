@@ -19,8 +19,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const EXIT = { OK: 0, TESTS_FAILED: 1, BLOCKED: 2, START_FAILED: 3, TIMEOUT: 4, CLEANUP_FAILED: 8 };
-export const DEFAULT_TIMEOUTS = { preflightMs: 20_000, startMs: 10 * 60_000, testMs: 10 * 60_000, stopMs: 3 * 60_000 };
+export const DEFAULT_TIMEOUTS = { probeMs: 10_000, preflightMs: 20_000, startMs: 10 * 60_000, testMs: 10 * 60_000, stopMs: 3 * 60_000 };
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * Is `cmd --version` answering? Bounded: a hung binary (a stuck Docker CLI, a dead socket) is killed at the timeout and
+ * counts as "not available" instead of blocking discovery forever. Never throws.
+ */
+export function probeCommand(cmd, timeoutMs = DEFAULT_TIMEOUTS.probeMs) {
+  const r = spawnSync(cmd, ['--version'], { stdio: 'ignore', timeout: timeoutMs, killSignal: 'SIGKILL' });
+  return r.status === 0 && !r.error;
+}
 
 /**
  * Finds the tools to use. The Supabase CLI must be the pinned version (scripts/supabase-cli-pin.json): an explicit
@@ -95,10 +104,10 @@ export function runDbTests({ exec = execCommand, env = process.env, timeouts = {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const num = (name) => { const a = process.argv.find((x) => x.startsWith(`--${name}=`)); return a ? Number(a.split('=')[1]) : undefined; };
   const timeouts = Object.fromEntries(Object.entries({ preflightMs: num('preflight-timeout-ms'), startMs: num('start-timeout-ms'), testMs: num('test-timeout-ms'), stopMs: num('stop-timeout-ms') }).filter(([, v]) => Number.isFinite(v)));
-  const probe = (d) => spawnSync(d, ['--version'], { stdio: 'ignore' }).status === 0;
+  const probe = (d) => probeCommand(d, timeouts.probeMs);
   const tools = resolveTools({ probe });
   const extraSteps = process.argv.includes('--auth-spikes')
-    ? [{ name: 'local Auth/session/MFA checks', cmd: process.execPath, args: ['--conditions=react-server', '--disable-warning=MODULE_TYPELESS_PACKAGE_JSON', path.join(root, 'scripts/local-auth-spikes.mjs')], env: { SUPABASE_BIN: tools.supabase, DOCKER_BIN: tools.docker } }]
+    ? ['local-auth-spikes.mjs', 'local-f2a-checks.mjs'].map((file) => ({ name: file === 'local-f2a-checks.mjs' ? 'F2-A authority checks' : 'local Auth/session/MFA checks', cmd: process.execPath, args: ['--conditions=react-server', '--disable-warning=MODULE_TYPELESS_PACKAGE_JSON', path.join(root, 'scripts', file)], env: { SUPABASE_BIN: tools.supabase, DOCKER_BIN: tools.docker } }))
     : [];
   process.exitCode = runDbTests({ timeouts, tools: { docker: tools.docker, supabase: tools.supabase }, env: tools.env, expectCliVersion: tools.cliVersion, extraSteps });
 }

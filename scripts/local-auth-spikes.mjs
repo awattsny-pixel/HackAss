@@ -8,77 +8,12 @@
 // It creates throwaway users and a few `hackass_probe_*` functions in the disposable local database (destroyed by
 // `supabase stop --no-backup`; dropped again at the end). It prints facts and PASS/FAIL, never keys, tokens or passwords.
 // Exit 0 all checks passed, 1 a check failed, 2 the stack is not reachable.
-import { createHmac, createPublicKey, createVerify, randomBytes } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
-import { createClient } from '@supabase/supabase-js';
 import { createUserDb } from '../src/platform/db/clients.ts';
+import { API, MAIL, PUB, admin, anon, confirmedSession, createRunner, decode, newUser, ok, psql as rawPsql, rpc as rawRpc, signatureValid, totp, wait } from './lib/local-stack.mjs';
 
-const SUPABASE = process.env.SUPABASE_BIN || 'supabase';
-const DOCKER = process.env.DOCKER_BIN || 'docker';
-const PROJECT = 'hackass-local';
-
-// ---- stack configuration (read from the running stack; never printed) ----------------------------------------------
-const st = spawnSync(SUPABASE, ['status', '-o', 'json'], { encoding: 'utf8', timeout: 60_000 });
-if (st.status !== 0) { console.error('BLOCKED  the local stack is not running (supabase status failed)'); process.exit(2); }
-const cfg = JSON.parse(st.stdout);
-const API = cfg.API_URL, PUB = cfg.PUBLISHABLE_KEY || cfg.ANON_KEY, SECRET = cfg.SECRET_KEY || cfg.SERVICE_ROLE_KEY, JWT_SECRET = cfg.JWT_SECRET;
-const MAIL = cfg.MAILPIT_URL || cfg.INBUCKET_URL;
-if (!API || !PUB || !SECRET) { console.error('BLOCKED  the stack did not report API_URL and keys'); process.exit(2); }
-const noPersist = { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } };
-const anon = () => createClient(API, PUB, noPersist);
-const admin = createClient(API, SECRET, noPersist);
-
-// ---- helpers ---------------------------------------------------------------------------------------------------------
-const b64u = (s) => Buffer.from(s, 'base64url');
-const decode = (jwt) => { const [h, p] = jwt.split('.'); return { header: JSON.parse(b64u(h).toString()), claims: JSON.parse(b64u(p).toString()) }; };
-async function signatureValid(jwt) {
-  const [h, p, s] = jwt.split('.');
-  const { header } = decode(jwt);
-  if (header.alg === 'HS256') return createHmac('sha256', JWT_SECRET).update(`${h}.${p}`).digest('base64url') === s;
-  const jwks = await (await fetch(`${API}/auth/v1/.well-known/jwks.json`)).json();
-  const jwk = jwks.keys.find((k) => k.kid === header.kid) ?? jwks.keys[0];
-  const v = createVerify(header.alg === 'ES256' ? 'SHA256' : 'SHA256');
-  v.update(`${h}.${p}`);
-  return v.verify({ key: createPublicKey({ key: jwk, format: 'jwk' }), dsaEncoding: 'ieee-p1363' }, b64u(s));
-}
-function psql(sql) {
-  const r = spawnSync(DOCKER, ['exec', '-i', `supabase_db_${PROJECT}`, 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-At'], { input: sql, encoding: 'utf8', timeout: 60_000 });
-  if (r.status !== 0) throw new Error(`psql failed: ${(r.stderr || '').split('\n')[0]}`);
-  return r.stdout.trim();
-}
-const rpc = async (name, token) => {
-  const res = await fetch(`${API}/rest/v1/rpc/${name}`, { method: 'POST', headers: { apikey: PUB, authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: '{}' });
-  return { status: res.status, body: await res.json().catch(() => null) };
-};
-function totp(secretBase32) {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  let bits = ''; for (const c of secretBase32.replace(/=+$/, '').toUpperCase()) bits += alphabet.indexOf(c).toString(2).padStart(5, '0');
-  const key = Buffer.from(bits.match(/.{8}/g).map((b) => parseInt(b, 2)));
-  const counter = Buffer.alloc(8); counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000)));
-  const h = createHmac('sha1', key).update(counter).digest();
-  const o = h[19] & 15;
-  return String(((h[o] & 0x7f) << 24 | h[o + 1] << 16 | h[o + 2] << 8 | h[o + 3]) % 1_000_000).padStart(6, '0');
-}
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const rnd = () => randomBytes(6).toString('hex');
-const newUser = () => ({ email: `spike-${rnd()}@example.test`, password: `Pw-${randomBytes(12).toString('base64url')}` });
-async function confirmedSession() {
-  const u = newUser();
-  const { error } = await admin.auth.admin.createUser({ email: u.email, password: u.password, email_confirm: true });
-  if (error) throw new Error(`admin.createUser: ${error.message}`);
-  const c = anon();
-  const { data, error: e2 } = await c.auth.signInWithPassword(u);
-  if (e2) throw new Error(`signIn: ${e2.message}`);
-  return { u, c, session: data.session };
-}
-
-// ---- runner ----------------------------------------------------------------------------------------------------------
-const results = [];
-async function check(id, title, fn) {
-  try { const facts = await fn(); results.push({ id, ok: true }); console.log(`PASS  ${id}  ${title}${facts ? `  [${facts}]` : ''}`); }
-  catch (e) { results.push({ id, ok: false }); console.log(`FAIL  ${id}  ${title}  -> ${e.message}`); }
-}
-const ok = (cond, msg) => { if (!cond) throw new Error(msg); };
+const { check, results, failed: countFailed } = createRunner();
+const psql = (text) => rawPsql(text).out;
+const rpc = (name, token) => rawRpc('public', name, token); // the probe functions live in public (exposed by default)
 
 // probe objects in the disposable local database
 psql(`
@@ -208,7 +143,7 @@ try {
   try { psql(`drop function if exists public.hackass_probe_claims(), public.hackass_probe_session_alive();`); } catch (e) { console.log(`WARN  probe cleanup: ${e.message}`); }
 }
 
-const failed = results.filter((r) => !r.ok).length;
+const failed = countFailed();
 console.log(`\nlocal Auth/session/MFA checks: ${results.length - failed}/${results.length} passed${failed ? `, ${failed} FAILED` : ''}`);
 console.log('NOT run here (hosted/browser only): S1 real-browser HttpOnly cookie behaviour over HTTPS; S5 worker role through the hosted pooler; S6 hosted key model, SMTP and rate limits.');
 process.exit(failed ? 1 : 0);

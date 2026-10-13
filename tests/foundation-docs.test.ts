@@ -32,7 +32,8 @@ test('the CLI version is pinned identically in CI and in scripts/supabase-cli-pi
   assert.equal(db.find((s) => s.uses?.startsWith('supabase/setup-cli'))!.with?.version, pinFile.version);
   assert.match(read('supabase/config.toml'), new RegExp(`CLI ${pinFile.version.replace(/\./g, '\\.')}`));
   const i = (pred: (s: Step) => boolean) => db.findIndex(pred);
-  assert.ok(i((s) => s.run === 'supabase test db') < i((s) => /local-auth-spikes\.mjs/.test(s.run ?? '')) && i((s) => /local-auth-spikes\.mjs/.test(s.run ?? '')) < i((s) => /^supabase stop/.test(s.run ?? '')));
+  const spikes = i((s) => /local-auth-spikes\.mjs/.test(s.run ?? '')), f2a = i((s) => /local-f2a-checks\.mjs/.test(s.run ?? ''));
+  assert.ok(i((s) => s.run === 'supabase test db') < spikes && spikes < f2a && f2a < i((s) => /^supabase stop/.test(s.run ?? '')), 'pgTAP, then the Auth checks, then the F2-A authority checks, then stop');
 });
 
 test('local Supabase config carries the settings the design depends on', () => {
@@ -46,11 +47,11 @@ test('local Supabase config carries the settings the design depends on', () => {
   assert.match(toml, /CLI 2\.120\.0/);
 });
 
-test('pgTAP platform test exists and checks the real stack (roles, Auth sessions table, extensions); no application schema is applied in F1', () => {
+test('pgTAP platform test exists and checks the real stack (roles, Auth sessions table, extensions); the F2-A schema is applied only through migrations', () => {
   const sql = read('supabase/tests/database/000_platform.test.sql');
   for (const needle of ["has_role('anon'", "has_role('authenticated'", "has_role('service_role'", "has_table('auth', 'sessions'", "'pg_trgm'", "'citext'", 'select plan(9)']) assert.ok(sql.includes(needle), needle);
   assert.equal((sql.match(/^select (has_|ok)/gm) ?? []).length, 9, 'plan count must match the assertions');
-  assert.deepEqual(readdirSync(join(root, 'supabase/migrations')), ['.gitkeep'], 'F1 must not add migrations');
+  assert.deepEqual(readdirSync(join(root, 'supabase/migrations')).filter((f) => f !== '.gitkeep').map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql'], 'only the three F2-A migrations exist (checked in detail by f2a-migrations.test.ts)');
 });
 
 test('db:test reports BLOCKED (exit 2) with an actionable message when Docker is unavailable, never a silent pass', () => {

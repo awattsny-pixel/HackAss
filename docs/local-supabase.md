@@ -23,8 +23,10 @@ cookie behaviour.
 - Docker: Docker Desktop. On macOS the runner also finds Docker Desktop's own `docker` and per-user socket
   (`~/.docker/run/docker.sock`) when `/usr/local/bin/docker` and `/var/run/docker.sock` are not linked. `DOCKER_BIN`,
   `SUPABASE_BIN` and `DOCKER_HOST` override discovery.
-- `npm run db:test` runs the pgTAP tests; `npm run db:test:auth` additionally runs `scripts/local-auth-spikes.mjs` (local
-  Auth/session/MFA checks, see `docs/spikes/f1-hosted-spikes.md`) against the same stack before stopping it.
+- `npm run db:test` runs the pgTAP tests (platform sanity, F2-A role/grant inventory, F2-A authorization matrix); `npm run db:test:auth`
+  additionally runs `scripts/local-auth-spikes.mjs` (local Auth/session/MFA checks, `docs/spikes/f1-hosted-spikes.md`) and
+  `scripts/local-f2a-checks.mjs` (real-JWT RPC calls, worker login, grant inventory, rollback rehearsal; `docs/db/f2a-authority.md`)
+  against the same stack before stopping it. The discovery probe (`docker --version`) is time-bounded like every other command.
 
 ## Status
 Run on the development machine (Intel Mac, macOS 15.7.7, Docker Desktop 4.95.0, Docker engine 29.8.2, CLI 2.120.0) on 2026-10-13:

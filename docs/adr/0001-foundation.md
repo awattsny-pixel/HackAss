@@ -56,7 +56,9 @@ invoked directly, bypassing any web handler, so a handler calling `getUser()` pr
 re-verifies, in its own transaction: the user exists, is not banned or deleted and has an active profile; the session named
 by the JWT's `session_id` claim still exists and has not expired (`auth.sessions`); for staff functions, an active
 `staff_roles` row, `aal = aal2`, and a fresh MFA timestamp from the `amr` claim within the step-up window. Local result (real local stack, 2026-10-13): a `SECURITY DEFINER` function owned by the non-superuser `postgres` role can read
-`auth.sessions` and sees a signed-out session disappear, `auth.jwt()` exposes `session_id`, `aal` and `amr` with timestamps, and
+`auth.sessions` and sees a signed-out session disappear (this proves `postgres`, not the application owner: `hackass_owner` holds no
+privilege on `auth`, because `postgres` cannot delegate USAGE on that schema, so F2-A reaches `auth.sessions` through one `postgres`-owned
+bridge function, `app_bridge.session_valid`, and proves the guards under `hackass_owner` — see `docs/db/f2a-authority.md`), `auth.jwt()` exposes `session_id`, `aal` and `amr` with timestamps, and
 PostgREST keeps accepting a revoked token, so the in-database check is required. **Hosted** feasibility (spikes S3, S4) is still
 unverified; if it fails there, this ADR must be amended before F2 relies on it.
 
