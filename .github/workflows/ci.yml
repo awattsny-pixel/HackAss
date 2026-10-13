@@ -100,6 +100,9 @@ jobs:
       - name: Local F2-A authority checks (direct JWT RPC, worker login, rollback rehearsal)
         run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-f2a-checks.mjs
 
+      - name: Local F2-B content checks (JWT RPC, immutability, genuine concurrency)
+        run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-f2b-checks.mjs
+
       - name: Stop the stack
         if: always()
         run: supabase stop --no-backup

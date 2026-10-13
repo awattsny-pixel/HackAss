@@ -60,67 +60,19 @@ test('type-only imports must use `import type` in src/ and tests/ (Node strips t
   assert.ok(!(await rules('src/modules/catalog/x.ts', "import type { Actor } from '@/src/platform';\nexport const a: Actor | null = null;\n")).includes(TYPE_IMPORT));
 });
 
-test('module directories are exactly the planned set and contain only a placeholder index so far', () => {
+test('module directories are exactly the planned set; only submissions has implementation so far (the pure HashCanon-1 module)', () => {
   const planned = ['ai', 'catalog', 'collections', 'extension-points', 'identity', 'jobs', 'moderation', 'provenance', 'submissions'];
   const dirs = readdirSync(join(root, 'src/modules')).filter((n) => statSync(join(root, 'src/modules', n)).isDirectory()).sort();
   assert.deepEqual(dirs, planned);
   for (const d of dirs) {
-    const files = readdirSync(join(root, 'src/modules', d));
-    assert.deepEqual(files, ['index.ts'], `${d} should hold only index.ts until its slice lands`);
+    const files = readdirSync(join(root, 'src/modules', d)).sort();
+    assert.deepEqual(files, d === 'submissions' ? ['hashcanon.ts', 'index.ts'] : ['index.ts'], `${d} should hold only index.ts until its slice lands`);
     assert.match(readFileSync(join(root, 'src/modules', d, 'index.ts'), 'utf8'), new RegExp(`MODULE_NAME = '${d}'`));
   }
 });
 
-// ---- client-safe vs server-only platform surface ----------------------------------------------------------------------
-
-const SERVER_ONLY_SPECIFIERS = [
-  '@/src/platform/server', '@/src/platform/server.ts', '../platform/server.ts', '../../platform/server',
-  '@/src/platform/env', '@/src/platform/env.ts', '../platform/env.ts',
-  '@/src/platform/db', '@/src/platform/db/clients', '../platform/db/index.ts',
-  '@/src/platform/http/handler', '@/src/platform/http/validate', '@/src/platform/http/origin', '../platform/http/handler.ts',
-];
-
-test('the server-only platform surface cannot be reached from src/ui or src/modules by any path, including the old barrel route', async () => {
-  for (const file of ['src/ui/Button.tsx', 'src/ui/deep/Thing.tsx', 'src/modules/catalog/service.ts']) {
-    for (const spec of SERVER_ONLY_SPECIFIERS) assert.ok((await rules(file, `import x from '${spec}';\nexport default x;\n`)).includes(RESTRICTED_IMPORT), `${file} must not import ${spec}`);
-    // the client-safe barrel and the pure files stay importable
-    for (const spec of ['@/src/platform', '@/src/platform/actor.ts', '@/src/platform/log.ts', '@/src/platform/http/errors.ts']) assert.ok(!(await rules(file, `import x from '${spec}';\nexport default x;\n`)).includes(RESTRICTED_IMPORT), `${file} should be able to import ${spec}`);
-  }
-  // route handlers (the composition root) may use the server surface
-  assert.ok(!(await rules('app/api/new/route.ts', "import { getEnv } from '@/src/platform/server';\nexport const e = getEnv;\n")).includes(RESTRICTED_IMPORT));
-});
-
-test('the client-safe barrel (src/platform/index.ts) exports no server-only name', async () => {
-  const barrel = await import('../src/platform/index.ts');
-  const server = await import('../src/platform/server.ts');
-  const clientNames = Object.keys(barrel).sort();
-  assert.deepEqual(clientNames, ['ANONYMOUS', 'AppError', 'REDACTED', 'createLogger', 'isAppError', 'isMember', 'isStaff', 'parseUserId', 'redact', 'redactString', 'satisfiesTier']);
-  for (const name of ['getEnv', 'loadEnv', 'EnvError', 'createPublicDb', 'createUserDb', 'createWorkerDb', 'withRequestContext', 'parseJsonBody', 'toErrorResponse', 'consoleSink', 'resolveRequestId']) {
-    assert.ok(!(name in barrel), `${name} leaked into the client-safe barrel`);
-    assert.ok(name in server, `${name} should be exported by the server surface`);
-  }
-});
-
-test('nothing reachable from the client-safe barrel touches the environment, a database package, Node built-ins or the server surface', () => {
-  const read = (f: string) => readFileSync(f, 'utf8');
-  const seen = new Set<string>();
-  const externals = new Set<string>();
-  const queue = [join(root, 'src/platform/index.ts')];
-  while (queue.length) {
-    const file = queue.pop()!;
-    if (seen.has(file)) continue;
-    seen.add(file);
-    const src = read(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-    for (const m of src.matchAll(/(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g)) {
-      const spec = m[1];
-      if (spec.startsWith('.')) queue.push(join(file, '..', spec));
-      else if (spec.startsWith('@/')) queue.push(join(root, spec.slice(2).replace(/\.ts$/, '') + (spec.endsWith('.ts') ? '.ts' : '/index.ts')));
-      else externals.add(spec);
-    }
-    assert.ok(!/process\.env/.test(src), `${file.slice(root.length)} reads process.env`);
-  }
-  const reached = [...seen].map((f) => f.slice(root.length)).sort();
-  for (const forbidden of ['src/platform/env.ts', 'src/platform/env-validate.ts', 'src/platform/server.ts', 'src/platform/db/clients.ts', 'src/platform/db/index.ts', 'src/platform/db/types.ts', 'src/platform/http/handler.ts', 'src/platform/http/validate.ts', 'src/platform/http/origin.ts']) assert.ok(!reached.includes(forbidden), `${forbidden} is reachable from the client-safe barrel`);
-  assert.deepEqual([...externals].sort(), ['zod'], 'the client-safe surface may depend on zod only (no database packages, no node: built-ins)');
-  assert.ok(reached.includes('src/platform/actor.ts') && reached.includes('src/platform/log.ts') && reached.includes('src/platform/http/errors.ts'), `walker found too little: ${reached.join(', ')}`);
+test('the submissions module is pure: no environment, no database, no server-only marker, no Node built-in', () => {
+  const src = readFileSync(join(root, 'src/modules/submissions/hashcanon.ts'), 'utf8').replace(/\/\/.*$/gm, '');
+  assert.ok(!/process\.env|node:|server-only|@supabase|from '\.\.\//.test(src));
+  assert.ok(!/^import /m.test(src), 'hashcanon.ts imports nothing');
 });

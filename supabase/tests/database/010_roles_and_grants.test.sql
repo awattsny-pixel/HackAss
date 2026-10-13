@@ -35,8 +35,8 @@ select is(
 
 -- ---- schemas --------------------------------------------------------------------------------------------------------
 select is(
-  (select string_agg(nspname || '=' || pg_get_userbyid(nspowner), ',' order by nspname) from pg_namespace where nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge')),
-  'api=hackass_owner,app=hackass_owner,app_bridge=postgres,app_guard=hackass_owner,worker=hackass_owner',
+  (select string_agg(nspname || '=' || pg_get_userbyid(nspowner), ',' order by nspname) from pg_namespace where nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content')),
+  'api=hackass_owner,app=hackass_owner,app_bridge=postgres,app_content=hackass_owner,app_guard=hackass_owner,worker=hackass_owner',
   'schema owners');
 
 select is(
@@ -44,17 +44,18 @@ select is(
      from pg_namespace n
      cross join (select rolname from pg_roles where rolname in ('anon', 'authenticated', 'service_role', 'authenticator', 'supabase_auth_admin', 'hackass_owner', 'hackass_worker', 'postgres')) r
      cross join (values ('USAGE'), ('CREATE')) p(priv)
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge')
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content')
       and has_schema_privilege(r.rolname, n.oid, p.priv)),
   'api:anon:USAGE, api:authenticated:USAGE, api:hackass_owner:CREATE, api:hackass_owner:USAGE, api:postgres:USAGE, '
   'app:hackass_owner:CREATE, app:hackass_owner:USAGE, app:postgres:USAGE, '
   'app_bridge:hackass_owner:USAGE, app_bridge:postgres:CREATE, app_bridge:postgres:USAGE, '
+  'app_content:hackass_owner:CREATE, app_content:hackass_owner:USAGE, app_content:postgres:USAGE, '
   'app_guard:hackass_owner:CREATE, app_guard:hackass_owner:USAGE, app_guard:postgres:USAGE, app_guard:supabase_auth_admin:USAGE, '
   'worker:hackass_owner:CREATE, worker:hackass_owner:USAGE, worker:hackass_worker:USAGE, worker:postgres:USAGE',
   'schema privileges: exactly the intended grants. postgres (break-glass) shows USAGE because the platform makes it a member of pg_read_all_data; nothing for service_role, authenticator or hackass_worker on app/app_guard/app_bridge');
 select is(
   (select count(*)::int from pg_namespace n, pg_catalog.aclexplode(n.nspacl) x
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge') and x.grantee = 0),
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content') and x.grantee = 0),
   0, 'PUBLIC has no privilege on any application schema');
 
 -- ---- tables ---------------------------------------------------------------------------------------------------------
@@ -62,54 +63,93 @@ select is(
   (select coalesce(string_agg(c.relname || ':' || r.rolname || ':' || p.priv, ', ' order by c.relname, r.rolname, p.priv), '')
      from pg_class c
      join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'app'
-     cross join (select rolname from pg_roles where rolname in ('anon', 'authenticated', 'service_role', 'authenticator', 'supabase_auth_admin', 'hackass_worker', 'postgres')) r
+     cross join (select rolname from pg_roles where rolname in ('anon', 'authenticated', 'service_role', 'authenticator', 'supabase_auth_admin', 'hackass_worker')) r
      cross join (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')) p(priv)
     where c.relkind = 'r' and has_table_privilege(r.rolname, c.oid, p.priv)),
-  'accounts:postgres:SELECT, staff_assignments:postgres:SELECT',
-  'no application role (anon, authenticated, service_role, authenticator, supabase_auth_admin, hackass_worker) holds any table privilege on app.*; only break-glass postgres can SELECT (via pg_read_all_data), never write');
+  '',
+  'no application role (anon, authenticated, service_role, authenticator, supabase_auth_admin, hackass_worker) holds ANY privilege on ANY app.* table: members and the worker have no direct table-write (or read) access');
 select is(
-  (select string_agg(c.relname || ':' || c.relacl::text, ' ; ' order by c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r'),
-  'accounts:{hackass_owner=arwdDxtm/hackass_owner} ; staff_assignments:{hackass_owner=arwdDxtm/hackass_owner}',
-  'the table ACLs contain only the owner (nothing for PUBLIC)');
+  (select coalesce(string_agg(c.relname || ':' || p.priv, ', ' order by c.relname, p.priv), '')
+     from pg_class c join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'app'
+     cross join (values ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')) p(priv)
+    where c.relkind = 'r' and has_table_privilege('postgres', c.oid, p.priv)),
+  '', 'break-glass postgres can read app.* (pg_read_all_data) but holds no write privilege on any of it');
 select is(
-  (select string_agg(c.relname || ':rls=' || c.relrowsecurity || ':force=' || c.relforcerowsecurity, ', ' order by c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r'),
-  'accounts:rls=true:force=false, staff_assignments:rls=true:force=false',
-  'row-level security is on for every application table (owner exempt; no policies exist, so any other role is denied)');
-select is((select count(*)::int from pg_policy p join pg_class c on c.oid = p.polrelid join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app'), 0, 'no RLS policy exists in F2-A (default deny)');
+  (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r' and c.relacl is not null and c.relacl::text <> '{hackass_owner=arwdDxtm/hackass_owner}'),
+  0, 'every table ACL is the owner alone (NULL = owner default, or exactly the owner entry); nothing for PUBLIC or any other role');
 select is(
-  (select string_agg(c.relname || ':' || c.relkind::text, ', ' order by c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind not in ('i', 'I')),
-  'accounts:r, staff_assignments:r', 'app contains exactly the two tables');
+  (select count(*)::int from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r' and (not c.relrowsecurity or c.relforcerowsecurity)),
+  0, 'row-level security is on for every application table (owner exempt; no policies exist, so any other role is denied)');
+select is((select count(*)::int from pg_policy p join pg_class c on c.oid = p.polrelid join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app'), 0, 'no RLS policy exists (default deny)');
+select is(
+  (select string_agg(c.relname, ', ' order by c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r'),
+  'accounts, categories, hack_materials, hack_requirements, hack_steps, hack_versions, hacks, source_claims, staff_assignments, submissions, version_assets, version_attributions, version_lifecycle, version_tags',
+  'app contains exactly these 14 tables (any new table must be added here, with its grants reviewed)');
+select is(
+  (select string_agg(c.relname, ', ' order by c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r'
+      and not exists (select 1 from pg_trigger t where t.tgrelid = c.oid and t.tgname like '%\_guard' or t.tgrelid = c.oid and t.tgname like '%\_append\_only') and c.relname in ('hack_versions', 'hack_steps', 'hack_materials', 'hack_requirements', 'version_tags', 'version_attributions', 'source_claims', 'version_assets', 'submissions')),
+  null, 'every hashed table and submissions has its immutability trigger');
+select is(
+  (select string_agg(c.relname, ', ' order by c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r'
+      and c.relname in ('hack_versions', 'hack_steps', 'hack_materials', 'hack_requirements', 'version_tags', 'version_attributions', 'source_claims', 'version_assets', 'submissions')
+      and not exists (select 1 from pg_trigger t where t.tgrelid = c.oid and t.tgname like '%\_no\_truncate')),
+  null, 'every hashed table and submissions refuses TRUNCATE');
 
 -- ---- functions: owner, definer, empty search_path, EXECUTE grantees ----------------------------------------------------
 select is(
   (select string_agg(
-     p.oid::regprocedure::text || ' owner=' || pg_get_userbyid(p.proowner) || ' definer=' || p.prosecdef
+     p.oid::regprocedure::text || ' owner=' || pg_get_userbyid(p.proowner) || ' definer=' || p.prosecdef || ' vol=' || p.provolatile::text
        || ' search_path=' || coalesce((select substring(cfg from '^search_path=(.*)$') from unnest(p.proconfig) cfg where cfg like 'search_path=%'), 'UNSET')
        || ' execute=' || coalesce((select string_agg(case when x.grantee = 0 then 'PUBLIC' else pg_get_userbyid(x.grantee) end, ',' order by case when x.grantee = 0 then 'PUBLIC' else pg_get_userbyid(x.grantee) end)
                                      from aclexplode(p.proacl) x where x.privilege_type = 'EXECUTE'), 'NONE'),
      E'\n' order by p.oid::regprocedure::text)
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge')),
-  $golden$api.staff_probe(text,integer) owner=hackass_owner definer=true search_path="" execute=authenticated,hackass_owner
-api.whoami() owner=hackass_owner definer=true search_path="" execute=authenticated,hackass_owner
-app_bridge.session_valid(uuid,uuid) owner=postgres definer=true search_path="" execute=hackass_owner,postgres
-app_guard.on_auth_user_created() owner=hackass_owner definer=true search_path="" execute=hackass_owner,supabase_auth_admin
-app_guard.on_auth_user_deleted() owner=hackass_owner definer=true search_path="" execute=hackass_owner,supabase_auth_admin
-app_guard.require_member() owner=hackass_owner definer=true search_path="" execute=hackass_owner
-app_guard.require_staff(text,interval) owner=hackass_owner definer=true search_path="" execute=hackass_owner
-worker.healthcheck() owner=hackass_owner definer=true search_path="" execute=hackass_owner,hackass_worker$golden$,
-  'function inventory: owner, SECURITY DEFINER, search_path = empty, explicit EXECUTE grantees (never PUBLIC, anon or service_role)');
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content')),
+  $golden$api.create_draft(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+api.delete_draft(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+api.get_version(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+api.list_my_versions() owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+api.save_draft(uuid,jsonb) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+api.staff_probe(text,integer) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+api.submit_version(uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+api.whoami() owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+app_bridge.session_valid(uuid,uuid) owner=postgres definer=true vol=s search_path="" execute=hackass_owner,postgres
+app_content.assert_keys(jsonb,text[],text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_content.assert_submittable(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_content.canon_str(text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_content.canonical_text_json(jsonb) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_content.canonical_text(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_content.clean_text(text,integer,integer) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_content.freeze_version(uuid,uuid,bytea) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_content.fv(text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_content.guard_child() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_content.guard_submission() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_content.guard_truncate() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_content.guard_version() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_content.hash_text(text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_content.j_arr(jsonb,text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_content.j_int(jsonb,text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_content.j_text(jsonb,text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_content.version_doc(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_content.version_hash(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_content.write_doc(uuid,jsonb) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_guard.on_auth_user_created() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,supabase_auth_admin
+app_guard.on_auth_user_deleted() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,supabase_auth_admin
+app_guard.require_member() owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_guard.require_staff(text,interval) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+worker.healthcheck() owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner,hackass_worker$golden$,
+  'function inventory: owner, SECURITY DEFINER, search_path = empty, volatility, explicit EXECUTE grantees (never PUBLIC, anon or service_role). Only the api functions are executable by authenticated; vol: v volatile (writers and triggers), s stable, i immutable');
 
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge') and p.proowner <> 'hackass_owner'::regrole),
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content') and p.proowner <> 'hackass_owner'::regrole),
   'app_bridge.session_valid(uuid,uuid)',
   'G-3 exception: the ONLY application-schema function not owned by hackass_owner is the postgres-owned bridge');
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge')
-      and (p.prosrc ~* '\m(from|join|update)\s+(?!app\.|auth\.|pg_catalog\.|app_bridge\.|app_guard\.)[a-z_]+'
-        or p.prosrc ~* 'insert\s+into\s+(?!app\.)')),
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content')
+      and (regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* '(\mfrom|\mjoin|(?<!for\s)(?<!distinct\s)\mupdate)\s+(?!app\.|auth\.|pg_catalog\.|app_bridge\.|app_guard\.|app_content\.|api\.|v_|p_)[a-z_]+'
+        or regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* 'insert\s+into\s+(?!app\.)' or regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* 'delete\s+from\s+(?!app\.)')),
   null, 'no function body names a table or function without a schema (everything is fully qualified)');
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -124,8 +164,9 @@ select ok(
   'worker.healthcheck checks the calling login first');
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname in ('api', 'app_guard', 'worker', 'app_bridge') and p.provolatile = 'v' and p.prorettype <> 'trigger'::regtype),
-  null, 'every non-trigger function is STABLE (none writes)');
+    where n.nspname in ('api', 'app_guard', 'worker', 'app_bridge', 'app_content') and p.provolatile = 'v' and p.prorettype <> 'trigger'::regtype),
+  'api.create_draft(uuid), api.delete_draft(uuid), api.save_draft(uuid,jsonb), api.submit_version(uuid,text), app_content.freeze_version(uuid,uuid,bytea), app_content.write_doc(uuid,jsonb)',
+  'exactly the writing functions are VOLATILE; every reader, guard, validator and hash function is STABLE or IMMUTABLE');
 
 -- ---- hackass_owner holds nothing it does not need -----------------------------------------------------------------------
 select is(

@@ -38,3 +38,14 @@ the repository (`npm run scan:secrets`).
 | I-3 Direct RPC authorization | `020_authorization.test.sql` (claims matrix) and `scripts/local-f2a-checks.mjs` (real JWTs via PostgREST): signed-out unexpired token, missing session, user/session mismatch (claims level), banned/deleted user, disabled account, removed staff, aal1, stale MFA | done locally; hosted pending |
 | Worker confinement | `hackass_worker` logs in with a password and can execute only `worker.healthcheck()` | done locally; pooler pending |
 | I-1, I-2, I-4, I-5, S-*, H-1, P-1, R-1 | need tables and functions that do not exist yet | not started |
+
+## F2-B progress (content versions, hashing, immutability)
+| Row | F2-B evidence | Status |
+|---|---|---|
+| I-1a Frozen children | `040_content.test.sql`: all 21 child INSERT/UPDATE/DELETE attempts on a frozen version fail; moves out of and into a frozen version fail (both parents judged) | done locally |
+| I-1b Freeze race | `scripts/local-f2b-checks.mjs` C1–C6: two real sessions race child writes, draft saves, moves and freezes (incl. 36 randomized rounds); stored hash == recomputed hash always; no deadlock | done locally |
+| I-1c Lifecycle vs immutability | `040`: superseding and withdrawing a frozen version succeeds while content stays immutable | done locally |
+| H-1 Hash | 36 shared golden vectors, TypeScript and SQL (including through the real tables); the freeze trigger recomputes and refuses a wrong hash; version/**submission** hash agreement. Version-hash vs *decision*-hash needs decisions (F2-C) | partly |
+| G-2 / G-3 | golden inventory extended to 14 tables and 33 functions (owner, definer, search_path, volatility, EXECUTE grantees); only `api.*` content functions are executable by `authenticated`; no table privilege for any role | done for F2-B objects |
+| G-4 Forbidden writes | members, anon, service_role and the worker have no table access; privileged/unknown fields are rejected by `save_draft` (pgTAP + real JWT) | done for content |
+| I-3 | every content function refuses no-claims, signed-out, disabled-account and other-owner callers (pgTAP + real JWT) | done locally |

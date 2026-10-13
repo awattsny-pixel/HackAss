@@ -51,7 +51,7 @@ test('pgTAP platform test exists and checks the real stack (roles, Auth sessions
   const sql = read('supabase/tests/database/000_platform.test.sql');
   for (const needle of ["has_role('anon'", "has_role('authenticated'", "has_role('service_role'", "has_table('auth', 'sessions'", "'pg_trgm'", "'citext'", 'select plan(9)']) assert.ok(sql.includes(needle), needle);
   assert.equal((sql.match(/^select (has_|ok)/gm) ?? []).length, 9, 'plan count must match the assertions');
-  assert.deepEqual(readdirSync(join(root, 'supabase/migrations')).filter((f) => f !== '.gitkeep').map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql'], 'only the three F2-A migrations exist (checked in detail by f2a-migrations.test.ts)');
+  assert.deepEqual(readdirSync(join(root, 'supabase/migrations')).filter((f) => f !== '.gitkeep').map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql'], 'only the F2-A and F2-B migrations exist (checked in detail by f2a-migrations.test.ts)');
 });
 
 test('db:test reports BLOCKED (exit 2) with an actionable message when Docker is unavailable, never a silent pass', () => {
@@ -75,4 +75,15 @@ test('the in-repo secret scanner is labelled supplementary in CI, and Gitleaks (
   assert.ok(names.some((n) => /^Secret scan \(Gitleaks/.test(n)));
   assert.ok(names.some((n) => /Secret scan \(in-repo scanner, supplementary\)/.test(n)));
   assert.ok(existsSync(join(root, 'docs/security/gitleaks.md')) && !existsSync(join(root, 'docs/proposals')));
+});
+
+test('docs/db/hashcanon-1.md names every hashed field in the order the implementation uses, and the golden-vector count matches', () => {
+  const doc = read('docs/db/hashcanon-1.md');
+  const order = ['category_slug', 'title', 'summary', 'outcome', 'difficulty', 'time_min_minutes', 'time_max_minutes', 'cost_min_cents', 'cost_max_cents', 'currency', 'estimate_basis', 'ai_requirement', 'limitations', 'steps', 'materials', 'requirements', 'tags', 'attributions', 'source_claims', 'assets'];
+  const table = doc.slice(doc.indexOf('## The text'));
+  let at = 0;
+  for (const f of order) { const i = table.indexOf(f, at); assert.ok(i >= at, `${f} missing or out of order in the format table`); at = i; }
+  const vectors = JSON.parse(read('tests/fixtures/hashcanon-vectors.json')).vectors.length;
+  assert.match(doc, new RegExp(`\\(${vectors}\\)`), 'the document states the number of golden vectors');
+  assert.match(read('docs/db/f2b-content.md'), /one lock rule|One lock rule/i);
 });

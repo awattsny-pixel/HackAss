@@ -207,23 +207,24 @@ select 'any_priv=' || coalesce(bool_or(has_table_privilege('hackass_worker', c.o
 });
 
 // ---- the rollback rehearsal --------------------------------------------------------------------------------------------------
-await check('R1', 'rollback script: removes every F2-A object and role (rehearsed in a transaction that is rolled back), leaves auth intact', async () => {
-  const down = readFileSync(path.join(root, 'supabase/rollbacks/20261013130000_f2a_down.sql'), 'utf8');
+await check('R1', 'rollback scripts (F2-B then F2-A): remove every application object and role (rehearsed in a transaction that is rolled back), leave auth intact', async () => {
+  const downB = readFileSync(path.join(root, 'supabase/rollbacks/20261014090000_f2b_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
+  const down = readFileSync(path.join(root, 'supabase/rollbacks/20261013130000_f2a_down.sql'), 'utf8').replace(/^begin;\s*$/m, `begin;\n${downB}`);
   const probe = `
-select 'schemas=' || count(*) from pg_namespace where nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge');
+select 'schemas=' || count(*) from pg_namespace where nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content');
 select 'roles=' || count(*) from pg_roles where rolname in ('hackass_owner', 'hackass_worker');
 select 'triggers=' || count(*) from pg_trigger where tgname like 'hackass_%';
-select 'ledger=' || count(*) from supabase_migrations.schema_migrations where version like '2026101313%';
+select 'ledger=' || count(*) from supabase_migrations.schema_migrations where version like '2026101313%' or version like '2026101409%';
 select 'auth_users_table=' || (to_regclass('auth.users') is not null);
 select 'default_acl=' || count(*) from pg_default_acl d where pg_get_userbyid(d.defaclrole) = 'hackass_owner';
 `;
   const before = psql(probe).out.replace(/\n/g, ' ');
-  ok(/schemas=5 roles=2 triggers=2 ledger=3/.test(before), `before rollback: ${before}`);
+  ok(/schemas=6 roles=2 triggers=2 ledger=7/.test(before), `before rollback: ${before}`);
   const body = down.replace(/^commit;\s*$/m, `${probe}\nrollback;`);
   const after = psql(body).out.replace(/\n/g, ' ');
   ok(/schemas=0 roles=0 triggers=0 ledger=0 auth_users_table=true default_acl=0/.test(after), `inside rolled-back rollback: ${after}`);
   const restored = psql(probe).out.replace(/\n/g, ' ');
-  ok(/schemas=5 roles=2 triggers=2 ledger=3/.test(restored), `after the rehearsal the database must be unchanged: ${restored}`);
+  ok(/schemas=6 roles=2 triggers=2 ledger=7/.test(restored), `after the rehearsal the database must be unchanged: ${restored}`);
   return `before: ${before} | after rollback script: ${after} | rehearsal transaction rolled back: state restored`;
 });
 

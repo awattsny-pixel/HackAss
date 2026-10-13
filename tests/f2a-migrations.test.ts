@@ -13,8 +13,8 @@ const sql = Object.fromEntries(files.map((f) => [f, readFileSync(join(migDir, f)
 const all = files.map((f) => sql[f]).join('\n');
 const code = (t: string) => t.replace(/--.*$/gm, '');
 
-test('F2-A migrations: three timestamped, ordered files, no stray files', () => {
-  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql']);
+test('F2-A and F2-B migrations: seven timestamped, ordered files, no stray files', () => {
+  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql']);
   assert.deepEqual(readdirSync(migDir).filter((f) => !f.endsWith('.sql')), ['.gitkeep']);
   for (const f of files) assert.match(f, /^\d{14}_[a-z0-9_]+\.sql$/);
 });
@@ -46,6 +46,7 @@ test('no grant to PUBLIC, anon or service_role beyond the api schema USAGE, and 
   }
   const executes = grants.filter((g) => /grant execute/i.test(g));
   assert.deepEqual(executes.map((g) => g.replace(/^grant execute on function /i, '')).sort(), [
+    'api.create_draft(uuid), api.save_draft(uuid, jsonb), api.get_version(uuid), api.list_my_versions(), api.submit_version(uuid, text), api.delete_draft(uuid) to authenticated;',
     'api.whoami(), api.staff_probe(text, integer) to authenticated;',
     'app_bridge.session_valid(uuid, uuid) to hackass_owner;',
     'app_guard.on_auth_user_created(), app_guard.on_auth_user_deleted() to postgres;',
@@ -77,24 +78,77 @@ test('the staff guard has no MFA switch, no clock-skew allowance, and validates 
   assert.match(guard, /raise exception 'invalid_argument' using errcode = '22023'/);
 });
 
+test('every function in an application schema has PUBLIC execute revoked, and no table is ever granted to anyone', () => {
+  const c = code(all);
+  const created = [...c.matchAll(/create function ((?:api|app_guard|app_content|app_bridge|worker)\.\w+)\(/g)].map((m) => m[1]);
+  assert.ok(created.length >= 30, `only ${created.length} functions found`);
+  const revokes = (c.match(/revoke all on function[\s\S]*?from public;/gi) ?? []).join('\n');
+  const defaults = /alter default privileges revoke all on functions from public;/.test(c);
+  assert.ok(defaults, 'default privileges revoke PUBLIC execute for everything the owner creates');
+  for (const fn of created) assert.ok(revokes.includes(`${fn}(`), `${fn} has no explicit revoke from public`);
+  assert.ok(!/\bgrant\b[^;]*\bon\s+(table\s+)?(app|public)\.\w+/i.test(c), 'no GRANT on any table');
+  assert.ok(!/\bgrant\s+(select|insert|update|delete|truncate|references|all)\b/i.test(c), 'no table-level privilege is ever granted');
+});
+
+test('every application table has RLS enabled and is covered by the immutability / append-only / truncate triggers where it holds content', () => {
+  const c = code(all).replace(/\s+/g, ' ');
+  const tables = [...c.matchAll(/create table (app\.\w+)/g)].map((m) => m[1]);
+  assert.equal(tables.length, 14);
+  for (const t of tables) assert.match(c, new RegExp(`alter table ${t.replace('.', '\\.')} enable row level security;`), `${t} lacks RLS`);
+  for (const t of ['hack_steps', 'hack_materials', 'hack_requirements', 'version_tags', 'version_attributions', 'source_claims', 'version_assets']) {
+    assert.match(c, new RegExp(`create trigger ${t}_guard before insert or update or delete on app\\.${t} for each row execute function app_content\\.guard_child\\(\\);`), `${t} lacks the child guard`);
+    assert.match(c, new RegExp(`create trigger ${t}_no_truncate before truncate on app\\.${t}`), `${t} lacks the truncate guard`);
+  }
+  assert.match(c, /create trigger hack_versions_guard before insert or update or delete on app\.hack_versions for each row execute function app_content\.guard_version\(\);/);
+  assert.match(c, /create trigger submissions_append_only before update or delete on app\.submissions/);
+});
+
+test('lock order and the freeze: child guards lock parents FOR SHARE in ascending id order; the freeze locks FOR UPDATE and hashes after the lock', () => {
+  const guard = code(sql['20261014090200_f2b_immutability.sql']).match(/create function app_content\.guard_child\(\)[\s\S]*?\n\$\$;/)![0];
+  assert.match(guard, /order by v\.id for share/);
+  assert.match(guard, /v\.id = any \(v_ids\)/);
+  const freeze = code(sql['20261014090300_f2b_content_rpc.sql']).match(/create function app_content\.freeze_version[\s\S]*?\n\$\$;/)![0];
+  const iLock = freeze.indexOf('for update'), iHash = freeze.indexOf('app_content.version_hash(p_version_id)'), iCmp = freeze.indexOf('p_expected is distinct from v_hash'), iSet = freeze.indexOf('update app.hack_versions set frozen_at');
+  assert.ok(iLock > 0 && iLock < iHash && iHash < iCmp && iCmp < iSet, 'lock, then hash, then compare, then freeze');
+  const save = code(sql['20261014090300_f2b_content_rpc.sql']).match(/create function api\.save_draft[\s\S]*?\n\$\$;/)![0];
+  assert.ok(save.indexOf('app_guard.require_member()') < save.indexOf('created_by into v_owner') && save.indexOf('created_by into v_owner') < save.indexOf('for update') && save.indexOf('for update') < save.indexOf('app_content.write_doc'), 'guard, ownership, lock, then write');
+  const trig = code(sql['20261014090200_f2b_immutability.sql']).match(/create function app_content\.guard_version\(\)[\s\S]*?\n\$\$;/)![0];
+  assert.match(trig, /new\.content_hash is distinct from app_content\.version_hash\(new\.id\)/, 'the trigger re-verifies the hash on freeze');
+});
+
+test('no contributor-editable content column is privileged: classification and approval fields do not exist in the content tables', () => {
+  const c = code(sql['20261014090000_f2b_content_tables.sql']);
+  for (const forbidden of ['risk', 'rights', 'approved', 'approval', 'decision', 'reviewer', 'clearance', 'assessment']) assert.ok(!new RegExp(`\\b${forbidden}\\w*\\s+(text|boolean|uuid|integer|smallint|timestamptz)`, 'i').test(c), `a ${forbidden} column exists in the content tables`);
+});
+
 test('the schemas that PostgREST exposes are exactly public, graphql_public and api; the application schemas are not exposed', () => {
   const toml = readFileSync(join(root, 'supabase/config.toml'), 'utf8');
   assert.match(toml, /^schemas = \["public", "graphql_public", "api"\]$/m);
   assert.ok(!/^schemas = .*\b(app|app_guard|worker|app_bridge)\b/m.test(toml));
 });
 
-test('the rollback script removes every schema, role and trigger the migrations create, and un-ledgers exactly their versions', () => {
-  const down = code(readFileSync(join(root, 'supabase/rollbacks/20261013130000_f2a_down.sql'), 'utf8'));
-  const created = [...all.matchAll(/create schema (\w+)/g)].map((m) => m[1]).sort();
-  assert.deepEqual(created, ['api', 'app', 'app_bridge', 'app_guard', 'worker']);
-  for (const s of created) assert.match(down, new RegExp(`drop schema if exists ${s} cascade;`), `rollback must drop schema ${s}`);
-  for (const r of ['hackass_worker', 'hackass_owner']) assert.match(down, new RegExp(`drop role if exists ${r};`));
-  for (const t of [...all.matchAll(/create trigger (\w+)/g)].map((m) => m[1])) assert.match(down, new RegExp(`drop trigger if exists ${t} on auth\\.users;`));
-  const versions = files.map((f) => f.slice(0, 14));
-  assert.match(down, new RegExp(`version in \\(${versions.map((v) => `'${v}'`).join(', ')}\\)`));
-  assert.match(down, /^\s*begin;/m);
-  assert.match(down, /^\s*commit;/m);
-  assert.ok(!/drop schema (if exists )?(auth|public|storage|extensions)\b/i.test(down), 'the rollback never touches Supabase-managed schemas');
+test('the rollback scripts remove every schema, table, role and trigger the migrations create, and un-ledger exactly their versions', () => {
+  const read = (f: string) => code(readFileSync(join(root, 'supabase/rollbacks', f), 'utf8'));
+  const downA = read('20261013130000_f2a_down.sql');
+  const downB = read('20261014090000_f2b_down.sql');
+  const createdSchemas = [...all.matchAll(/create schema (\w+)/g)].map((m) => m[1]).sort();
+  assert.deepEqual(createdSchemas, ['api', 'app', 'app_bridge', 'app_content', 'app_guard', 'worker']);
+  for (const s of ['api', 'worker', 'app_guard', 'app', 'app_bridge']) assert.match(downA, new RegExp(`drop schema if exists ${s} cascade;`), `F2-A rollback must drop schema ${s}`);
+  assert.match(downB, /drop schema if exists app_content cascade;/);
+  for (const r of ['hackass_worker', 'hackass_owner']) assert.match(downA, new RegExp(`drop role if exists ${r};`));
+  for (const t of [...all.matchAll(/create trigger (hackass_\w+)/g)].map((m) => m[1])) assert.match(downA, new RegExp(`drop trigger if exists ${t} on auth\\.users;`));
+  // F2-B drops its tables (before the schema whose function their CHECKs call) and its api functions
+  const f2bTables = [...code(sql['20261014090000_f2b_content_tables.sql']).matchAll(/create table (app\.\w+)/g)].map((m) => m[1]);
+  assert.equal(f2bTables.length, 12);
+  for (const t of f2bTables) assert.ok(downB.includes(t), `F2-B rollback must drop ${t}`);
+  assert.ok(downB.indexOf('drop table') < downB.indexOf('drop schema if exists app_content'), 'tables before the schema');
+  const f2bApi = [...code(sql['20261014090300_f2b_content_rpc.sql']).matchAll(/create function (api\.\w+)\(/g)].map((m) => m[1]);
+  assert.equal(f2bApi.length, 6);
+  for (const f of f2bApi) assert.ok(downB.includes(f), `F2-B rollback must drop ${f}`);
+  const versions = (prefix: string) => files.filter((f) => f.includes(prefix)).map((f) => f.slice(0, 14));
+  assert.match(downA, new RegExp(`version in \\(${versions('_f2a_').map((v) => `'${v}'`).join(', ')}\\)`));
+  assert.match(downB, new RegExp(`version in \\(${versions('_f2b_').map((v) => `'${v}'`).join(', ')}\\)`));
+  for (const d of [downA, downB]) { assert.match(d, /^\s*begin;/m); assert.match(d, /^\s*commit;/m); assert.ok(!/drop schema (if exists )?(auth|public|storage|extensions)\b/i.test(d)); }
 });
 
 test('the pgTAP files exist and keep their no-drift inventory assertions', () => {
