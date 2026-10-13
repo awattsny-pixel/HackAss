@@ -20,7 +20,7 @@ export default defineConfig([
   {
     // CommonJS files where require() is the module system: the legacy one-off setup scripts, and the smoke
     // harness's network-guard preload (loaded with `node --require`, which needs CommonJS). Scoped to these only.
-    files: ['scripts/**/*.js', 'tests/smoke/net-guard.cjs'],
+    files: ['scripts/**/*.js', 'tests/smoke/*.cjs'],
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
 ]);

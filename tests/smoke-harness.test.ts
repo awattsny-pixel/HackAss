@@ -12,7 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const STUB = (n: string) => `tests/smoke/stubs/${n}.mjs`;
-const EXIT = { OK: 0, BUILD_FAILED: 2, STARTUP_FAILED: 3, TIMEOUT_OR_ERROR: 4, TOTAL_DEADLINE: 5, NET_GUARD: 6, USAGE: 7 };
+const EXIT = { OK: 0, BUILD_FAILED: 2, STARTUP_FAILED: 3, TIMEOUT_OR_ERROR: 4, TOTAL_DEADLINE: 5, NET_GUARD: 6, USAGE: 7, CLEANUP_FAILED: 8 };
 const scratch = mkdtempSync(join(tmpdir(), 'hackass-harness-test-'));
 test.after(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -162,4 +162,42 @@ test('buildTestEnv ignores the caller environment entirely', async () => {
     assert.equal(env.SUPABASE_SERVICE_ROLE_KEY, 'dummy-service');
     for (const k of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'DATABASE_URL', 'NODE_EXTRA_CA_CERTS', 'GITHUB_TOKEN', 'AWS_SECRET_ACCESS_KEY']) assert.ok(!(k in env), k);
   } finally { for (const k of Object.keys(CONTAMINATION)) { if (k in saved) process.env[k] = saved[k]; else delete process.env[k]; } }
+});
+
+test('cleanup failure: survivors after termination make the run fail (exit 8) and are named; success is never reported', async () => {
+  // The harness runs with children that ignore termination signals (test double), so cleanup cannot remove them.
+  const r = await runHarness('cleanup-fail', [`--build-script=${STUB('build-ok')}`, `--app-script=${STUB('app-hang')}`, '--startup-timeout-ms=1500', '--test-unkillable', '--terminate-grace-ms=200', '--terminate-wait-ms=400']);
+  const state = JSON.parse(readFileSync(r.stateFile, 'utf8'));
+  try {
+    assert.equal(r.code, EXIT.CLEANUP_FAILED, r.out);
+    assert.match(r.out, /cleanup failed: app \(pid \d+\)/);
+    const app = state.children.find((c: { label: string }) => c.label === 'app');
+    assert.ok(!gone(app.pid), 'the survivor should still be running (that is what the harness had to report)');
+  } finally {
+    // The test double deliberately leaked the stub; remove it here so the test leaves nothing behind.
+    for (const c of state.children) { try { process.kill(-c.pid, 'SIGKILL'); } catch { /* already gone */ } }
+    for (const m of r.out.matchAll(/GRANDCHILD:(\d+)/g)) { try { process.kill(Number(m[1]), 'SIGKILL'); } catch { /* already gone */ } }
+    for (let i = 0; i < 30; i++) { if (state.children.every((c: { pid: number }) => gone(c.pid))) break; await new Promise((res) => setTimeout(res, 100)); }
+  }
+  for (const c of state.children) assert.ok(gone(c.pid), `test cleanup failed for pid ${c.pid}`);
+});
+
+test('cleanup failure is also reported when the run would otherwise exit with another code (startup timeout, exit 3 -> 8)', async () => {
+  const r = await runHarness('cleanup-fail-precedence', [`--build-script=${STUB('build-ok')}`, `--app-script=${STUB('app-hang')}`, '--startup-timeout-ms=1000', '--test-unkillable', '--terminate-grace-ms=100', '--terminate-wait-ms=300']);
+  const state = JSON.parse(readFileSync(r.stateFile, 'utf8'));
+  try { assert.equal(r.code, EXIT.CLEANUP_FAILED, r.out); assert.match(r.out, /not ready within 1000ms/); }
+  finally { for (const c of state.children) { try { process.kill(-c.pid, 'SIGKILL'); } catch { /* gone */ } } for (const m of r.out.matchAll(/GRANDCHILD:(\d+)/g)) { try { process.kill(Number(m[1]), 'SIGKILL'); } catch { /* gone */ } } }
+});
+
+test('Managed.terminate resolves ok only when the process and its group are gone', async () => {
+  const { Managed } = await import(pathToFileURL(join(root, 'tests/smoke/harness.mjs')).href);
+  const stubbornEnv = { PATH: process.env.PATH ?? '' };
+  const killable = new Managed('killable', process.execPath, ['-e', 'setInterval(()=>{},1000)'], { cwd: root, env: stubbornEnv });
+  assert.deepEqual(await killable.terminate({ graceMs: 500, killWaitMs: 2000 }), { ok: true });
+  const stubborn = new Managed('stubborn', process.execPath, ['-e', 'setInterval(()=>{},1000)'], { cwd: root, env: stubbornEnv, ignoreSignals: true });
+  try {
+    const r = await stubborn.terminate({ graceMs: 100, killWaitMs: 300 });
+    assert.equal(r.ok, false);
+    assert.match(r.reason, /did not exit|still has live members/);
+  } finally { try { process.kill(-stubborn.pid, 'SIGKILL'); } catch { /* gone */ } await stubborn.done; }
 });

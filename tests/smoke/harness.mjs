@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
 
-export const EXIT = { OK: 0, CHECKS_FAILED: 1, BUILD_FAILED: 2, STARTUP_FAILED: 3, TIMEOUT_OR_ERROR: 4, TOTAL_DEADLINE: 5, NET_GUARD: 6, USAGE: 7 };
+export const EXIT = { OK: 0, CHECKS_FAILED: 1, BUILD_FAILED: 2, STARTUP_FAILED: 3, TIMEOUT_OR_ERROR: 4, TOTAL_DEADLINE: 5, NET_GUARD: 6, USAGE: 7, CLEANUP_FAILED: 8 };
 
 export class HarnessFailure extends Error {
   constructor(exitCode, message) { super(message); this.exitCode = exitCode; }
@@ -38,7 +38,8 @@ const TAIL = 12000;
 
 /** A child process in its own process group, with bounded log capture and awaitable termination. */
 export class Managed {
-  constructor(label, file, args, { cwd, env }) {
+  constructor(label, file, args, { cwd, env, ignoreSignals = false }) {
+    this.ignoreSignals = ignoreSignals; // test double: simulates a process tree that cannot be terminated
     this.label = label; this.log = ''; this.exited = false; this.exitCode = null;
     this.child = spawn(file, args, { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
     this.pid = this.child.pid;
@@ -50,17 +51,25 @@ export class Managed {
     });
   }
   /** Signal the whole process group; ESRCH (already gone) is fine. */
-  signalGroup(sig) { try { process.kill(-this.pid, sig); } catch (e) { if (e.code !== 'ESRCH') throw e; } }
+  signalGroup(sig) { if (this.ignoreSignals) return; try { process.kill(-this.pid, sig); } catch (e) { if (e.code !== 'ESRCH') throw e; } }
   groupAlive() { try { process.kill(-this.pid, 0); return true; } catch { return false; } }
-  /** Stop the process and any descendants, and wait until they are gone. */
-  async terminate(graceMs = 2500) {
+  /**
+   * Stop the process and any descendants and wait until they are gone. Resolves { ok: true } only when the
+   * process has exited AND its process group is empty; otherwise { ok: false, label, pid, reason } so the caller
+   * can fail the run. It never reports success while something is still running.
+   */
+  async terminate({ graceMs = 2500, killWaitMs = 5000 } = {}) {
     if (!this.exited || this.groupAlive()) {
       this.signalGroup('SIGTERM');
       await Promise.race([this.done, sleep(graceMs)]);
       this.signalGroup('SIGKILL'); // also reaps descendants that outlived the leader
-      await Promise.race([this.done, sleep(5000)]);
-      for (let i = 0; i < 50 && this.groupAlive(); i++) await sleep(100);
+      await Promise.race([this.done, sleep(killWaitMs)]);
+      const until = Date.now() + killWaitMs;
+      while (this.groupAlive() && Date.now() < until) await sleep(100);
     }
+    if (!this.exited) return { ok: false, label: this.label, pid: this.pid, reason: 'process did not exit' };
+    if (this.groupAlive()) return { ok: false, label: this.label, pid: this.pid, reason: 'process group still has live members' };
+    return { ok: true };
   }
   /** Wait for exit up to `ms`. Resolves { timedOut }. */
   async waitExit(ms) {
@@ -72,9 +81,10 @@ export class Managed {
 }
 
 export function parseArgs(argv) {
-  const o = { buildScript: null, appScript: null, buildTimeoutMs: 300000, startupTimeoutMs: 60000, requestTimeoutMs: 10000, totalTimeoutMs: 900000, stateFile: null };
+  const o = { buildScript: null, appScript: null, buildTimeoutMs: 300000, startupTimeoutMs: 60000, requestTimeoutMs: 10000, totalTimeoutMs: 900000, stateFile: null, testUnkillable: false, terminateGraceMs: 2500, terminateWaitMs: 5000 };
   const num = (k, v) => { const n = Number(v); if (!Number.isFinite(n) || n <= 0) throw new HarnessFailure(EXIT.USAGE, `invalid value for --${k}: ${v}`); return n; };
   for (const a of argv) {
+    if (a === '--test-unkillable') { o.testUnkillable = true; continue; } // test hook: children ignore termination signals
     const m = a.match(/^--([a-z-]+)=(.*)$/);
     if (!m) throw new HarnessFailure(EXIT.USAGE, `unknown argument: ${a}`);
     const [, k, v] = m;
@@ -85,6 +95,8 @@ export function parseArgs(argv) {
     else if (k === 'startup-timeout-ms') o.startupTimeoutMs = num(k, v);
     else if (k === 'request-timeout-ms') o.requestTimeoutMs = num(k, v);
     else if (k === 'total-timeout-ms') o.totalTimeoutMs = num(k, v);
+    else if (k === 'terminate-grace-ms') o.terminateGraceMs = num(k, v);
+    else if (k === 'terminate-wait-ms') o.terminateWaitMs = num(k, v);
     else throw new HarnessFailure(EXIT.USAGE, `unknown option: --${k}`);
   }
   return o;
