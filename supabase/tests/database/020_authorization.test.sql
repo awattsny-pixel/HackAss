@@ -27,8 +27,8 @@ begin
   return coalesce(v, 'NULL');
 end $$;
 create function pg_temp.amr(p_age interval) returns jsonb language sql as $$
-  select jsonb_build_array(jsonb_build_object('method', 'totp', 'timestamp', extract(epoch from now() - p_age)::bigint),
-                           jsonb_build_object('method', 'password', 'timestamp', extract(epoch from now() - p_age)::bigint))
+  select jsonb_build_array(jsonb_build_object('method', 'totp', 'timestamp', floor(extract(epoch from now() - p_age))::bigint),
+                           jsonb_build_object('method', 'password', 'timestamp', floor(extract(epoch from now() - p_age))::bigint))
 $$;
 create function pg_temp.fresh() returns jsonb language sql as $$ select pg_temp.amr(interval '30 seconds') $$;
 
@@ -194,8 +194,51 @@ select throws_ok($$select api.staff_probe('reviewer', 100000)$$, '42501', 'mfa_s
 select throws_ok($$select api.staff_probe('reviewer', null)$$, '42501', 'mfa_stale', 'a null window falls back to the default, not to unlimited');
 reset role;
 select pg_temp.act('authenticated', '00000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', 'aal2', pg_temp.amr(interval '-10 minutes'));
-select throws_ok($$select api.staff_probe()$$, '42501', 'mfa_stale', 'an MFA timestamp in the future is refused');
+select throws_ok($$select api.staff_probe()$$, '42501', 'mfa_stale', 'an MFA timestamp 10 minutes in the future is refused');
 reset role;
+select pg_temp.act('authenticated', '00000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', 'aal2', pg_temp.amr(interval '-1 second'));
+select throws_ok($$select api.staff_probe()$$, '42501', 'mfa_stale', 'an MFA timestamp 1 second in the future is refused (no clock-skew allowance)');
+reset role;
+select pg_temp.act('authenticated', '00000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', 'aal2', pg_temp.amr(interval '-30 seconds'));
+select throws_ok($$select api.staff_probe()$$, '42501', 'mfa_stale', 'an MFA timestamp 30 seconds in the future is refused');
+reset role;
+select pg_temp.act('authenticated', '00000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', 'aal2', pg_temp.amr(interval '0 seconds'));
+select lives_ok($$select api.staff_probe()$$, 'an MFA timestamp of this very second (never ahead of the database clock) is accepted');
+reset role;
+
+-- ---- guard argument validation: fail closed on NULL and out-of-range arguments ---------------------------------------------
+-- The guard is called directly as hackass_owner (the only role that can execute it) under valid reviewer claims.
+select pg_temp.act('authenticated', '00000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', 'aal2', pg_temp.fresh());
+reset role;
+select is(pg_temp.owner_val($$select app_guard.require_staff(null, interval '15 minutes')$$), 'ERR:22023', 'require_staff: a NULL role name is rejected (it used to bypass the role check)');
+select is(pg_temp.owner_val($$select app_guard.require_staff('owner', interval '15 minutes')$$), 'ERR:22023', 'require_staff: an unknown role name is rejected');
+select is(pg_temp.owner_val($$select app_guard.require_staff('reviewer', null)$$), 'ERR:22023', 'require_staff: a NULL MFA window is rejected (it used to disable the stale-age check)');
+select is(pg_temp.owner_val($$select app_guard.require_staff('reviewer', interval '0')$$), 'ERR:22023', 'require_staff: a zero MFA window is rejected');
+select is(pg_temp.owner_val($$select app_guard.require_staff('reviewer', interval '-1 minute')$$), 'ERR:22023', 'require_staff: a negative MFA window is rejected');
+select is(pg_temp.owner_val($$select app_guard.require_staff('reviewer', interval '15 minutes 1 second')$$), 'ERR:22023', 'require_staff: a window longer than 15 minutes is rejected (the cap is enforced inside the guard)');
+select is(pg_temp.owner_val($$select app_guard.require_staff('reviewer', interval '1 day')$$), 'ERR:22023', 'require_staff: a one-day window is rejected');
+select ok(pg_temp.owner_val($$select app_guard.require_staff('reviewer', interval '15 minutes')$$) like '(%', 'require_staff: a window of exactly 15 minutes is accepted');
+select is(pg_temp.owner_val($$select app_guard.require_staff('reviewer', interval '1 second')$$), 'ERR:42501', 'require_staff: a valid short window still rejects 30-second-old MFA');
+select is(pg_temp.owner_val($$select app_guard.require_staff('admin', interval '15 minutes')$$), 'ERR:42501', 'require_staff: valid arguments but an insufficient role are refused as not_staff');
+select ok(pg_temp.owner_val($$select app_guard.require_staff()$$) like '(%', 'require_staff: the defaults (reviewer, 15 minutes) work');
+select is(pg_temp.owner_val($$select app_guard.require_staff('reviewer', true, interval '15 minutes')$$), 'ERR:42883', 'require_staff: the old optional MFA bypass argument no longer exists');
+select is(pg_temp.owner_val($$select app_guard.require_staff('reviewer', false, interval '15 minutes')$$), 'ERR:42883', 'require_staff: MFA cannot be switched off');
+select is(
+  (select pg_get_function_identity_arguments(p.oid) from pg_proc p where p.proname = 'require_staff' and p.pronamespace = 'app_guard'::regnamespace),
+  'p_min_role text, p_max_mfa_age interval', 'require_staff takes exactly (role, MFA window); there is no boolean parameter');
+
+-- the exposed probe passes arguments through the guard: NULL never selects a weaker check
+select pg_temp.act('authenticated', '00000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', 'aal2', pg_temp.fresh());
+select throws_ok($$select api.staff_probe(null)$$, '22023', 'invalid_argument', 'api.staff_probe: an explicit NULL role is rejected');
+select throws_ok($$select api.staff_probe(null, null)$$, '22023', 'invalid_argument', 'api.staff_probe: NULL role and NULL window are rejected');
+select lives_ok($$select api.staff_probe('reviewer', null)$$, 'api.staff_probe: a NULL window means the 15-minute default, never "no limit"');
+reset role;
+select pg_temp.act('authenticated', '00000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', 'aal2', pg_temp.amr(interval '16 minutes'));
+select throws_ok($$select api.staff_probe('reviewer', null)$$, '42501', 'mfa_stale', 'api.staff_probe: a NULL window does not accept 16-minute-old MFA');
+reset role;
+select pg_temp.act('authenticated', '00000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', 'aal2', pg_temp.amr(interval '16 minutes'));
+reset role;
+select is(pg_temp.owner_val($$select app_guard.require_staff('reviewer', interval '15 minutes')$$), 'ERR:42501', 'require_staff: 16-minute-old MFA is stale at the guard even with the maximum window');
 
 -- staff permission removal and the other prerequisites apply at once
 select pg_temp.act('authenticated', '00000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', 'aal2', pg_temp.fresh());

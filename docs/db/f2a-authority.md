@@ -28,9 +28,11 @@ The exact, reviewed inventory is the golden text in `010_roles_and_grants.test.s
 `app_guard.require_member()` reads the verified claims from `request.jwt.claims` and requires, in order: role `authenticated`; a
 UUID `sub` and `session_id`; `app_bridge.session_valid(session_id, sub)` (the session exists, **belongs to that user**, is unexpired, and
 the user is neither deleted nor banned); not an anonymous user; an `active` row in `app.accounts`. Failures raise `28000`
-(`not_authenticated`, `session_invalid`) or `42501` (`anonymous_forbidden`, `account_inactive`). `require_staff(min_role, require_mfa,
-max_mfa_age)` adds an active `app.staff_assignments` row of at least `min_role`, `aal2`, and a TOTP `amr` timestamp no older than
-the window (default 15 min) and not in the future (`not_staff`, `mfa_required`, `mfa_stale`). Staff assignments are changed only through
+(`not_authenticated`, `session_invalid`) or `42501` (`anonymous_forbidden`, `account_inactive`). `require_staff(min_role, max_mfa_age)` adds an active
+`app.staff_assignments` row of at least `min_role`, `aal2`, and a TOTP `amr` timestamp that is **not in the future (no clock-skew
+allowance)** and no older than `max_mfa_age`. MFA is always required: there is no switch to turn it off. Arguments fail closed:
+NULL, an unknown role name, or a window outside (0, 15 minutes] raises `22023 invalid_argument` inside the guard, so the cap does not depend on
+callers. Denials: `not_staff`, `mfa_required`, `mfa_stale`. The exposed `api.staff_probe` may only shorten the window further. Staff assignments are changed only through
 the owner role; no exposed function writes them.
 
 ## Findings that shaped the design

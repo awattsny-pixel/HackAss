@@ -84,11 +84,12 @@ begin
 end
 $$;
 
--- Staff guard: member guard + an active database-held assignment of at least p_min_role + (optionally) fresh MFA.
+-- Staff guard: member guard + an active database-held assignment of at least p_min_role + FRESH TOTP MFA. There is no way to
+-- switch MFA off and no clock-skew allowance. Arguments fail closed: NULL, an unknown role name, or an MFA window that is not in
+-- (0, 15 minutes] raises 22023 (invalid_argument) instead of selecting a weaker check. The cap is enforced HERE, not by callers.
 create function app_guard.require_staff(
-  p_min_role      text     default 'reviewer',
-  p_require_mfa   boolean  default true,
-  p_max_mfa_age   interval default interval '15 minutes'
+  p_min_role    text     default 'reviewer',
+  p_max_mfa_age interval default interval '15 minutes'
 ) returns app_guard.staff_actor
   language plpgsql stable security definer set search_path = ''
 as $$
@@ -97,7 +98,8 @@ declare
   v_roles text[];
 begin
   v_actor := app_guard.require_member();
-  if p_min_role not in ('reviewer', 'admin') then
+  if p_min_role is null or p_min_role not in ('reviewer', 'admin')
+     or p_max_mfa_age is null or p_max_mfa_age <= interval '0' or p_max_mfa_age > interval '15 minutes' then
     raise exception 'invalid_argument' using errcode = '22023';
   end if;
   select coalesce(pg_catalog.array_agg(s.role order by s.role), array[]::text[])
@@ -107,13 +109,12 @@ begin
   if pg_catalog.cardinality(v_roles) = 0 or (p_min_role = 'admin' and not ('admin' = any (v_roles))) then
     raise exception 'not_staff' using errcode = '42501';
   end if;
-  if p_require_mfa then
-    if v_actor.aal <> 'aal2' or v_actor.mfa_verified_at is null then
-      raise exception 'mfa_required' using errcode = '42501';
-    end if;
-    if v_actor.mfa_verified_at > pg_catalog.now() + interval '1 minute' or pg_catalog.now() - v_actor.mfa_verified_at > p_max_mfa_age then
-      raise exception 'mfa_stale' using errcode = '42501';
-    end if;
+  if v_actor.aal is distinct from 'aal2' or v_actor.mfa_verified_at is null then
+    raise exception 'mfa_required' using errcode = '42501';
+  end if;
+  -- a verification time in the future is never valid, however small the difference
+  if v_actor.mfa_verified_at > pg_catalog.now() or pg_catalog.now() - v_actor.mfa_verified_at > p_max_mfa_age then
+    raise exception 'mfa_stale' using errcode = '42501';
   end if;
   return row(v_actor.user_id, v_actor.session_id, v_actor.aal, v_actor.mfa_verified_at, v_roles)::app_guard.staff_actor;
 end
@@ -140,7 +141,6 @@ declare
 begin
   v_actor := app_guard.require_staff(
     p_min_role,
-    true,
     pg_catalog.make_interval(secs => least(greatest(coalesce(p_max_mfa_age_seconds, 900), 1), 900))
   );
   return pg_catalog.jsonb_build_object('user_id', v_actor.user_id, 'roles', v_actor.roles,
@@ -161,7 +161,7 @@ end
 $$;
 
 -- Explicit EXECUTE grants (the only ones in this design).
-revoke all on function app_guard.require_member(), app_guard.require_staff(text, boolean, interval),
+revoke all on function app_guard.require_member(), app_guard.require_staff(text, interval),
                        api.whoami(), api.staff_probe(text, integer), worker.healthcheck() from public;
 grant execute on function api.whoami(), api.staff_probe(text, integer) to authenticated;
 grant execute on function worker.healthcheck() to hackass_worker;

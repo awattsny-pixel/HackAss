@@ -56,13 +56,25 @@ test('no grant to PUBLIC, anon or service_role beyond the api schema USAGE, and 
 
 test('every function has its PUBLIC execute revoked before any grant, and every api function begins with a guard call', () => {
   const c = code(all);
-  for (const fn of ['app_bridge.session_valid(uuid, uuid)', 'api.whoami()', 'api.staff_probe(text, integer)', 'worker.healthcheck()', 'app_guard.require_member()', 'app_guard.require_staff(text, boolean, interval)', 'app_guard.on_auth_user_created()']) {
+  for (const fn of ['app_bridge.session_valid(uuid, uuid)', 'api.whoami()', 'api.staff_probe(text, integer)', 'worker.healthcheck()', 'app_guard.require_member()', 'app_guard.require_staff(text, interval)', 'app_guard.on_auth_user_created()']) {
     assert.ok(c.includes(fn), `${fn} missing`);
   }
   assert.match(c, /revoke all on function app_bridge\.session_valid\(uuid, uuid\) from public;/);
-  assert.match(c, /revoke all on function app_guard\.require_member\(\), app_guard\.require_staff\(text, boolean, interval\),\s+api\.whoami\(\), api\.staff_probe\(text, integer\), worker\.healthcheck\(\) from public;/);
+  assert.match(c, /revoke all on function app_guard\.require_member\(\), app_guard\.require_staff\(text, interval\),\s+api\.whoami\(\), api\.staff_probe\(text, integer\), worker\.healthcheck\(\) from public;/);
   for (const m of c.matchAll(/create function (api\.\w+)[\s\S]*?\$\$\s*(?:declare[\s\S]*?)?begin\s+(v_\w+ := |perform )?(app_guard\.require_\w+)\(/gi)) assert.ok(m[1] && m[3], m[0].slice(0, 60));
   assert.equal((c.match(/create function api\./g) ?? []).length, (c.match(/create function api\.\w+[\s\S]*?\$\$\s*(?:declare[\s\S]*?)?begin\s+(?:v_\w+ := |perform )?app_guard\.require_\w+\(/g) ?? []).length, 'every api function starts with a guard');
+});
+
+test('the staff guard has no MFA switch, no clock-skew allowance, and validates NULL/out-of-range arguments inside the guard', () => {
+  const c = code(all);
+  const guard = c.match(/create function app_guard\.require_staff\([\s\S]*?\n\$\$;/)![0];
+  assert.ok(!/boolean/i.test(guard) && !/p_require_mfa/.test(guard), 'no boolean/optional-MFA parameter');
+  assert.ok(!/interval '1 minute'/.test(guard), 'no skew allowance');
+  assert.match(guard, /p_min_role is null or p_min_role not in \('reviewer', 'admin'\)/);
+  assert.match(guard, /p_max_mfa_age is null or p_max_mfa_age <= interval '0' or p_max_mfa_age > interval '15 minutes'/);
+  assert.match(guard, /v_actor\.mfa_verified_at > pg_catalog\.now\(\)/);
+  assert.match(guard, /v_actor\.aal is distinct from 'aal2'/);
+  assert.match(guard, /raise exception 'invalid_argument' using errcode = '22023'/);
 });
 
 test('the schemas that PostgREST exposes are exactly public, graphql_public and api; the application schemas are not exposed', () => {
@@ -90,4 +102,12 @@ test('the pgTAP files exist and keep their no-drift inventory assertions', () =>
   for (const needle of ['function inventory', 'schema privileges', 'hackass_owner has no privilege on the auth schema', 'row-level security is on', 'a function later created by the owner is not executable by PUBLIC']) assert.ok(inventory.includes(needle), needle);
   const authz = readFileSync(join(root, 'supabase/tests/database/020_authorization.test.sql'), 'utf8');
   for (const needle of ['user/session mismatch', 'an expired session is rejected', 'a banned user', 'a disabled account is rejected although', 'the service_role has no EXECUTE', 'MFA 16 minutes old is stale', 'insufficient MFA', 'after the assignment is revoked']) assert.ok(authz.includes(needle), needle);
+});
+
+test('G-3 in the F2 acceptance contract records the exact bridge ownership exception instead of a blanket owner rule', () => {
+  const g3 = readFileSync(join(root, 'docs/foundation/f2-acceptance.md'), 'utf8').split('\n').find((l) => l.startsWith('| G-3 |'))!;
+  assert.match(g3, /with exactly one exception/);
+  assert.match(g3, /app_bridge\.session_valid\(uuid, uuid\)/);
+  assert.match(g3, /owned by `postgres`/);
+  assert.match(g3, /grantee \(`hackass_owner` only\)/);
 });

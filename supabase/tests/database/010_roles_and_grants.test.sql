@@ -96,10 +96,15 @@ app_bridge.session_valid(uuid,uuid) owner=postgres definer=true search_path="" e
 app_guard.on_auth_user_created() owner=hackass_owner definer=true search_path="" execute=hackass_owner,supabase_auth_admin
 app_guard.on_auth_user_deleted() owner=hackass_owner definer=true search_path="" execute=hackass_owner,supabase_auth_admin
 app_guard.require_member() owner=hackass_owner definer=true search_path="" execute=hackass_owner
-app_guard.require_staff(text,boolean,interval) owner=hackass_owner definer=true search_path="" execute=hackass_owner
+app_guard.require_staff(text,interval) owner=hackass_owner definer=true search_path="" execute=hackass_owner
 worker.healthcheck() owner=hackass_owner definer=true search_path="" execute=hackass_owner,hackass_worker$golden$,
   'function inventory: owner, SECURITY DEFINER, search_path = empty, explicit EXECUTE grantees (never PUBLIC, anon or service_role)');
 
+select is(
+  (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge') and p.proowner <> 'hackass_owner'::regrole),
+  'app_bridge.session_valid(uuid,uuid)',
+  'G-3 exception: the ONLY application-schema function not owned by hackass_owner is the postgres-owned bridge');
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge')

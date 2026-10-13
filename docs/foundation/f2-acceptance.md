@@ -7,7 +7,7 @@ shim) in CI, plus the generic requirements. "Real stack" rows need the Auth serv
 |---|---|---|---|
 | G-1 | Replay | migrations apply from empty, twice-run safe where idempotent; no default grants to `PUBLIC` | no |
 | G-2 | Grant allowlist | the full table/column/routine privilege list for `anon`, `authenticated`, `hackass_worker` equals a golden file; any drift fails | no |
-| G-3 | Privileged-function conformance | every `SECURITY DEFINER` function: owner `hackass_owner`, `search_path=''`, no `EXECUTE` for `PUBLIC`/`anon` unless intended, guard as first statement, allowed schema | no |
+| G-3 | Privileged-function conformance | every `SECURITY DEFINER` function: `search_path=''`, no `EXECUTE` for `PUBLIC`/`anon` unless intended, guard as first statement, allowed schema, and owner `hackass_owner` **with exactly one exception**: `app_bridge.session_valid(uuid, uuid)` is owned by `postgres` (the platform does not let `postgres` delegate `USAGE` on schema `auth`, so the application owner cannot read `auth.sessions`); it is pinned by name, signature, owner and grantee (`hackass_owner` only) in the golden inventory, and any other `postgres`-owned function in an application schema fails that test | no |
 | G-4 | Forbidden writes | members, reviewers, `anon`, and `hackass_worker` each fail to write risk class, rights reviews, lifecycle/approval state, roles, flags, publication pointers, projections | no |
 | I-1a | Frozen children | after freeze, `INSERT`/`UPDATE`/`DELETE` on every hashed child table fails, including moving a child between versions (both directions); unfrozen drafts remain editable | no |
 | I-1b | Freeze race | N randomized interleavings of draft writes and `submit_version`: stored hash == recomputed hash of committed rows, and no child row post-dates `frozen_at` | no |
@@ -33,7 +33,7 @@ the repository (`npm run scan:secrets`).
 |---|---|---|
 | G-1 Replay | the three migrations apply from empty on every `supabase db reset` / `start`; idempotent role creation | partly (no full replay-twice test yet) |
 | G-2 Grant allowlist | golden inventory in `supabase/tests/database/010_roles_and_grants.test.sql` (roles, schemas, tables, functions) | done for F2-A objects; extend per slice |
-| G-3 Function conformance | owner, SECURITY DEFINER, `search_path = ''`, EXECUTE grantees, guard-first body, qualified references (same file) | done for F2-A functions |
+| G-3 Function conformance | owner (`hackass_owner`, except the pinned `app_bridge.session_valid` bridge owned by `postgres`), SECURITY DEFINER, `search_path = ''`, EXECUTE grantees, guard-first body, qualified references (same file) | done for F2-A functions |
 | G-4 Forbidden writes | members and `anon`/`service_role`/worker cannot write accounts or staff assignments (`020`, `010`) | done for the two tables |
 | I-3 Direct RPC authorization | `020_authorization.test.sql` (claims matrix) and `scripts/local-f2a-checks.mjs` (real JWTs via PostgREST): signed-out unexpired token, missing session, user/session mismatch (claims level), banned/deleted user, disabled account, removed staff, aal1, stale MFA | done locally; hosted pending |
 | Worker confinement | `hackass_worker` logs in with a password and can execute only `worker.healthcheck()` | done locally; pooler pending |

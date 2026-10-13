@@ -130,6 +130,20 @@ await check('F8', 'stale MFA with a real aal2 token: the caller can shorten the 
   return 'fresh -> ok; 3.5 s old vs 2 s window -> mfa_stale (the 20-minute and future cases are in 020_authorization.test.sql)';
 });
 
+await check('F10', 'guard arguments fail closed through PostgREST: NULL or unknown role names are rejected; a NULL window means the 15-minute default, never unlimited', async () => {
+  const { c, userId } = await confirmedSession();
+  ops(`insert into app.staff_assignments (user_id, role, granted_by) values ('${userId}', 'reviewer', 'check');`);
+  const t2 = await elevateToAal2(c);
+  ok((await api('staff_probe', t2)).status === 200, 'baseline');
+  for (const [args, what] of [[{ p_min_role: null }, 'NULL role'], [{ p_min_role: 'owner' }, 'unknown role'], [{ p_min_role: null, p_max_mfa_age_seconds: null }, 'NULL role and window']]) {
+    const r = await api('staff_probe', t2, args);
+    ok(r.status === 400 && code(r) === '22023' && msg(r) === 'invalid_argument', `${what}: HTTP ${r.status} ${code(r)} ${msg(r)}`);
+  }
+  const nullWindow = await api('staff_probe', t2, { p_max_mfa_age_seconds: null });
+  ok(nullWindow.status === 200, `NULL window: HTTP ${nullWindow.status}`);
+  return 'NULL/unknown role -> HTTP 400 22023 invalid_argument; NULL window -> default 15-minute window';
+});
+
 await check('F9', 'nothing behind the functions is reachable through the REST API: the app schema is not exposed, even to the service key', async () => {
   const { session } = await confirmedSession();
   const get = async (key, token, profile) => fetch(`${API}/rest/v1/accounts?select=*`, { headers: { apikey: key, authorization: `Bearer ${token}`, 'accept-profile': profile } });
