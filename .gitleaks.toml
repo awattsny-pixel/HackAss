@@ -1,0 +1,7 @@
+# Gitleaks configuration. The pinned version and install procedure are in scripts/gitleaks-pin.json.
+# Default ruleset only. There are deliberately NO path or commit allowlists here: the exact, reviewed historic findings
+# are baselined by fingerprint in .gitleaks-baseline.json, and anything else fails the scan.
+title = "HackAss"
+
+[extend]
+useDefault = true

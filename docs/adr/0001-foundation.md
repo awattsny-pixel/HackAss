@@ -24,6 +24,15 @@ the database role and its grants (F2). Environment validation refuses service-le
 warning only while legacy routes exist, pinned by a test). The legacy routes are untouched and remain 503 stubs or the
 audited read path.
 
+## Server/client boundary (production-enforced)
+Three layers: (1) ESLint import rules and an import-graph test keep `src/ui` and `src/modules` on the client-safe barrel
+`src/platform/index.ts`; (2) every server entry point (`env.ts`, `db/*`, `http/handler.ts`, `server.ts`) imports `server-only`, so
+**`next build` fails** if one is pulled into a Client Component — proven by `npm run probe:server-boundary` (a server route
+importing the surface builds; a Client Component importing it fails with the server-only error), which CI runs as its own job;
+(3) pure validation (`env-validate.ts`, `http/validate.ts`, errors, logging) carries no marker and is testable anywhere. The
+Node test runner uses `--conditions=react-server` so `server-only` is a no-op *in tests only*; `tests/server-boundary.test.ts`
+proves the marker throws without that condition.
+
 ## Database invariants (contract for F2; each has a required test in `docs/foundation/f2-acceptance.md`)
 
 **I-1 Frozen content, including children, and serialized with freeze.** After a version's `frozen_at` is set, the database

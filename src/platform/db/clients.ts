@@ -3,9 +3,10 @@
 // STATUS: createUserDb is an EXPERIMENT. It follows the server-centric design in the foundation document (the browser
 // never holds a Supabase client). It is not used by any route and has not been validated against a real Auth flow;
 // do not treat the HttpOnly-cookie approach as proven until the F1 Auth spike passes against a real Supabase stack.
+import 'server-only'; // Next.js fails the build if a Client Component ever imports this module
 import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
-import type { PublicEnv } from '../env.ts';
+import type { PublicEnv } from '../env-validate.ts';
 import { WORKER_FUNCTIONS, type CookieAdapter, type PublicDb, type SqlRunner, type UserDb, type WorkerDb, type WorkerFunction } from './types.ts';
 
 export function createPublicDb(env: Pick<PublicEnv, 'supabaseUrl' | 'supabasePublishableKey'>): PublicDb {

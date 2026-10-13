@@ -1,5 +1,6 @@
 // The standard wrapper for route handlers: assigns/echoes a request id, applies the origin check to mutations,
 // maps every failure to the safe error response, logs without leaking, and defaults responses to no-store.
+import 'server-only'; // Next.js fails the build if a Client Component ever imports this module
 import type { RequestId } from '../actor.ts';
 import { createLogger, consoleSink, withRequestId, type Logger, type LogSink } from '../log.ts';
 import { assertSameOrigin } from './origin.ts';

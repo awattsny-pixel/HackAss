@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { EnvError, LEGACY_SERVICE_ENV_TOLERATED, getEnv, loadEnv, resetEnvCacheForTests } from '../src/platform/env.ts';
+import { EnvError, LEGACY_SERVICE_ENV_TOLERATED, loadEnv } from '../src/platform/env-validate.ts';
+// getEnv lives in the server-only module; the test script runs with --conditions=react-server so `server-only` is a no-op here
+import { getEnv, resetEnvCacheForTests } from '../src/platform/env.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 // assembled at run time so this file holds no literal credential-shaped URL (the secret scanner would flag it)

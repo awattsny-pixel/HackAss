@@ -8,10 +8,13 @@
     "start": "next start",
     "lint": "eslint . --max-warnings 5",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.test.ts",
+    "test": "node --conditions=react-server --test tests/*.test.ts",
     "scan:secrets": "node scripts/scan-secrets.mjs",
     "smoke": "node tests/smoke/run.mjs",
-    "db:test": "node scripts/db-test.mjs"
+    "db:test": "node scripts/db-test.mjs",
+    "probe:server-boundary": "node scripts/probe-server-boundary.mjs",
+    "scan:gitleaks": "node scripts/scan-gitleaks.mjs",
+    "install:gitleaks": "node scripts/install-gitleaks.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -24,6 +27,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-player": "^2.14.0",
+    "server-only": "0.0.1",
     "tailwindcss": "^3.3.0",
     "uuid": "^9.0.0",
     "zod": "^4.6.7"

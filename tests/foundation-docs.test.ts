@@ -14,7 +14,7 @@ const ci = yaml.load(read('.github/workflows/ci.yml')) as { permissions: Record<
 
 test('CI: verify job runs the secret scan before lint and every gate in order; database job uses the real local stack with a pinned CLI', () => {
   const runs = ci.jobs.verify.steps.map((s) => s.run).filter(Boolean);
-  assert.deepEqual(runs.filter((r) => /^npm (ci|run|test)/.test(r!)).map((r) => r!.replace(' --ignore-scripts', '')), ['npm ci', 'npm run scan:secrets', 'npm run lint', 'npm run typecheck', 'npm test', 'npm run build', 'npm run smoke']);
+  assert.deepEqual(runs.filter((r) => /^npm (ci|run|test)/.test(r!)).map((r) => r!.replace(' --ignore-scripts', '')), ['npm ci', 'npm run scan:gitleaks', 'npm run scan:secrets', 'npm run lint', 'npm run typecheck', 'npm test', 'npm run build', 'npm run smoke']);
   const db = ci.jobs.database.steps;
   const setup = db.find((s) => s.uses?.startsWith('supabase/setup-cli'));
   assert.ok(setup, 'database job must install the Supabase CLI');
@@ -60,11 +60,9 @@ test('the ADR records the five F2 invariants and the F2 acceptance contract has 
   assert.match(read('docs/spikes/f1-hosted-spikes.md'), /BLOCKED — no hosted staging project/);
 });
 
-test('the in-repo secret scanner is labelled supplementary in CI, and the Gitleaks proposal stays marked unverified until it is integrated', () => {
-  const step = ci.jobs.verify.steps.find((s) => s.run === 'npm run scan:secrets');
-  assert.match(String((step as { name?: string }).name), /supplementary/i);
-  assert.ok(!JSON.stringify(ci).toLowerCase().includes('gitleaks') || existsSync(join(root, 'scripts/gitleaks.sha256')), 'a Gitleaks CI step needs its committed digest');
-  const proposal = read('docs/proposals/gitleaks-integration.md');
-  assert.match(proposal, /UNVERIFIED/);
-  assert.match(proposal, /does not satisfy that requirement/);
+test('the in-repo secret scanner is labelled supplementary in CI, and Gitleaks (pinned) is the primary scan', () => {
+  const names = ci.jobs.verify.steps.map((st) => (st as { name?: string }).name ?? '');
+  assert.ok(names.some((n) => /^Secret scan \(Gitleaks/.test(n)));
+  assert.ok(names.some((n) => /Secret scan \(in-repo scanner, supplementary\)/.test(n)));
+  assert.ok(existsSync(join(root, 'docs/security/gitleaks.md')) && !existsSync(join(root, 'docs/proposals')));
 });

@@ -120,7 +120,7 @@ test('nothing reachable from the client-safe barrel touches the environment, a d
     assert.ok(!/process\.env/.test(src), `${file.slice(root.length)} reads process.env`);
   }
   const reached = [...seen].map((f) => f.slice(root.length)).sort();
-  for (const forbidden of ['src/platform/env.ts', 'src/platform/server.ts', 'src/platform/db/clients.ts', 'src/platform/db/index.ts', 'src/platform/db/types.ts', 'src/platform/http/handler.ts', 'src/platform/http/validate.ts', 'src/platform/http/origin.ts']) assert.ok(!reached.includes(forbidden), `${forbidden} is reachable from the client-safe barrel`);
+  for (const forbidden of ['src/platform/env.ts', 'src/platform/env-validate.ts', 'src/platform/server.ts', 'src/platform/db/clients.ts', 'src/platform/db/index.ts', 'src/platform/db/types.ts', 'src/platform/http/handler.ts', 'src/platform/http/validate.ts', 'src/platform/http/origin.ts']) assert.ok(!reached.includes(forbidden), `${forbidden} is reachable from the client-safe barrel`);
   assert.deepEqual([...externals].sort(), ['zod'], 'the client-safe surface may depend on zod only (no database packages, no node: built-ins)');
   assert.ok(reached.includes('src/platform/actor.ts') && reached.includes('src/platform/log.ts') && reached.includes('src/platform/http/errors.ts'), `walker found too little: ${reached.join(', ')}`);
 });

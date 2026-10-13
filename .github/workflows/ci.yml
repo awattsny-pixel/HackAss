@@ -21,6 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0 # the Gitleaks history scan needs every commit
 
       - uses: actions/setup-node@v4
         with:
@@ -29,6 +30,12 @@ jobs:
 
       - name: Install (lockfile only, no lifecycle scripts)
         run: npm ci --ignore-scripts
+
+      - name: Install pinned Gitleaks (SHA-256 verified against scripts/gitleaks-pin.json)
+        run: node scripts/install-gitleaks.mjs
+
+      - name: Secret scan (Gitleaks, working tree and full history)
+        run: npm run scan:gitleaks
 
       - name: Secret scan (in-repo scanner, supplementary)
         run: npm run scan:secrets
@@ -41,6 +48,8 @@ jobs:
 
       - name: Unit and containment tests
         run: npm test
+        env:
+          REQUIRE_GITLEAKS: '1' # the real-binary Gitleaks tests must run, not skip
 
       - name: Production build (dummy configuration)
         env:
@@ -78,3 +87,21 @@ jobs:
       - name: Stop the stack
         if: always()
         run: supabase stop --no-backup
+
+  # Real `next build` proofs of the server/client boundary: a server route importing the server-only platform surface
+  # must build; a Client Component importing it must fail with the server-only error. Runs in a throwaway copy.
+  server-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Probe the build-time boundary
+        run: npm ci --ignore-scripts && npm run probe:server-boundary
