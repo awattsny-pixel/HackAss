@@ -23,4 +23,62 @@ export default defineConfig([
     files: ['scripts/**/*.js', 'tests/smoke/*.cjs'],
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
+
+  // ---- Foundation boundaries (docs/adr/0001-foundation.md). These are lint hygiene that keeps code honest; the
+  // security boundary itself is the database role and its grants, not an import rule.
+  {
+    // Node runs src/ and tests/ TypeScript directly (type stripping), so type-only imports must say so.
+    files: ['src/**/*.ts', 'tests/**/*.ts'],
+    rules: { '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports', fixStyle: 'separate-type-imports' }] },
+  },
+  {
+    // Only src/platform/env.ts reads process.env, so configuration is validated in exactly one place.
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+    ignores: ['src/platform/env.ts'],
+    rules: { 'no-restricted-syntax': ['error', { selector: "MemberExpression[object.name='process'][property.name='env']", message: 'Read configuration through src/platform/env.ts (getEnv/loadEnv), not process.env.' }] },
+  },
+  {
+    // The browser never holds a Supabase client in the server-centric session design.
+    files: ['**/*.{ts,tsx,js,mjs,cjs}'],
+    rules: { 'no-restricted-imports': ['error', { paths: [{ name: '@supabase/ssr', importNames: ['createBrowserClient'], message: 'No browser-side Supabase client: all Auth and data calls run on the server.' }] }] },
+  },
+  {
+    // Routes and pages reach data through platform/modules, never through a database package directly.
+    files: ['app/**/*.{ts,tsx}'],
+    ignores: ['app/lib/supabase-server.ts'], // legacy (M01-A/B) read path, retired in F5; the test suite pins this exception
+    rules: { 'no-restricted-imports': ['error', {
+      paths: [{ name: '@supabase/ssr', importNames: ['createBrowserClient'], message: 'No browser-side Supabase client.' }],
+      patterns: [{ group: ['@supabase/*', 'pg', 'pg/*'], message: 'Do not import database packages in app/; use src/platform/db from a route handler or a module.' }],
+    }] },
+  },
+  {
+    // UI components never touch the database or configuration.
+    files: ['src/ui/**/*.{ts,tsx}'],
+    rules: { 'no-restricted-imports': ['error', {
+      paths: [{ name: '@supabase/ssr', importNames: ['createBrowserClient'], message: 'No browser-side Supabase client.' }],
+      patterns: [{ group: ['@supabase/*', 'pg', 'pg/*', '**/platform/db', '**/platform/db/*', '**/platform/env*'], message: 'UI code cannot import database clients or environment configuration.' }],
+    }] },
+  },
+  {
+    // Modules are isolated: no sibling-module internals, no relative escapes, no clients, no app/ imports.
+    files: ['src/modules/**/*.ts'],
+    rules: { 'no-restricted-imports': ['error', {
+      paths: [{ name: '@supabase/ssr', importNames: ['createBrowserClient'], message: 'No browser-side Supabase client.' }],
+      patterns: [
+        { group: ['@supabase/*', 'pg', 'pg/*'], message: 'Modules receive a ready database handle in their context; they never build clients.' },
+        { group: ['**/platform/db', '**/platform/db/*'], message: 'Database client factories belong to the composition root, not to modules.' },
+        { group: ['@/src/modules/*/*', '@/src/modules/*/**'], message: 'Import another module only through its index (e.g. @/src/modules/catalog).' },
+        { group: ['../*', '../**'], message: 'Use the public index of another module; keep imports inside a module relative to ./' },
+        { group: ['@/app/*', '@/app/**'], message: 'Modules do not depend on routes or pages.' },
+      ],
+    }] },
+  },
+  {
+    // Platform is the lowest layer: it depends on no module and no route.
+    files: ['src/platform/**/*.ts'],
+    rules: { 'no-restricted-imports': ['error', {
+      paths: [{ name: '@supabase/ssr', importNames: ['createBrowserClient'], message: 'No browser-side Supabase client.' }],
+      patterns: [{ group: ['@/src/modules/*', '@/src/modules/**', '**/modules/*', '@/app/*', '@/app/**'], message: 'src/platform must not depend on modules or app/.' }],
+    }] },
+  },
 ]);

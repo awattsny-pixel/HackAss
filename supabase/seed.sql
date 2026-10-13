@@ -1,0 +1,1 @@
+-- Intentionally empty. The local stack is seeded only by reviewed fixtures added in later slices (never real user data).

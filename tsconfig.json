@@ -26,6 +26,8 @@
     "noEmit": true,
     "incremental": true,
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
     "jsx": "react-jsx",
     "plugins": [
       {
