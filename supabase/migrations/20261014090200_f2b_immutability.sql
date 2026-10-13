@@ -7,6 +7,7 @@
 --     Identity columns (id, hack_id, version_no, created_by, created_at) never change.
 --   * every hashed child table: INSERT, UPDATE and DELETE are rejected when the parent version is frozen; an UPDATE that moves a
 --     row to another version checks BOTH the old and the new parent.
+--   * categories: the slug (hashed through category_slug) and id never change; names do.
 --   * submissions: append-only.
 -- Lock order (one rule everywhere): lock version rows in ascending id order. Draft RPCs and the freeze take FOR UPDATE on the
 -- version row; child-row triggers take FOR SHARE on every parent they touch, in ascending id order. A child write and a freeze of
@@ -66,6 +67,8 @@ declare
   v_ids   uuid[];
   v_found integer;
   v_frozen integer;
+  v_cap   integer;
+  v_count bigint;
 begin
   if tg_op in ('UPDATE', 'DELETE') then v_old := (pg_catalog.to_jsonb(old) ->> 'version_id')::uuid; end if;
   if tg_op in ('UPDATE', 'INSERT') then v_new := (pg_catalog.to_jsonb(new) ->> 'version_id')::uuid; end if;
@@ -77,11 +80,37 @@ begin
   if v_frozen > 0 then
     raise exception 'version_frozen' using errcode = 'PT409';
   end if;
+  -- list-size backstop for the three lists that have no position column to bound them (the RPC checks first; this guards every other path)
+  if tg_op in ('INSERT', 'UPDATE') and (tg_op = 'INSERT' or v_new is distinct from v_old) then
+    v_cap := case tg_table_name when 'hack_requirements' then 30 when 'version_tags' then 10 when 'version_assets' then 20 else null end;
+    if v_cap is not null then
+      execute pg_catalog.format('select pg_catalog.count(*) from app.%I where version_id = $1', tg_table_name) into v_count using v_new;
+      if v_count >= v_cap then
+        raise exception 'limit_exceeded' using errcode = 'PT422', detail = tg_table_name;
+      end if;
+    end if;
+  end if;
   -- a missing parent is fine only for DELETE (the parent row is being deleted and this is the cascade); INSERT/UPDATE fail on the foreign key
   if tg_op = 'DELETE' then return old; end if;
   return new;
 end
 $$;
+
+-- The category slug is part of every hash that includes it, so it never changes (display names stay editable).
+create function app_content.guard_category() returns trigger
+  language plpgsql security definer set search_path = ''
+as $$
+begin
+  if new.slug is distinct from old.slug then
+    raise exception 'category_slug_immutable' using errcode = 'PT409';
+  end if;
+  if new.id is distinct from old.id then
+    raise exception 'category_id_immutable' using errcode = 'PT409';
+  end if;
+  return new;
+end
+$$;
+create trigger categories_guard before update on app.categories for each row execute function app_content.guard_category();
 
 create trigger hack_steps_guard         before insert or update or delete on app.hack_steps         for each row execute function app_content.guard_child();
 create trigger hack_materials_guard     before insert or update or delete on app.hack_materials     for each row execute function app_content.guard_child();
@@ -118,7 +147,8 @@ create trigger version_attributions_no_truncate before truncate on app.version_a
 create trigger source_claims_no_truncate        before truncate on app.source_claims        for each statement execute function app_content.guard_truncate();
 create trigger version_assets_no_truncate       before truncate on app.version_assets        for each statement execute function app_content.guard_truncate();
 create trigger submissions_no_truncate          before truncate on app.submissions          for each statement execute function app_content.guard_truncate();
+create trigger categories_no_truncate before truncate on app.categories for each statement execute function app_content.guard_truncate();
 
-revoke all on function app_content.guard_version(), app_content.guard_child(), app_content.guard_submission(), app_content.guard_truncate() from public;
+revoke all on function app_content.guard_version(), app_content.guard_child(), app_content.guard_submission(), app_content.guard_truncate(), app_content.guard_category() from public;
 
 reset role;

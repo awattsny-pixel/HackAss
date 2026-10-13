@@ -323,6 +323,85 @@ select 'f2a=' || (to_regclass('app.accounts') is not null) || ',' || (to_regclas
   return 'after the rollback script: 0 content tables, no app_content schema, only whoami/staff_probe in api, F2-A intact; transaction rolled back, state restored';
 });
 
+// ---- correction round: category immutability race, atomic draft quota, ownership of quota under concurrency ----------------------------
+const BARRIER = (ms) => `select pg_sleep(greatest(0, extract(epoch from (timestamptz '${new Date(Date.now() + ms).toISOString()}' - clock_timestamp()))));`;
+const openDrafts = (userId) => Number(owner(`select count(*) from app.hack_versions where created_by = '${userId}' and frozen_at is null;`).split('\n').pop());
+async function memberWith(n) {
+  const { session, userId } = await confirmedSession();
+  for (let i = 0; i < n; i++) { const r = await api('create_draft', session.access_token); ok(r.status === 200, `fixture create_draft ${i}: HTTP ${r.status} ${msg(r)}`); }
+  return { t: session.access_token, userId, claims: decode(session.access_token).claims };
+}
+const slowInsert = () => psql(`set role hackass_owner;
+create or replace function app_content.zz_slow() returns trigger language plpgsql security definer set search_path = '' as $f$ begin perform pg_catalog.pg_sleep(0.4); return new; end $f$;
+drop trigger if exists zz_slow on app.hack_versions;
+create trigger zz_slow before insert on app.hack_versions for each row execute function app_content.zz_slow();`);
+const fastInsert = () => psql(`set role hackass_owner;\ndrop trigger if exists zz_slow on app.hack_versions;\ndrop function if exists app_content.zz_slow();`);
+
+await check('C8', 'category slug is immutable: a rename racing a submit can neither change the frozen hash nor the slug; display names stay editable', async () => {
+  const f = await draftFor('C8 category race');
+  const slugBefore = owner(`select c.slug from app.categories c join app.hack_versions v on v.category_id = c.id where v.id = '${f.versionId}';`).split('\n').pop();
+  // S1 hammers slug changes (each must fail) and name changes (each must succeed) while S2 submits
+  const hammer = `set role hackass_owner;
+do $$ declare i int; begin for i in 1..60 loop
+  begin update app.categories set slug = 'renamed-' || i where slug = '${slugBefore}'; exception when others then null; end;
+  update app.categories set name = 'Name ' || i where slug = '${slugBefore}';
+  perform pg_sleep(0.03);
+end loop; end $$;`;
+  const s1 = session(hammer);
+  const s2 = session(asMember(f.claims, `select api.submit_version('${f.versionId}', '${f.hash}');`), 300);
+  const [, r2] = await Promise.all([s1, s2]);
+  ok(/"content_hash"/.test(r2.out), `submit during the rename storm failed: ${r2.err.split('\n')[0]}`);
+  ok(owner(`select count(*) from app.categories where slug = '${slugBefore}';`).split('\n').pop() === '1', 'the slug must be unchanged');
+  ok(stored(f.versionId) === `${f.hash}:true` && dbHash(f.versionId) === f.hash && mismatchCount() === 0, 'stored hash == recomputed hash after the storm');
+  const direct = psql(`set role hackass_owner;\nupdate app.categories set slug = 'x-${stamp}' where slug = '${slugBefore}';`, { tolerate: true });
+  ok(/category_slug_immutable/.test(direct.err), `a direct slug update must fail: ${direct.err.split('\n')[0]}`);
+  return `60 rename attempts during the submit: slug unchanged, names editable, hash stable (${f.hash.slice(0, 12)}…)`;
+});
+
+await check('C9', 'the 20-draft quota is atomic: from 19 drafts, parallel creates yield exactly one more; never more than 20 at any time', async () => {
+  slowInsert(); // widens the check-to-insert window so an unserialized quota would be overshot every time
+  try {
+    const m = await memberWith(19);
+    ok(openDrafts(m.userId) === 19, 'fixture should hold 19 drafts');
+    const N = 8;
+    const runs = await Promise.all(Array.from({ length: N }, () => session(asMember(m.claims, `${BARRIER(1500)}\nselect api.create_draft();`))));
+    const created = runs.filter((r) => /"version_id"/.test(r.out)).length;
+    const refused = runs.filter((r) => /too_many_drafts/.test(r.err)).length;
+    ok(created === 1 && refused === N - 1, `expected exactly 1 success and ${N - 1} refusals, got ${created} and ${refused}: ${runs.map((r) => r.err.split('\n')[0]).filter(Boolean).slice(0, 2).join(' | ')}`);
+    ok(openDrafts(m.userId) === 20, `open drafts: ${openDrafts(m.userId)}`);
+    return `19 drafts + ${N} simultaneous creates -> ${created} created, ${refused} refused with too_many_drafts, total 20`;
+  } finally { fastInsert(); }
+});
+
+await check('C10', 'quota under concurrent deletion and creation: a create waits for an in-flight delete and then succeeds; the total never exceeds 20', async () => {
+  slowInsert();
+  try {
+    const m = await memberWith(20);
+    const rows = owner(`select id::text from app.hack_versions where created_by = '${m.userId}' and frozen_at is null order by created_at limit 3;`).split('\n').slice(-3);
+    // S1 deletes a draft and holds its transaction; S2 and S3 try to create meanwhile
+    const s1 = session(asMember(m.claims, `begin;\nselect api.delete_draft('${rows[0]}');\nselect pg_sleep(2.5);\ncommit;`));
+    const s2 = session(asMember(m.claims, `select api.create_draft();`), 700);
+    const s3 = session(asMember(m.claims, `select api.create_draft();`), 750);
+    const [, r2, r3] = await Promise.all([s1, s2, s3]);
+    const created = [r2, r3].filter((r) => /"version_id"/.test(r.out)).length;
+    const refused = [r2, r3].filter((r) => /too_many_drafts/.test(r.err)).length;
+    ok(created === 1 && refused === 1, `after one delete exactly one of two creates may succeed: created ${created}, refused ${refused}: ${r2.err.split('\n')[0]} / ${r3.err.split('\n')[0]}`);
+    ok(Math.max(r2.ms, r3.ms) >= 1500, `the creates did not wait for the in-flight delete (${r2.ms}/${r3.ms} ms)`);
+    ok(openDrafts(m.userId) === 20, `open drafts: ${openDrafts(m.userId)}`);
+    // many deletes and creates at once
+    const burst = [];
+    const victims = owner(`select id::text from app.hack_versions where created_by = '${m.userId}' and frozen_at is null order by created_at limit 5;`).split('\n').slice(-5);
+    for (const v of victims) burst.push(session(asMember(m.claims, `${BARRIER(1500)}\nselect api.delete_draft('${v}');`)));
+    for (let i = 0; i < 8; i++) burst.push(session(asMember(m.claims, `${BARRIER(1500)}\nselect api.create_draft();`)));
+    const all = await Promise.all(burst);
+    ok(!all.some((r) => /deadlock/i.test(r.err)), 'a deadlock occurred between deletes and creates');
+    const n = openDrafts(m.userId);
+    ok(n <= 20, `the quota was exceeded: ${n} open drafts`);
+    const okDeletes = all.slice(0, 5).filter((r) => /deleted/.test(r.out)).length;
+    return `one delete + two creates -> 1 created, 1 refused, waited ${Math.max(r2.ms, r3.ms)} ms; burst of ${okDeletes} deletes + 8 creates: ${n} open drafts (<= 20), no deadlock`;
+  } finally { fastInsert(); }
+});
+
 const n = failed();
 console.log(`\nF2-B content checks: ${n === 0 ? 'all passed' : `${n} FAILED`}`);
 console.log('NOT run here (hosted only): the same checks against the hosted project and pooler.');

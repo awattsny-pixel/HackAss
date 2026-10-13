@@ -43,6 +43,32 @@ begin
 end
 $$;
 
+-- An optional identifier member that must ALREADY be in the documented form: a lowercase, hyphenated UUID (j_uuid) or 64 lowercase hex
+-- characters (j_hex64). Uppercase, braces, a urn: prefix, missing or odd hyphens, short or non-hex digests are an error (PT422, detail = the key),
+-- so the text that is hashed, the TypeScript implementation and the stored (uuid / bytea) value can never disagree about spelling.
+create function app_content.j_uuid(p jsonb, p_key text) returns text
+  language plpgsql immutable security definer set search_path = ''
+as $$
+declare v text := app_content.j_text(p, p_key);
+begin
+  if v is not null and v !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    raise exception 'invalid_content' using errcode = 'PT422', detail = p_key;
+  end if;
+  return v;
+end
+$$;
+create function app_content.j_hex64(p jsonb, p_key text) returns text
+  language plpgsql immutable security definer set search_path = ''
+as $$
+declare v text := app_content.j_text(p, p_key);
+begin
+  if v is not null and v !~ '^[0-9a-f]{64}$' then
+    raise exception 'invalid_content' using errcode = 'PT422', detail = p_key;
+  end if;
+  return v;
+end
+$$;
+
 -- A JSON array member as a set of its elements, in array order, with 1-based position. Absent / null -> empty. Non-array -> error.
 create function app_content.j_arr(p jsonb, p_key text) returns table (pos integer, item jsonb)
   language plpgsql immutable security definer set search_path = ''
@@ -115,7 +141,7 @@ begin
   select pg_catalog.count(*) into v_n from app_content.j_arr(p, 'attributions');
   v_out := v_out || 'attributions:' || v_n || E'\n';
   for r in select a.pos, a.item from app_content.j_arr(p, 'attributions') a order by a.pos loop
-    v_out := v_out || 'attribution;' || r.pos || ';' || app_content.fv(app_content.j_text(r.item, 'role')) || ';' || app_content.fv(app_content.j_text(r.item, 'profile_id'))
+    v_out := v_out || 'attribution;' || r.pos || ';' || app_content.fv(app_content.j_text(r.item, 'role')) || ';' || app_content.fv(app_content.j_uuid(r.item, 'profile_id'))
                    || ';' || app_content.fv(app_content.j_text(r.item, 'external_name')) || ';' || app_content.fv(app_content.j_text(r.item, 'external_url')) || E'\n';
   end loop;
 
@@ -132,8 +158,8 @@ begin
   -- assets: sorted by sha-256 hex (bytes of the lowercase hex text)
   select pg_catalog.count(*) into v_n from app_content.j_arr(p, 'assets');
   v_out := v_out || 'assets:' || v_n || E'\n';
-  for r in select app_content.j_text(a.item, 'sha256') as sha, app_content.j_text(a.item, 'asset_id') as asset_id from app_content.j_arr(p, 'assets') a
-            order by pg_catalog.convert_to(app_content.j_text(a.item, 'sha256'), 'UTF8') loop
+  for r in select app_content.j_hex64(a.item, 'sha256') as sha, app_content.j_uuid(a.item, 'asset_id') as asset_id from app_content.j_arr(p, 'assets') a
+            order by pg_catalog.convert_to(app_content.j_hex64(a.item, 'sha256'), 'UTF8') loop
     v_out := v_out || 'asset;' || app_content.fv(r.sha) || ';' || app_content.fv(r.asset_id) || E'\n';
   end loop;
   return v_out;
@@ -174,7 +200,7 @@ create function app_content.version_hash(p_version_id uuid) returns bytea
 as $$ select app_content.hash_text(app_content.canonical_text(p_version_id)) $$;
 
 revoke all on function app_content.canon_str(text), app_content.fv(text), app_content.j_text(jsonb, text), app_content.j_int(jsonb, text),
-  app_content.j_arr(jsonb, text), app_content.canonical_text_json(jsonb), app_content.hash_text(text), app_content.version_doc(uuid),
+  app_content.j_arr(jsonb, text), app_content.j_uuid(jsonb, text), app_content.j_hex64(jsonb, text), app_content.canonical_text_json(jsonb), app_content.hash_text(text), app_content.version_doc(uuid),
   app_content.canonical_text(uuid), app_content.version_hash(uuid) from public;
 
 reset role;

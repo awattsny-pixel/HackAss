@@ -48,6 +48,14 @@ function int(obj: Record<string, unknown>, key: string): string | null {
   if (typeof v !== 'number' || !Number.isInteger(v) || !/^(0|[1-9][0-9]{0,14})$/.test(String(v))) throw new CanonError(key);
   return String(v);
 }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const HEX64_RE = /^[0-9a-f]{64}$/;
+/** An identifier that must already be a lowercase hyphenated UUID (`uuid`) or 64 lowercase hex characters (`hex64`). Any other spelling is rejected, as in SQL. */
+function ident(obj: Record<string, unknown>, key: string, kind: 'uuid' | 'hex64'): string | null {
+  const v = text(obj, key);
+  if (v !== null && !(kind === 'uuid' ? UUID_RE : HEX64_RE).test(v)) throw new CanonError(key);
+  return v;
+}
 function arr(obj: Record<string, unknown>, key: string): unknown[] {
   const v = obj[key];
   if (v === undefined || v === null) return [];
@@ -96,7 +104,7 @@ export function canonicalText(doc: ContentDoc): string {
   out += `attributions:${attributions.length}\n`;
   attributions.forEach((a, i) => {
     const o = item(a, 'attributions');
-    out += `attribution;${i + 1};${fv(text(o, 'role'))};${fv(text(o, 'profile_id'))};${fv(text(o, 'external_name'))};${fv(text(o, 'external_url'))}\n`;
+    out += `attribution;${i + 1};${fv(text(o, 'role'))};${fv(ident(o, 'profile_id', 'uuid'))};${fv(text(o, 'external_name'))};${fv(text(o, 'external_url'))}\n`;
   });
 
   const claims = arr(d, 'source_claims');
@@ -106,7 +114,7 @@ export function canonicalText(doc: ContentDoc): string {
     out += `claim;${i + 1};${['kind', 'canonical_url', 'source_author', 'license_spdx', 'license_version', 'permission_note', 'asset_rights_note'].map((k) => fv(text(o, k))).join(';')}\n`;
   });
 
-  const assets = arr(d, 'assets').map((a) => { const o = item(a, 'assets'); return { sha: text(o, 'sha256'), id: text(o, 'asset_id') }; });
+  const assets = arr(d, 'assets').map((a) => { const o = item(a, 'assets'); return { sha: ident(o, 'sha256', 'hex64'), id: ident(o, 'asset_id', 'uuid') }; });
   assets.sort((a, b) => compareBytes(a.sha ?? '', b.sha ?? ''));
   out += `assets:${assets.length}\n`;
   for (const a of assets) out += `asset;${fv(a.sha)};${fv(a.id)}\n`;

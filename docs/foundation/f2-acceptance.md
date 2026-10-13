@@ -49,3 +49,12 @@ the repository (`npm run scan:secrets`).
 | G-2 / G-3 | golden inventory extended to 14 tables and 33 functions (owner, definer, search_path, volatility, EXECUTE grantees); only `api.*` content functions are executable by `authenticated`; no table privilege for any role | done for F2-B objects |
 | G-4 Forbidden writes | members, anon, service_role and the worker have no table access; privileged/unknown fields are rejected by `save_draft` (pgTAP + real JWT) | done for content |
 | I-3 | every content function refuses no-claims, signed-out, disabled-account and other-owner callers (pgTAP + real JWT) | done locally |
+
+### F2-B correction round
+| Defect found in review | Fix | Evidence |
+|---|---|---|
+| category slug (hashed) was updatable | slug and id immutable; names editable | `040` H1; check C8 (rename storm during a submit) |
+| the 20-draft quota was not atomic | account-row lock, account → hack → version order | `C9` (8 simultaneous creates from 19: exactly 1 succeeds; 8 of 8 succeeded before), `C10` (delete + creates) |
+| requirements/tags/assets had no cap; no size cap | `assert_limits` before replacement; DB backstop trigger for the three lists | `040` H2: boundaries for all 7 lists and the document size, canary proves nothing was updated/deleted |
+| UUID/digest spelling could differ between hashing and storage | strict lowercase hyphenated UUID / 64 lowercase hex, rejected otherwise, in SQL and TypeScript | 10 rejection vectors (SQL, TypeScript, storage) |
+| Roadmap | `list_my_versions()` needs cursor pagination before the contributor UI | documented in `docs/db/f2b-content.md` |

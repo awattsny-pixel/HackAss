@@ -38,11 +38,41 @@ PT429 too_many_drafts (PostgREST maps `PTnnn` to HTTP `nnn`).
 ## Decisions made in this slice that the CTO should confirm
 * Enumerations the contract left open: `difficulty` easy/moderate/hard; `ai_requirement` none/helpful/required; requirement `kind` tool/skill/account/other;
   attribution `role` author/source_author/contributor/variation_parent; claim `kind` as in the design; currency = ISO-4217-shaped `[A-Z]{3}`.
-* Limits: title 120, summary 500, outcome 1000, limitations 2000, step 2000, 50 steps/materials, 30-ish requirements by key, 10 attributions/claims, tags ≤ 40 chars.
+* Limits (approved): title 120, summary 500, outcome 1000, limitations 2000, step 2000, estimate basis 500, list items as in the tables below.
 * Required to submit: category, title, summary, outcome, difficulty, ≥ 1 step, ≥ 1 source claim; a claim of kind third_party_reuse/licensed/permission_granted
   needs a source URL; a cost needs a currency. (Rights *clearance* is a separate staff record, F2-C.)
 * `version_attributions.profile_id` and `version_assets.asset_id` have no foreign keys until profiles and the asset store exist.
 * `variation_of_hack_id` and `current_publication_id` are deferred to the slices that give them meaning.
+
+## Size limits (enforced before anything is replaced)
+`app_content.assert_limits` runs **first** in `write_doc`, before the version row is updated or any child is deleted (a test counts UPDATEs/DELETEs with a
+non-transactional canary and shows a rejected save performs none). The whole document may not exceed **131072 bytes** of JSON text (multi-byte text counts in
+bytes); then each list is capped:
+| List | Max items | Also enforced by |
+|---|---|---|
+| steps | 50 | `position` check |
+| materials | 50 | `position` check |
+| requirements | 30 | child guard trigger (count) |
+| tags | 10 | child guard trigger (count) |
+| attributions | 10 | `attribution_no` check |
+| source_claims | 10 | `claim_no` check |
+| assets | 20 | child guard trigger (count) |
+Error: `PT422 limit_exceeded`, detail = `document` or the list name. Boundary tests cover the cap and cap + 1 for every list and for the document size.
+
+## Quota (twenty open drafts per member) is atomic
+`create_draft` and `delete_draft` first lock the member's `accounts` row (`FOR NO KEY UPDATE`, which does not conflict with foreign-key checks),
+then count. Lock order everywhere: **account row → hack row → version row**. A create therefore waits for an in-flight delete of the same member and sees only
+committed deletions; simultaneous creates cannot all pass the count. Check C9/C10 widen the check-to-insert window with a test trigger so an unserialized
+quota overshoots on every run (it did, 8 of 8, before the fix).
+
+## Category slugs are immutable
+The category slug is part of the hash, so `app.categories.slug` (and `id`) can never change (`PT409 category_slug_immutable`); display names stay editable; a
+category referenced by a version cannot be deleted. Test: submit, attempt a rename, stored hash still equals the recomputed hash; check C8 hammers renames
+during a submit.
+
+## Roadmap follow-up (not built)
+`api.list_my_versions()` returns only the newest 100 versions with **no cursor**. Before the contributor UI depends on it, add deterministic cursor
+pagination (stable order on `(created_at desc, id desc)`, an opaque signed cursor, a bounded page size, and tests for inserts and deletes between pages).
 
 ## Rollback
 `supabase/rollbacks/20261014090000_f2b_down.sql` (drops the six api functions, the twelve content tables, schema `app_content`, and the four ledger rows;

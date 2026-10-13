@@ -24,6 +24,29 @@ begin
 end
 $$;
 
+-- Size limits, checked FIRST (before anything is updated or deleted): the document may not exceed 131072 bytes of JSON text, and each list has a
+-- maximum length. The same caps back the position/uniqueness constraints in the tables and the child guard trigger.
+create function app_content.assert_limits(p jsonb) returns void
+  language plpgsql immutable security definer set search_path = ''
+as $$
+declare
+  v_key text;
+  v_cap integer;
+begin
+  if p is null or pg_catalog.jsonb_typeof(p) <> 'object' then
+    raise exception 'invalid_content' using errcode = 'PT422', detail = '(root)';
+  end if;
+  if pg_catalog.octet_length(p::text) > 131072 then
+    raise exception 'limit_exceeded' using errcode = 'PT422', detail = 'document';
+  end if;
+  for v_key, v_cap in select * from (values ('steps', 50), ('materials', 50), ('requirements', 30), ('tags', 10), ('attributions', 10), ('source_claims', 10), ('assets', 20)) t(k, c) loop
+    if pg_catalog.jsonb_typeof(p -> v_key) = 'array' and pg_catalog.jsonb_array_length(p -> v_key) > v_cap then
+      raise exception 'limit_exceeded' using errcode = 'PT422', detail = v_key;
+    end if;
+  end loop;
+end
+$$;
+
 -- Replace the whole content of an UNFROZEN draft with the document. The caller holds the version row lock.
 -- Unknown keys are rejected at every level, so nothing privileged (risk class, status, seal columns, owner ids) can be smuggled in.
 create function app_content.write_doc(p_version_id uuid, p_doc jsonb) returns void
@@ -34,6 +57,7 @@ declare
   v_slug text;
   r record;
 begin
+  perform app_content.assert_limits(p_doc);   -- before anything is touched
   perform app_content.assert_keys(p_doc, array['category_slug', 'title', 'summary', 'outcome', 'difficulty', 'time_min_minutes', 'time_max_minutes',
     'cost_min_cents', 'cost_max_cents', 'currency', 'estimate_basis', 'ai_requirement', 'limitations',
     'steps', 'materials', 'requirements', 'tags', 'attributions', 'source_claims', 'assets'], '(root)');
@@ -79,7 +103,7 @@ begin
   for r in select a.pos, a.item from app_content.j_arr(p_doc, 'attributions') a loop
     perform app_content.assert_keys(r.item, array['role', 'profile_id', 'external_name', 'external_url'], 'attributions');
     insert into app.version_attributions (version_id, attribution_no, role, profile_id, external_name, external_url)
-      values (p_version_id, r.pos, app_content.j_text(r.item, 'role'), app_content.j_text(r.item, 'profile_id')::uuid, app_content.j_text(r.item, 'external_name'), app_content.j_text(r.item, 'external_url'));
+      values (p_version_id, r.pos, app_content.j_text(r.item, 'role'), app_content.j_uuid(r.item, 'profile_id')::uuid, app_content.j_text(r.item, 'external_name'), app_content.j_text(r.item, 'external_url'));
   end loop;
   for r in select a.pos, a.item from app_content.j_arr(p_doc, 'source_claims') a loop
     perform app_content.assert_keys(r.item, array['kind', 'canonical_url', 'source_author', 'license_spdx', 'license_version', 'permission_note', 'asset_rights_note'], 'source_claims');
@@ -89,9 +113,9 @@ begin
   end loop;
   for r in select a.pos, a.item from app_content.j_arr(p_doc, 'assets') a loop
     perform app_content.assert_keys(r.item, array['asset_id', 'sha256'], 'assets');
-    if app_content.j_text(r.item, 'sha256') is null or app_content.j_text(r.item, 'sha256') !~ '^[0-9a-f]{64}$' then raise exception 'invalid_content' using errcode = 'PT422', detail = 'assets.sha256'; end if;
+    if app_content.j_hex64(r.item, 'sha256') is null then raise exception 'invalid_content' using errcode = 'PT422', detail = 'sha256'; end if;
     insert into app.version_assets (version_id, sha256, asset_id)
-      values (p_version_id, pg_catalog.decode(app_content.j_text(r.item, 'sha256'), 'hex'), app_content.j_text(r.item, 'asset_id')::uuid);
+      values (p_version_id, pg_catalog.decode(app_content.j_hex64(r.item, 'sha256'), 'hex'), app_content.j_uuid(r.item, 'asset_id')::uuid);
   end loop;
 end
 $$;
@@ -158,6 +182,9 @@ declare
   v_version uuid;
 begin
   v_actor := app_guard.require_member();
+  -- The quota check and the insert must be one atomic step per member: serialize on the member's account row (a lock mode that does not
+  -- conflict with the foreign-key checks of other statements). Lock order everywhere: account row -> hack row -> version row.
+  perform 1 from app.accounts a where a.user_id = v_actor.user_id for no key update;
   if (select pg_catalog.count(*) from app.hack_versions v where v.created_by = v_actor.user_id and v.frozen_at is null) >= 20 then
     raise exception 'too_many_drafts' using errcode = 'PT429';
   end if;
@@ -266,6 +293,7 @@ begin
   v_actor := app_guard.require_member();
   select v.created_by, v.hack_id into v_owner, v_hack from app.hack_versions v where v.id = p_version_id;
   if v_owner is distinct from v_actor.user_id then raise exception 'not_found' using errcode = 'PT404'; end if;
+  perform 1 from app.accounts a where a.user_id = v_actor.user_id for no key update;   -- same account-first order as create_draft, so the quota sees committed deletions
   select v.frozen_at into v_frozen from app.hack_versions v where v.id = p_version_id for update;
   if v_frozen is not null then raise exception 'version_frozen' using errcode = 'PT409'; end if;
   delete from app.hack_versions where id = p_version_id;
@@ -277,7 +305,7 @@ end
 $$;
 
 -- ---- grants: the complete list for F2-B ---------------------------------------------------------------------------------------
-revoke all on function app_content.assert_keys(jsonb, text[], text), app_content.write_doc(uuid, jsonb), app_content.assert_submittable(uuid),
+revoke all on function app_content.assert_keys(jsonb, text[], text), app_content.assert_limits(jsonb), app_content.write_doc(uuid, jsonb), app_content.assert_submittable(uuid),
   app_content.freeze_version(uuid, uuid, bytea), api.create_draft(uuid), api.save_draft(uuid, jsonb), api.get_version(uuid), api.list_my_versions(),
   api.submit_version(uuid, text), api.delete_draft(uuid) from public;
 grant execute on function api.create_draft(uuid), api.save_draft(uuid, jsonb), api.get_version(uuid), api.list_my_versions(),

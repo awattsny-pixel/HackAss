@@ -10,26 +10,37 @@ import { CANON_HEADER, CANON_VERSION, CanonError, canonStr, canonicalBytes, cano
 import type { ContentDoc } from '../src/modules/submissions/index.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-interface Vector { name: string; storable: boolean; doc: ContentDoc; canonical: string; sha256: string }
+interface Vector { name: string; storable: boolean; doc: ContentDoc; canonical?: string; sha256?: string; rejects?: string }
 const file = JSON.parse(readFileSync(join(root, 'tests/fixtures/hashcanon-vectors.json'), 'utf8')) as { format: string; vectors: Vector[] };
 const vectors = file.vectors;
-const byName = (n: string) => vectors.find((v) => v.name === n)!;
+const accepted = vectors.filter((v) => !v.rejects) as (Vector & { canonical: string; sha256: string })[];
+const rejected = vectors.filter((v) => v.rejects);
+const byName = (n: string) => accepted.find((v) => v.name === n)!;
 
 test('there are at least thirty golden vectors, with unique names and 64-hex digests', () => {
   assert.equal(file.format, 'HACKASS-CANON-1');
-  assert.ok(vectors.length >= 30, `only ${vectors.length}`);
+  assert.ok(accepted.length >= 30, `only ${accepted.length} accepted vectors`);
+  assert.ok(rejected.length >= 10, `only ${rejected.length} rejection vectors`);
   assert.equal(new Set(vectors.map((v) => v.name)).size, vectors.length);
-  for (const v of vectors) assert.match(v.sha256, /^[0-9a-f]{64}$/, v.name);
-  assert.ok(vectors.filter((v) => v.storable).length >= 30, 'most vectors are also round-tripped through the real tables');
+  for (const v of accepted) assert.match(v.sha256, /^[0-9a-f]{64}$/, v.name);
+  assert.ok(accepted.filter((v) => v.storable).length >= 30, 'most accepted vectors are also round-tripped through the real tables');
 });
 
 test('every golden vector: canonical text and SHA-256 match the stored expectation', async () => {
-  for (const v of vectors) {
+  for (const v of accepted) {
     assert.equal(canonicalText(v.doc), v.canonical, v.name);
     assert.equal(await hashHex(v.doc), v.sha256, v.name);
     assert.equal(createHash('sha256').update(v.canonical, 'utf8').digest('hex'), v.sha256, `${v.name}: Node crypto agrees with Web Crypto`);
     assert.deepEqual(Buffer.from(canonicalBytes(v.doc)), Buffer.from(v.canonical, 'utf8'), v.name);
   }
+});
+
+test('every rejection vector (uppercase or alternate UUID spellings, bad digests) is rejected, naming the field', () => {
+  for (const v of rejected) {
+    assert.throws(() => canonicalText(v.doc), (e: unknown) => e instanceof CanonError && e.path === v.rejects, v.name);
+  }
+  // and the accepted spelling is exactly the documented one
+  assert.doesNotThrow(() => canonicalText({ attributions: [{ role: 'author', profile_id: '00000000-0000-4000-8000-0000000000aa' }], assets: [{ asset_id: '30000000-0000-4000-8000-0000000000bb', sha256: 'ab'.repeat(32) }] }));
 });
 
 test('the fixture files are exactly what the generator produces (nobody edited them by hand)', async () => {
@@ -57,7 +68,7 @@ test('equivalent inputs give the same text: NFC, CRLF/CR, null vs absent vs empt
   assert.equal(canonicalText({ steps: [], tags: [], assets: [] }), canonicalText({}));
   assert.equal(byName('requirements sorted by kind then name').canonical, byName('requirements: same set, other input order (same canonical text)').canonical);
   assert.equal(canonicalText({ tags: ['b', 'a', 'c'] }), canonicalText({ tags: ['c', 'b', 'a'] }));
-  assert.equal(canonicalText({ assets: [{ asset_id: 'x', sha256: 'bb' }, { asset_id: 'y', sha256: 'aa' }] }), canonicalText({ assets: [{ asset_id: 'y', sha256: 'aa' }, { asset_id: 'x', sha256: 'bb' }] }));
+  assert.equal(canonicalText({ assets: [{ asset_id: '00000000-0000-4000-8000-000000000001', sha256: 'bb'.repeat(32) }, { asset_id: '00000000-0000-4000-8000-000000000002', sha256: 'aa'.repeat(32) }] }), canonicalText({ assets: [{ asset_id: '00000000-0000-4000-8000-000000000002', sha256: 'aa'.repeat(32) }, { asset_id: '00000000-0000-4000-8000-000000000001', sha256: 'bb'.repeat(32) }] }));
 });
 
 test('different inputs give different text: empty vs null, case, whitespace, step order, field forgery', () => {

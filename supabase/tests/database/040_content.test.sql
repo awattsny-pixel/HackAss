@@ -28,6 +28,9 @@ begin
   perform set_config('role', 'none', true);
   return 'ok';
 end $$;
+-- cleanup attempts whose outcome does not matter (errors ignored, nothing printed)
+create function pg_temp.owner_try(p_sql text) returns void language plpgsql as $$
+begin perform pg_temp.owner_do(p_sql); end $$;
 -- fixture statements: fail loudly, print nothing that looks like TAP
 create function pg_temp.owner_run(p_sql text) returns void language plpgsql as $$
 declare r text;
@@ -350,6 +353,120 @@ select api.save_draft((select (r ->> 'version_id')::uuid from t_del), pg_temp.do
 select is(api.delete_draft((select (r ->> 'version_id')::uuid from t_del)), '{"deleted": true}'::jsonb, 'an abandoned draft can be deleted by its owner');
 reset role;
 select is((select count(*)::int from app.hack_versions where id = (select (r ->> 'version_id')::uuid from t_del)) + (select count(*)::int from app.hack_steps where version_id = (select (r ->> 'version_id')::uuid from t_del)) + (select count(*)::int from app.hacks where id = (select (r ->> 'hack_id')::uuid from t_del)), 0, 'the draft, its children and its (now empty) hack are gone');
+
+-- ===================================================================================================================
+-- H1. the category slug is part of the hash, so it is immutable (names stay editable)
+-- ===================================================================================================================
+select is(pg_temp.code(pg_temp.owner_do($$update app.categories set slug = 'kitchen-renamed' where slug = 'kitchen'$$)), 'PT409:category_slug_immutable', 'a category slug cannot be changed (a frozen version hashes it)');
+select is(pg_temp.owner_val(format($q$select (content_hash = app_content.version_hash(id))::text from app.hack_versions where id = %L$q$, (select r ->> 'version_id' from t_ids))), 'true', 'after the attempted rename the frozen version still hashes to its stored hash');
+select is(pg_temp.code(pg_temp.owner_do($$update app.categories set slug = 'home-renamed' where slug = 'home'$$)), 'PT409:category_slug_immutable', 'even an unreferenced category cannot change its slug');
+select pg_temp.owner_try($$update app.categories set slug = 'kitchen' where slug = 'kitchen-renamed'$$);   -- (only does anything on code without the guard: restores the fixture so later sections still run)
+select pg_temp.owner_try($$update app.categories set slug = 'home' where slug = 'home-renamed'$$);
+select is(pg_temp.owner_do($$update app.categories set name = 'Kitchen & Cooking' where slug = 'kitchen'$$), 'ok', 'the display name remains editable');
+select is(pg_temp.code(pg_temp.owner_do($$update app.categories set id = pg_catalog.gen_random_uuid() where slug = 'kitchen'$$)), 'PT409:category_id_immutable', 'a category id cannot change either');
+select is(pg_temp.code(pg_temp.owner_do($$delete from app.categories where slug = 'kitchen'$$)), '23503:update or delete on table "categories" violates foreign key constraint "hack_versions_category_id_fkey" on table "hack_versions"', 'a referenced category cannot be deleted');
+
+-- ===================================================================================================================
+-- H2. size limits are enforced BEFORE any replacement starts
+-- ===================================================================================================================
+-- canary: counts every UPDATE of a version and every DELETE of a step, outside the transaction (a sequence is not rolled back)
+select pg_temp.owner_run($$create sequence app_content.zz_canary_seq$$);
+select pg_temp.owner_run($outer$create function app_content.zz_canary() returns trigger language plpgsql security definer set search_path = '' as $f$ begin perform pg_catalog.nextval('app_content.zz_canary_seq'); if tg_op = 'DELETE' then return old; end if; return new; end $f$$outer$);
+select pg_temp.owner_run($$create trigger zz_canary_v before update on app.hack_versions for each row execute function app_content.zz_canary()$$);
+select pg_temp.owner_run($$create trigger zz_canary_s before delete on app.hack_steps for each row execute function app_content.zz_canary()$$);
+select pg_temp.owner_run($$create trigger zz_canary_t before delete on app.version_tags for each row execute function app_content.zz_canary()$$);
+select pg_temp.act('authenticated', '00000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001');
+create temp table t_lim as select api.create_draft() as r;
+grant all on t_lim to public;
+select api.save_draft((select (r ->> 'version_id')::uuid from t_lim), pg_temp.doc('Limits baseline'));
+create temp table t_lim_before as select api.get_version((select (r ->> 'version_id')::uuid from t_lim)) as r;
+grant all on t_lim_before to public;
+reset role;
+
+create function pg_temp.canary() returns bigint language plpgsql as $$
+declare v text;
+begin v := pg_temp.owner_val('select last_value::text from app_content.zz_canary_seq'); return v::bigint; end $$;
+create temp table t_c0 as select pg_temp.canary() as n;
+grant all on t_c0 to public;
+
+-- list-count boundaries: exactly the cap is accepted, one more is rejected with limit_exceeded naming the list
+create function pg_temp.items(p_kind text, p_n integer) returns jsonb language sql as $$
+  select coalesce(jsonb_agg(case p_kind
+      when 'requirements' then jsonb_build_object('kind', 'tool', 'name', 'req ' || g)
+      when 'tags' then to_jsonb('tag-' || g)
+      when 'assets' then jsonb_build_object('asset_id', '30000000-0000-4000-8000-' || lpad(g::text, 12, '0'), 'sha256', lpad(to_hex(g), 64, '0'))
+      when 'steps' then to_jsonb('step ' || g)
+      when 'materials' then jsonb_build_object('name', 'material ' || g)
+      when 'attributions' then jsonb_build_object('role', 'contributor', 'external_name', 'person ' || g)
+      when 'source_claims' then jsonb_build_object('kind', 'original_work')
+    end), '[]'::jsonb) from generate_series(1, p_n) g $$;
+select pg_temp.act('authenticated', '00000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001');
+select lives_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('requirements', pg_temp.items('requirements', 30))), '30 requirements are accepted');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('requirements', pg_temp.items('requirements', 31))), 'PT422', 'limit_exceeded', '31 requirements are rejected');
+select lives_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('tags', pg_temp.items('tags', 10))), '10 tags are accepted');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('tags', pg_temp.items('tags', 11))), 'PT422', 'limit_exceeded', '11 tags are rejected');
+select lives_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('assets', pg_temp.items('assets', 20))), '20 assets are accepted');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('assets', pg_temp.items('assets', 21))), 'PT422', 'limit_exceeded', '21 assets are rejected');
+select lives_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('steps', pg_temp.items('steps', 50))), '50 steps are accepted');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('steps', pg_temp.items('steps', 51))), 'PT422', 'limit_exceeded', '51 steps are rejected');
+select lives_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('materials', pg_temp.items('materials', 50))), '50 materials are accepted');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('materials', pg_temp.items('materials', 51))), 'PT422', 'limit_exceeded', '51 materials are rejected');
+select lives_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('attributions', pg_temp.items('attributions', 10))), '10 attributions are accepted');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('attributions', pg_temp.items('attributions', 11))), 'PT422', 'limit_exceeded', '11 attributions are rejected');
+select lives_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('source_claims', pg_temp.items('source_claims', 10))), '10 source claims are accepted');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('source_claims', pg_temp.items('source_claims', 11))), 'PT422', 'limit_exceeded', '11 source claims are rejected');
+
+-- put the baseline back, remember the canary, then reject a series of oversize documents: nothing may be updated or deleted
+select api.save_draft((select (r ->> 'version_id')::uuid from t_lim), pg_temp.doc('Limits baseline') || jsonb_build_object('tags', pg_temp.items('tags', 3)));
+reset role;
+create temp table t_c1 as select pg_temp.canary() as n;
+grant all on t_c1 to public;
+select pg_temp.act('authenticated', '00000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001');
+create temp table t_lim_before2 as select api.get_version((select (r ->> 'version_id')::uuid from t_lim)) as r;
+grant all on t_lim_before2 to public;
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('title', 'changed', 'tags', pg_temp.items('tags', 11))), 'PT422', 'limit_exceeded', 'an oversize list is rejected even when other fields are valid');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('title', 'changed', 'requirements', pg_temp.items('requirements', 31))), 'PT422', 'limit_exceeded', 'an oversize requirements list is rejected');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('title', 'changed', 'assets', pg_temp.items('assets', 21))), 'PT422', 'limit_exceeded', 'an oversize assets list is rejected');
+reset role;
+select is((select n from t_c1), pg_temp.canary(), 'rejected oversize saves performed no UPDATE of the version and no DELETE of children (rejection happens before replacement begins)');
+select pg_temp.act('authenticated', '00000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001');
+select is(api.get_version((select (r ->> 'version_id')::uuid from t_lim)), (select r from t_lim_before2), 'and the draft is exactly as before');
+
+-- document size: the cap is 131072 bytes of JSON text, checked first
+create function pg_temp.sized(p_bytes integer) returns jsonb language sql as $$
+  -- {"zz": "<n a's>"} renders as 10 + n bytes
+  select jsonb_build_object('zz', repeat('a', p_bytes - 10)) $$;
+select is(octet_length((pg_temp.sized(131072))::text), 131072, 'test helper: builds a document of exactly 131072 bytes');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), pg_temp.sized(131073)), 'PT422', 'limit_exceeded', 'a document of 131073 bytes is rejected as too large (before its unknown key is even examined)');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), pg_temp.sized(131072)), 'PT422', 'invalid_content', 'a document of exactly 131072 bytes passes the size check (and is then rejected for its unknown key)');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), jsonb_build_object('title', 'x', 'summary', repeat('é', 70000))), 'PT422', 'limit_exceeded', 'multi-byte text counts in bytes: 70000 two-byte characters exceed the cap');
+reset role;
+select is((select n from t_c1), pg_temp.canary(), 'oversize documents performed no UPDATE and no DELETE either');
+
+-- the database also backstops the three lists that had no cap: direct writes beyond the cap fail
+select pg_temp.owner_run(format($$delete from app.hack_requirements where version_id = %L$$, (select r ->> 'version_id' from t_lim)));
+select pg_temp.owner_run(format($$insert into app.hack_requirements (version_id, kind, name) select %L, 'tool', 'n' || g from generate_series(1, 30) g$$, (select r ->> 'version_id' from t_lim)));
+select is(pg_temp.code(pg_temp.owner_do(format($$insert into app.hack_requirements (version_id, kind, name) values (%L, 'tool', 'one too many')$$, (select r ->> 'version_id' from t_lim)))), 'PT422:limit_exceeded', 'direct insert of a 31st requirement fails in the database');
+select is(pg_temp.code(pg_temp.owner_do(format($$insert into app.version_tags (version_id, slug) select %L, 'x' || g from generate_series(1, 8) g$$, (select r ->> 'version_id' from t_lim)))), 'PT422:limit_exceeded', 'direct insert beyond 10 tags fails in the database (3 exist + 8)');
+select is(pg_temp.code(pg_temp.owner_do(format($$insert into app.version_assets (version_id, sha256, asset_id) select %L, decode(lpad(to_hex(g + 1000), 64, '0'), 'hex'), pg_catalog.gen_random_uuid() from generate_series(1, 21) g$$, (select r ->> 'version_id' from t_lim)))), 'PT422:limit_exceeded', 'direct insert of 21 assets fails in the database');
+
+-- ===================================================================================================================
+-- H3. identifiers must be in the documented form, on write as well as in the hash
+-- ===================================================================================================================
+select pg_temp.act('authenticated', '00000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), '{"attributions":[{"role":"author","profile_id":"00000000-0000-4000-8000-00000000000A"}]}'), 'PT422', 'invalid_content', 'an UPPERCASE profile_id is rejected at input');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), '{"attributions":[{"role":"author","profile_id":"{00000000-0000-4000-8000-000000000001}"}]}'), 'PT422', 'invalid_content', 'a braced profile_id is rejected');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), '{"attributions":[{"role":"author","profile_id":"00000000000040008000000000000001"}]}'), 'PT422', 'invalid_content', 'a profile_id without hyphens is rejected');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), format('{"assets":[{"asset_id":"30000000-0000-4000-8000-00000000000B","sha256":"%s"}]}', repeat('ab', 32))), 'PT422', 'invalid_content', 'an UPPERCASE asset_id is rejected');
+select throws_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), format('{"assets":[{"asset_id":"30000000-0000-4000-8000-00000000000b","sha256":"%s"}]}', upper(repeat('ab', 32)))), 'PT422', 'invalid_content', 'an uppercase sha256 is rejected');
+select lives_ok(format($$select api.save_draft(%L, %L::jsonb)$$, (select r ->> 'version_id' from t_lim), '{"attributions":[{"role":"author","profile_id":"00000000-0000-4000-8000-0000000000aa"}]}'), 'the documented lowercase hyphenated form is accepted');
+reset role;
+select is(pg_temp.owner_val(format($q$select (app_content.canonical_text(%L::uuid) = app_content.canonical_text_json(app_content.version_doc(%L::uuid)))::text$q$, (select r ->> 'version_id' from t_lim), (select r ->> 'version_id' from t_lim))), 'true', 'the rebuilt document and the input document render identically for identifiers');
+
+-- remove the canary objects
+select pg_temp.owner_run($$drop trigger zz_canary_v on app.hack_versions$$);
+select pg_temp.owner_run($$drop trigger zz_canary_s on app.hack_steps$$);
+select pg_temp.owner_run($$drop trigger zz_canary_t on app.version_tags$$);
 
 -- ===================================================================================================================
 -- G. global invariant

@@ -165,3 +165,42 @@ test('G-3 in the F2 acceptance contract records the exact bridge ownership excep
   assert.match(g3, /owned by `postgres`/);
   assert.match(g3, /grantee \(`hackass_owner` only\)/);
 });
+
+test('F2-B correction round: identifier format, list caps and the quota/category guards are defined consistently in SQL, TypeScript and the docs', () => {
+  const rpc = code(sql['20261014090300_f2b_content_rpc.sql']);
+  const canon = code(sql['20261014090100_f2b_canonical_hash.sql']);
+  const imm = code(sql['20261014090200_f2b_immutability.sql']);
+  const ts = readFileSync(join(root, 'src/modules/submissions/hashcanon.ts'), 'utf8');
+  // identical identifier patterns in SQL and TypeScript
+  const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+  assert.ok(canon.includes(`'^${uuid}$'`) && ts.includes(`/^${uuid}$/`), 'UUID pattern differs between SQL and TypeScript');
+  assert.ok(canon.includes("'^[0-9a-f]{64}$'") && ts.includes('/^[0-9a-f]{64}$/'), 'digest pattern differs between SQL and TypeScript');
+  assert.match(canon, /app_content\.j_uuid\(r\.item, 'profile_id'\)/);
+  assert.match(canon, /app_content\.j_hex64\(a\.item, 'sha256'\)/);
+  assert.match(rpc, /app_content\.j_uuid\(r\.item, 'profile_id'\)::uuid/);
+  assert.match(rpc, /app_content\.j_uuid\(r\.item, 'asset_id'\)::uuid/);
+  // caps: assert_limits == child guard backstop == table checks == documentation
+  const caps = Object.fromEntries([...rpc.matchAll(/\('(\w+)', (\d+)\)/g)].map((m) => [m[1], Number(m[2])]));
+  assert.deepEqual(caps, { steps: 50, materials: 50, requirements: 30, tags: 10, attributions: 10, source_claims: 10, assets: 20 });
+  assert.match(imm, /when 'hack_requirements' then 30 when 'version_tags' then 10 when 'version_assets' then 20/);
+  const tables = code(sql['20261014090000_f2b_content_tables.sql']);
+  assert.match(tables, /hack_steps[\s\S]*?position between 1 and 50/);
+  assert.match(tables, /attribution_no between 1 and 10/);
+  assert.match(tables, /claim_no between 1 and 10/);
+  assert.match(rpc, /octet_length\(p::text\) > 131072/);
+  const doc = readFileSync(join(root, 'docs/db/f2b-content.md'), 'utf8');
+  for (const [list, n] of Object.entries(caps)) assert.match(doc, new RegExp(`\\| ${list} \\| ${n} \\|`), `docs state the ${list} cap`);
+  assert.match(doc, /131072 bytes/);
+  assert.ok(!/30-ish/.test(doc));
+  // the limits run before anything is replaced
+  const wd = rpc.match(/create function app_content\.write_doc[\s\S]*?\n\$\$;/)![0];
+  assert.ok(wd.indexOf('assert_limits') > 0 && wd.indexOf('assert_limits') < wd.indexOf('update app.hack_versions') && wd.indexOf('assert_limits') < wd.indexOf('delete from app.hack_steps'));
+  // quota: account row locked first, in both create and delete, before the version row
+  const cd = rpc.match(/create function api\.create_draft[\s\S]*?\n\$\$;/)![0];
+  assert.ok(cd.indexOf('for no key update') > 0 && cd.indexOf('for no key update') < cd.indexOf('pg_catalog.count(*)'), 'create_draft locks the account before counting');
+  const dd = rpc.match(/create function api\.delete_draft[\s\S]*?\n\$\$;/)![0];
+  assert.ok(dd.indexOf('for no key update') > 0 && dd.indexOf('for no key update') < dd.indexOf('for update;'), 'delete_draft locks the account before the version row');
+  // category guard
+  assert.match(imm, /create trigger categories_guard before update on app\.categories/);
+  assert.match(imm, /new\.slug is distinct from old\.slug/);
+});

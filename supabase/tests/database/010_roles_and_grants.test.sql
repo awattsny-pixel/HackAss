@@ -95,6 +95,10 @@ select is(
       and not exists (select 1 from pg_trigger t where t.tgrelid = c.oid and t.tgname like '%\_no\_truncate')),
   null, 'every hashed table and submissions refuses TRUNCATE');
 
+select is(
+  (select string_agg(t.tgname, ', ' order by t.tgname) from pg_trigger t where t.tgrelid = 'app.categories'::regclass and not t.tgisinternal),
+  'categories_guard, categories_no_truncate', 'categories: slug/id immutability trigger and TRUNCATE guard are installed');
+
 -- ---- functions: owner, definer, empty search_path, EXECUTE grantees ----------------------------------------------------
 select is(
   (select string_agg(
@@ -115,6 +119,7 @@ api.submit_version(uuid,text) owner=hackass_owner definer=true vol=v search_path
 api.whoami() owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 app_bridge.session_valid(uuid,uuid) owner=postgres definer=true vol=s search_path="" execute=hackass_owner,postgres
 app_content.assert_keys(jsonb,text[],text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_content.assert_limits(jsonb) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
 app_content.assert_submittable(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_content.canon_str(text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
 app_content.canonical_text_json(jsonb) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
@@ -122,14 +127,17 @@ app_content.canonical_text(uuid) owner=hackass_owner definer=true vol=s search_p
 app_content.clean_text(text,integer,integer) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
 app_content.freeze_version(uuid,uuid,bytea) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_content.fv(text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_content.guard_category() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_content.guard_child() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_content.guard_submission() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_content.guard_truncate() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_content.guard_version() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_content.hash_text(text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
 app_content.j_arr(jsonb,text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_content.j_hex64(jsonb,text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
 app_content.j_int(jsonb,text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
 app_content.j_text(jsonb,text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_content.j_uuid(jsonb,text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
 app_content.version_doc(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_content.version_hash(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_content.write_doc(uuid,jsonb) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
@@ -148,7 +156,7 @@ select is(
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content')
-      and (regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* '(\mfrom|\mjoin|(?<!for\s)(?<!distinct\s)\mupdate)\s+(?!app\.|auth\.|pg_catalog\.|app_bridge\.|app_guard\.|app_content\.|api\.|v_|p_)[a-z_]+'
+      and (regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* '(\mfrom|\mjoin|(?<!for\s)(?<!distinct\s)\mupdate)\s+(?!app\.|auth\.|pg_catalog\.|app_bridge\.|app_guard\.|app_content\.|api\.|v_|p_|old\.|new\.)[a-z_]+'
         or regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* 'insert\s+into\s+(?!app\.)' or regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* 'delete\s+from\s+(?!app\.)')),
   null, 'no function body names a table or function without a schema (everything is fully qualified)');
 select is(

@@ -552,6 +552,136 @@
       },
       "canonical": "HACKASS-CANON-1\ncategory_slug:7:kitchen\ntitle:30:Keep herbs fresh for two weeks\nsummary:56:Store cut herbs upright in a jar of water in the fridge.\noutcome:37:Herbs stay crisp for about two weeks.\ndifficulty:4:easy\ntime_min_minutes:1:5\ntime_max_minutes:2:10\ncost_min_cents:1:0\ncost_max_cents:3:250\ncurrency:3:USD\nestimate_basis:25:Own kitchen, three trials\nai_requirement:4:none\nlimitations:31:Basil prefers room temperature.\nsteps:3\nstep;1;15:Trim the stems.\nstep;2;44:Stand the herbs in a jar with 3 cm of water.\nstep;3;41:Cover loosely with a bag and refrigerate.\nmaterials:2\nmaterial;1;9:Glass jar;8:any size\nmaterial;2;11:Plastic bag;-:\nrequirements:2\nrequirement;5:skill;4:None;17:beginner friendly\nrequirement;4:tool;8:Scissors;-:\ntags:3\ntag;11:food-saving\ntag;5:herbs\ntag;7:kitchen\nattributions:2\nattribution;1;6:author;36:00000000-0000-4000-8000-000000000001;-:;-:\nattribution;2;13:source_author;-:;7:A. Cook;25:https://example.test/cook\nsource_claims:2\nclaim;1;13:original_work;-:;-:;-:;-:;-:;-:\nclaim;2;17:third_party_reuse;26:https://example.test/herbs;7:A. Cook;9:CC-BY-4.0;3:4.0;16:Used with credit;9:No images\nassets:2\nasset;64:0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b;36:00000000-0000-4000-8000-000000000008\nasset;64:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;36:00000000-0000-4000-8000-000000000007\n",
       "sha256": "4db61411e6c8bdd5a5f6d6bb21c067a1a69814e6653a8486c5f88bc47c991847"
+    },
+    {
+      "name": "REJECTED: uppercase profile_id",
+      "storable": false,
+      "rejects": "profile_id",
+      "doc": {
+        "attributions": [
+          {
+            "role": "author",
+            "profile_id": "00000000-0000-4000-8000-00000000000A"
+          }
+        ]
+      }
+    },
+    {
+      "name": "REJECTED: braced profile_id",
+      "storable": false,
+      "rejects": "profile_id",
+      "doc": {
+        "attributions": [
+          {
+            "role": "author",
+            "profile_id": "{00000000-0000-4000-8000-000000000001}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "REJECTED: profile_id without hyphens",
+      "storable": false,
+      "rejects": "profile_id",
+      "doc": {
+        "attributions": [
+          {
+            "role": "author",
+            "profile_id": "00000000000040008000000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "REJECTED: profile_id with alternate hyphen groups",
+      "storable": false,
+      "rejects": "profile_id",
+      "doc": {
+        "attributions": [
+          {
+            "role": "author",
+            "profile_id": "0000-0000-0000-4000-8000-0000-0000-0001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "REJECTED: urn-prefixed profile_id",
+      "storable": false,
+      "rejects": "profile_id",
+      "doc": {
+        "attributions": [
+          {
+            "role": "author",
+            "profile_id": "urn:uuid:00000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "REJECTED: uppercase asset_id",
+      "storable": false,
+      "rejects": "asset_id",
+      "doc": {
+        "assets": [
+          {
+            "asset_id": "30000000-0000-4000-8000-00000000000B",
+            "sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+          }
+        ]
+      }
+    },
+    {
+      "name": "REJECTED: braced asset_id",
+      "storable": false,
+      "rejects": "asset_id",
+      "doc": {
+        "assets": [
+          {
+            "asset_id": "{30000000-0000-4000-8000-000000000001}",
+            "sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+          }
+        ]
+      }
+    },
+    {
+      "name": "REJECTED: uppercase sha256",
+      "storable": false,
+      "rejects": "sha256",
+      "doc": {
+        "assets": [
+          {
+            "asset_id": "00000000-0000-4000-8000-000000000007",
+            "sha256": "ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB"
+          }
+        ]
+      }
+    },
+    {
+      "name": "REJECTED: sha256 of 62 characters",
+      "storable": false,
+      "rejects": "sha256",
+      "doc": {
+        "assets": [
+          {
+            "asset_id": "00000000-0000-4000-8000-000000000007",
+            "sha256": "ababababababababababababababababababababababababababababababab"
+          }
+        ]
+      }
+    },
+    {
+      "name": "REJECTED: sha256 that is not hex",
+      "storable": false,
+      "rejects": "sha256",
+      "doc": {
+        "assets": [
+          {
+            "asset_id": "00000000-0000-4000-8000-000000000007",
+            "sha256": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+          }
+        ]
+      }
     }
   ]
 }

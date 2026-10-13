@@ -65,10 +65,23 @@ export const VECTORS = [
   ['the forged-field twin is different', { title: 'x', summary: 'y' }, true],
   ['empty lists present explicitly equal absent', { steps: [], materials: [], requirements: [], tags: [], attributions: [], source_claims: [], assets: [] }, true],
   ['a realistic complete document', full, true],
+  // ---- identifiers must already be in the documented form: lowercase, hyphenated UUIDs and 64-char lowercase hex. Every other spelling
+  // (uppercase, braces, no hyphens, odd hyphen groups, urn prefix, short or non-hex digests) is REJECTED identically by SQL, TypeScript and storage.
+  ['REJECTED: uppercase profile_id', { attributions: [{ role: 'author', profile_id: '00000000-0000-4000-8000-00000000000A' }] }, false, 'profile_id'],
+  ['REJECTED: braced profile_id', { attributions: [{ role: 'author', profile_id: '{00000000-0000-4000-8000-000000000001}' }] }, false, 'profile_id'],
+  ['REJECTED: profile_id without hyphens', { attributions: [{ role: 'author', profile_id: '00000000000040008000000000000001' }] }, false, 'profile_id'],
+  ['REJECTED: profile_id with alternate hyphen groups', { attributions: [{ role: 'author', profile_id: '0000-0000-0000-4000-8000-0000-0000-0001' }] }, false, 'profile_id'],
+  ['REJECTED: urn-prefixed profile_id', { attributions: [{ role: 'author', profile_id: 'urn:uuid:00000000-0000-4000-8000-000000000001' }] }, false, 'profile_id'],
+  ['REJECTED: uppercase asset_id', { assets: [{ asset_id: '30000000-0000-4000-8000-00000000000B', sha256: SHA(1) }] }, false, 'asset_id'],
+  ['REJECTED: braced asset_id', { assets: [{ asset_id: '{30000000-0000-4000-8000-000000000001}', sha256: SHA(1) }] }, false, 'asset_id'],
+  ['REJECTED: uppercase sha256', { assets: [{ asset_id: U(7), sha256: SHA(0xab).toUpperCase() }] }, false, 'sha256'],
+  ['REJECTED: sha256 of 62 characters', { assets: [{ asset_id: U(7), sha256: SHA(0xab).slice(2) }] }, false, 'sha256'],
+  ['REJECTED: sha256 that is not hex', { assets: [{ asset_id: U(7), sha256: 'z'.repeat(64) }] }, false, 'sha256'],
 ];
 
 export function build() {
-  const vectors = VECTORS.map(([name, doc, storable]) => {
+  const vectors = VECTORS.map(([name, doc, storable, rejects]) => {
+    if (rejects) return { name, storable: false, rejects, doc };
     const canonical = canonicalText(doc);
     return { name, storable, doc, canonical, sha256: createHash('sha256').update(canonical, 'utf8').digest('hex') };
   });
@@ -106,6 +119,13 @@ select is(pg_temp.owner_val($v$select count(*)::text from (select 1 from app_con
 `;
   vectors.forEach((v, i) => {
     const n = i + 1, label = `vector ${n} (${v.name})`.replace(/'/g, "''");
+    if (v.rejects) {
+      sql += `select is(pg_temp.owner_val(${q(n, 'a', `select app_content.canonical_text_json(${q(n, 'j', JSON.stringify(v.doc))}::jsonb)`)}), 'ERR:PT422', '${label}: the canonical function rejects it (PT422)');\n`;
+      sql += `select is(pg_temp.owner_do($v${n}s$insert into app.hacks (id, created_by) values ('10000000-0000-4000-8000-${String(n).padStart(12, '0')}', '00000000-0000-4000-8000-0000000000c1')$v${n}s$), 'ok', '${label}: fixture hack');\n`;
+      sql += `select is(pg_temp.owner_do($v${n}t$insert into app.hack_versions (id, hack_id, version_no, created_by) values ('20000000-0000-4000-8000-${String(n).padStart(12, '0')}', '10000000-0000-4000-8000-${String(n).padStart(12, '0')}', 1, '00000000-0000-4000-8000-0000000000c1')$v${n}t$), 'ok', '${label}: fixture version');\n`;
+      sql += `select is(pg_temp.owner_do(${q(n, 'c', `select app_content.write_doc('20000000-0000-4000-8000-${String(n).padStart(12, '0')}'::uuid, ${q(n, 'm', JSON.stringify(v.doc))}::jsonb)`)}), 'ERR:PT422', '${label}: storage rejects it as well (PT422)');\n`;
+      return;
+    }
     sql += `select is(pg_temp.owner_val(${q(n, 'a', `select app_content.canonical_text_json(${q(n, 'j', JSON.stringify(v.doc))}::jsonb)`)}), ${q(n, 'e', v.canonical)}, '${label}: canonical text');\n`;
     sql += `select is(pg_temp.owner_val(${q(n, 'b', `select pg_catalog.encode(app_content.hash_text(app_content.canonical_text_json(${q(n, 'k', JSON.stringify(v.doc))}::jsonb)), 'hex')`)}), '${v.sha256}', '${label}: sha-256');\n`;
     if (v.storable) {
