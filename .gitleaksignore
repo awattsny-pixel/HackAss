@@ -10,8 +10,6 @@ c25e78061ffd8ddda046f787d31a13bd68723daa:.env:generic-api-key:3
 1307cd05dee946353af37ed48495ae78cdf4e5d9:SETUP_COMPLETE.md:jwt:104
 
 # DOCUMENTATION EXAMPLE, not a credential: a 39-character JWT-shaped "token" in a sample API response (too short to be a
-# signed token). Once as added in history, and twice as it exists in the working tree today.
+# signed token), as added in history. The working tree now holds an obvious placeholder, so there is NO tree exemption.
 c25e78061ffd8ddda046f787d31a13bd68723daa:API_SPECIFICATION.md:generic-api-key:71
 c25e78061ffd8ddda046f787d31a13bd68723daa:API_SPECIFICATION.md:generic-api-key:102
-API_SPECIFICATION.md:generic-api-key:71
-API_SPECIFICATION.md:generic-api-key:102

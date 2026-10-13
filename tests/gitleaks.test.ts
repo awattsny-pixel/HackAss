@@ -152,15 +152,14 @@ const REVIEWED = [
   '1307cd05dee946353af37ed48495ae78cdf4e5d9:SETUP_COMPLETE.md:jwt:104',
   'c25e78061ffd8ddda046f787d31a13bd68723daa:API_SPECIFICATION.md:generic-api-key:71',
   'c25e78061ffd8ddda046f787d31a13bd68723daa:API_SPECIFICATION.md:generic-api-key:102',
-  'API_SPECIFICATION.md:generic-api-key:71',
-  'API_SPECIFICATION.md:generic-api-key:102',
 ];
 
-test('reviewed fingerprints: exactly the eight reviewed findings, each a full exact fingerprint, no wildcards; the config has no allowlists', () => {
+test('reviewed fingerprints: exactly the six reviewed historic findings, and no working-tree exemption, each a full exact fingerprint, no wildcards; the config has no allowlists', () => {
   const entries = read('.gitleaksignore').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
   assert.deepEqual([...entries].sort(), [...REVIEWED].sort(), 'changing the reviewed set requires changing this test (a review step)');
   for (const e of entries) assert.match(e, /^(?:[0-9a-f]{40}:)?[A-Za-z0-9_.\/-]+:[a-z0-9-]+:\d+$/, e);
   const toml = read('.gitleaks.toml');
+  assert.ok(entries.every((e) => /^[0-9a-f]{40}:/.test(e)), 'every exemption is pinned to a commit; there are no working-tree exemptions');
   assert.match(toml, /useDefault = true/);
   assert.ok(!/\[\[?allowlists?\]?\]|^\s*(paths|commits|regexes|stopwords)\s*=/m.test(toml), 'no path/commit/regex allowlists');
 });
@@ -193,7 +192,7 @@ function tempRepo() {
 // assembled at run time and random: this file contains no secret-shaped literal
 const syntheticToken = () => 'gh' + 'p_' + randomBytes(27).toString('base64url').replace(/[^A-Za-z0-9]/g, 'x').slice(0, 36).padEnd(36, 'k');
 
-realTest('real binary: this repository is clean in the working tree and in full history (only the eight reviewed findings are suppressed)', () => {
+realTest('real binary: this repository is clean in the working tree and in full history (only the six reviewed historic findings are suppressed)', () => {
   const r = scanRepo(root);
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /working tree: 0 new finding/);
@@ -241,4 +240,27 @@ realTest('real binary: the reviewed list is exact, not broad (a new secret in a 
     assert.match(res.out, /SETUP_COMPLETE\.md/);
     assert.match(res.out, /allowed\.ts/, 'gitleaks:allow must not suppress findings');
   } finally { r.cleanup(); }
+});
+
+realTest('real binary: a new synthetic secret at the exact former documentation-example locations fails the tree scan BEFORE it is committed', () => {
+  for (const line of [71, 102]) {
+    const r = tempRepo();
+    try {
+      // the repository's real API_SPECIFICATION.md (placeholders), committed clean
+      writeFileSync(join(r.dir, 'API_SPECIFICATION.md'), read('API_SPECIFICATION.md'));
+      r.git('add', '.'); r.git('commit', '-q', '-m', 'spec');
+      assert.equal(scanRepo(r.dir).code, 0, 'the placeholder document is clean');
+      const lines = readFileSync(join(r.dir, 'API_SPECIFICATION.md'), 'utf8').split('\n');
+      assert.match(lines[line - 1], /"token": "<JWT-PLACEHOLDER>"/, `line ${line} should hold the placeholder`);
+      const seg = (n: number) => randomBytes(n).toString('base64url').replace(/[^A-Za-z0-9]/g, 'q');
+      const secret = `eyJ${seg(10)}.eyJ${seg(12)}.${seg(14)}`;
+      lines[line - 1] = `  "token": "${secret}",`;
+      writeFileSync(join(r.dir, 'API_SPECIFICATION.md'), lines.join('\n')); // modified, NOT committed
+      const res = scanRepo(r.dir);
+      assert.equal(res.code, 1, res.out);
+      assert.match(res.out, new RegExp(`working tree: [1-9]\\d* new finding[\\s\\S]*API_SPECIFICATION\\.md:${line}`), res.out);
+      assert.match(res.out, /git history: 0 new finding/, 'nothing is committed yet');
+      assert.ok(!res.out.includes(secret));
+    } finally { r.cleanup(); }
+  }
 });

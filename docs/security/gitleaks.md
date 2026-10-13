@@ -26,8 +26,8 @@ reports are written to a temporary directory outside the repository and removed 
 are printed.
 
 ## Configuration and the reviewed findings
-`.gitleaks.toml` extends the default ruleset and has **no** path, commit or regex allowlists. `.gitleaksignore` lists eight exact
-fingerprints (a baseline file would have required committing author names and emails, so the native fingerprint list is used):
+`.gitleaks.toml` extends the default ruleset and has **no** path, commit or regex allowlists. `.gitleaksignore` lists six exact
+historic fingerprints, each pinned to a commit (a baseline file would have required committing author names and emails, so the native fingerprint list is used):
 
 | Fingerprint | Finding | Disposition |
 |---|---|---|
@@ -36,17 +36,16 @@ fingerprints (a baseline file would have required committing author names and em
 | `c25e780…:.env:generic-api-key:3` | key assignment in a committed `.env` | real exposure, history |
 | `1307cd0…:SETUP_COMPLETE.md:jwt:104` | anon-role key in a planning doc | public-by-design key, project-identifying; history |
 | `c25e780…:API_SPECIFICATION.md:generic-api-key:71` and `:102` | `"token"` in a sample API response | documentation example: 39 characters, JWT-shaped, too short to be a signed token; history |
-| `API_SPECIFICATION.md:generic-api-key:71` and `:102` | the same two lines in today's tree | same example |
 
 Review was done on redacted reports; values were never printed. A baselined real exposure is still a real exposure: ignoring
 the fingerprint stops the CI noise, it does not remove the secret from git history.
 
-Limit worth knowing: tree-mode fingerprints are `file:rule:line`, so a different secret placed on exactly
-`API_SPECIFICATION.md` line 71 or 102 would be ignored by the *tree* scan; the *history* scan still reports it, because its
-fingerprint includes the new commit.
+There are no working-tree exemptions. The two documentation examples in `API_SPECIFICATION.md` (lines 71 and 102) were replaced by the
+placeholder `<JWT-PLACEHOLDER>`, so a different secret placed on those lines fails the tree scan before it is committed
+(`tests/gitleaks.test.ts` proves this for both lines).
 
 ## Results
 See the review package for the recorded runs. `tests/gitleaks.test.ts` proves, with the real pinned binary: this repository is
 clean in tree and history; a newly introduced synthetic secret fails both scans without being printed; a secret deleted from
-the tree still fails the history scan; the reviewed list is exact (a new secret in a reviewed file name is still found) and
+the tree still fails the history scan; the reviewed list is exact (a new secret in a reviewed file name is still found; a secret on the former example lines fails the tree scan uncommitted) and
 an inline `gitleaks:allow` hides nothing.
