@@ -43,6 +43,32 @@ test('errors: AppError maps to its status and public message; unknown errors are
   assert.deepEqual(JSON.parse(text).error, { code: 'internal', message: 'Internal server error' });
 });
 
+test('internal errors: an AppError with code internal (or any 5xx) is the fixed generic 500; its message and fields are never sent', async () => {
+  const leaky = new AppError('internal', 'relation "hacks" does not exist at /srv/app/db.ts:42', [{ path: 'internal.table', code: 'custom' }]);
+  const res = toErrorResponse(leaky, rid);
+  const text = await res.text();
+  assert.equal(res.status, 500);
+  assert.deepEqual(JSON.parse(text), { error: { code: 'internal', message: 'Internal server error' }, requestId: rid });
+  assert.ok(!/relation|hacks|srv|internal\.table|fields/.test(text), text);
+  // every code that maps to a 5xx status takes this path; every other code keeps its public message
+  for (const code of ['validation_failed', 'unauthenticated', 'forbidden', 'not_found', 'conflict', 'rate_limited', 'payload_too_large', 'unsupported_media_type'] as const) {
+    const r = toErrorResponse(new AppError(code, 'public text'), rid);
+    assert.ok(r.status >= 400 && r.status < 500, code);
+    assert.equal((await r.json()).error.message, 'public text', code);
+  }
+});
+
+test('internal errors thrown through the request wrapper are generic in the response and keep detail out of the info log', async () => {
+  const { lines, sink } = collect();
+  const handler = withRequestContext(async () => { throw new AppError('internal', 'db password is hunter2', [{ path: 'x', code: 'y' }]); }, { appOrigin: ORIGIN, sink });
+  const res = await handler(new Request('https://x.test'));
+  const text = await res.text();
+  assert.equal(res.status, 500);
+  assert.ok(!/hunter2/.test(text));
+  assert.deepEqual(JSON.parse(text).error, { code: 'internal', message: 'Internal server error' });
+  assert.ok(!lines.join('\n').includes('hunter2'), 'the log carries the code only');
+});
+
 const bodySchema = z.strictObject({ title: z.string().min(1).max(20), count: z.number().int().optional() });
 
 test('JSON bodies: valid parses; wrong media type, bad JSON, and oversize are rejected with the right codes', async () => {
@@ -147,4 +173,17 @@ test('logger: errors are logged by name/code and a redacted message, with no sta
   assert.deepEqual(Object.keys(rec.error).sort(), ['code', 'message', 'name']);
   assert.ok(!lines[0].includes(jwt));
   assert.ok(!('stack' in rec.error));
+});
+
+test('logger: error name and code are redacted like the message (a driver or caller controls both)', () => {
+  const { lines, sink } = collect();
+  const err = Object.assign(new Error('x'), { name: `Failed ${jwt}`, code: `E_${pg('u', 'pw12345', 'h/db')}` });
+  createLogger(sink).error('db_failed', { error: err });
+  const out = lines.join('\n');
+  assert.ok(!out.includes(jwt) && !out.includes('pw12345'), out);
+  const rec = JSON.parse(lines[0]);
+  assert.match(rec.error.name, /^Failed \[redacted\]$/);
+  assert.ok(rec.error.code.includes(REDACTED));
+  const nested = redact({ cause: { error: err } }) as { cause: { error: { name: string; code: string } } };
+  assert.ok(!JSON.stringify(nested).includes('pw12345') && !JSON.stringify(nested).includes(jwt));
 });

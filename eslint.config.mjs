@@ -56,7 +56,7 @@ export default defineConfig([
     files: ['src/ui/**/*.{ts,tsx}'],
     rules: { 'no-restricted-imports': ['error', {
       paths: [{ name: '@supabase/ssr', importNames: ['createBrowserClient'], message: 'No browser-side Supabase client.' }],
-      patterns: [{ group: ['@supabase/*', 'pg', 'pg/*', '**/platform/db', '**/platform/db/*', '**/platform/env*'], message: 'UI code cannot import database clients or environment configuration.' }],
+      patterns: [{ group: ['@supabase/*', 'pg', 'pg/*', '**/platform/db', '**/platform/db/*', '**/platform/env', '**/platform/env.ts', '**/platform/server', '**/platform/server.ts', '**/platform/http/handler*', '**/platform/http/validate*', '**/platform/http/origin*'], message: 'UI code cannot import database clients, environment configuration or the server-only platform surface; use @/src/platform (client-safe).' }],
     }] },
   },
   {
@@ -66,7 +66,7 @@ export default defineConfig([
       paths: [{ name: '@supabase/ssr', importNames: ['createBrowserClient'], message: 'No browser-side Supabase client.' }],
       patterns: [
         { group: ['@supabase/*', 'pg', 'pg/*'], message: 'Modules receive a ready database handle in their context; they never build clients.' },
-        { group: ['**/platform/db', '**/platform/db/*'], message: 'Database client factories belong to the composition root, not to modules.' },
+        { group: ['**/platform/db', '**/platform/db/*', '**/platform/env', '**/platform/env.ts', '**/platform/server', '**/platform/server.ts', '**/platform/http/handler*', '**/platform/http/validate*', '**/platform/http/origin*'], message: 'Database clients, environment and request handling are server-only (composition root); modules use the client-safe @/src/platform.' },
         { group: ['@/src/modules/*/*', '@/src/modules/*/**'], message: 'Import another module only through its index (e.g. @/src/modules/catalog).' },
         { group: ['../*', '../**'], message: 'Use the public index of another module; keep imports inside a module relative to ./' },
         { group: ['@/app/*', '@/app/**'], message: 'Modules do not depend on routes or pages.' },

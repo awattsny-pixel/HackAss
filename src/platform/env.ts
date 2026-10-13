@@ -57,6 +57,8 @@ function decodeJwtRole(token: string): string | null {
   } catch { return null; }
 }
 
+const isServiceLevelKey = (v: string): boolean => v.startsWith('sb_secret_') || decodeJwtRole(v) === 'service_role';
+
 export function loadEnv(
   source: Readonly<Record<string, string | undefined>>,
   opts: { scope?: EnvScope; legacy?: 'tolerate' | 'forbid' } = {},
@@ -76,6 +78,9 @@ export function loadEnv(
       else add(name, 'service-level credentials must not be present in an application environment');
     }
     if (name.startsWith('NEXT_PUBLIC_') && SECRETISH_PUBLIC_NAME.test(name.slice('NEXT_PUBLIC_'.length))) add(name, 'a NEXT_PUBLIC_ variable must not carry secret material');
+    // NEXT_PUBLIC_ values are inlined into the browser bundle, so no such variable may HOLD a service-level key,
+    // whatever it is called and whether or not anything reads it (an unused legacy value still ships).
+    if (name.startsWith('NEXT_PUBLIC_') && isServiceLevelKey(source[name] as string)) add(name, 'holds a service-level key; only a publishable/anon key may be public');
   }
 
   // 2. App environment name
@@ -99,9 +104,9 @@ export function loadEnv(
   const appOrigin = urlVar('APP_ORIGIN', true);
 
   // 4. Public key: new name preferred, legacy anon name accepted; never a service-level key.
+  // Both names are validated (see the NEXT_PUBLIC_ loop above), not just the one that is used.
   const publishable = get('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY') ?? get('NEXT_PUBLIC_SUPABASE_ANON_KEY');
   if (!publishable) add('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'is required (the legacy NEXT_PUBLIC_SUPABASE_ANON_KEY name is also accepted)');
-  else if (publishable.startsWith('sb_secret_') || decodeJwtRole(publishable) === 'service_role') add('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'holds a service-level key; only a publishable/anon key may be public');
 
   // 5. Server secrets
   const secret = (name: string, required: boolean): string | null => {
@@ -134,11 +139,14 @@ export function loadEnv(
   };
 }
 
-let cached: LoadedEnv | null = null;
-/** Reads and validates process.env once per process (lazily, so importing this file never fails a build). */
+// One validated result per scope: a successful 'web' load must never satisfy a later 'worker' request, because the
+// worker scope has extra requirements (WORKER_DATABASE_URL). Failures are not cached.
+const cache = new Map<EnvScope, LoadedEnv>();
+/** Reads and validates process.env once per scope (lazily, so importing this file never fails a build). */
 export function getEnv(scope: EnvScope = 'web'): ServerEnv {
-  cached ??= loadEnv(process.env, { scope });
-  return cached.env;
+  let loaded = cache.get(scope);
+  if (!loaded) { loaded = loadEnv(process.env, { scope }); cache.set(scope, loaded); }
+  return loaded.env;
 }
 /** Test seam only. */
-export function resetEnvCacheForTests(): void { cached = null; }
+export function resetEnvCacheForTests(): void { cache.clear(); }

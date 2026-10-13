@@ -27,14 +27,18 @@ export const isAppError = (e: unknown): e is AppError => e instanceof AppError;
 
 export interface ErrorBody { error: { code: ErrorCode; message: string; fields?: readonly FieldIssue[] }; requestId: string }
 
-/** The only place an error becomes a response. Unknown errors are always the generic internal error. */
+/**
+ * The only place an error becomes a response. Unknown errors, and any error that maps to a 5xx status (including an
+ * AppError created with code 'internal'), are ALWAYS the fixed generic body: their message and field details are
+ * never sent, because a server-side failure's text can carry internals.
+ */
 export function toErrorResponse(err: unknown, requestId: RequestId): Response {
-  const app = isAppError(err) ? err : null;
+  const app = isAppError(err) && err.status < 500 ? err : null;
   const body: ErrorBody = app
     ? { error: { code: app.code, message: app.message, ...(app.fields.length ? { fields: app.fields } : {}) }, requestId }
     : { error: { code: 'internal', message: 'Internal server error' }, requestId };
   return new Response(JSON.stringify(body), {
-    status: app ? app.status : 500,
+    status: app ? app.status : 500, // never an AppError's own 5xx status: always exactly 500
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-request-id': requestId },
   });
 }

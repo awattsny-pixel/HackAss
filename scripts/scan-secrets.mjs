@@ -14,20 +14,48 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 export const RULES = [
-  { id: 'jwt', re: /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, note: 'JSON Web Token (may be a service-role or session token)' },
+  { id: 'jwt', re: /eyJ[A-Za-z0-9_-]{10,4000}\.eyJ[A-Za-z0-9_-]{10,4000}\.[A-Za-z0-9_-]{10,4000}/g, note: 'JSON Web Token (may be a service-role or session token)' },
   { id: 'supabase-secret-key', re: /\bsb_secret_[A-Za-z0-9_-]{16,}/g, note: 'Supabase secret API key' },
-  { id: 'db-url-with-password', re: /\bpostgres(?:ql)?:\/\/[^\s:@/'"`]+:[^\s@/'"`]{3,}@[^\s'"`]+/g, note: 'database URL with embedded password' },
+  { id: 'db-url-with-password', re: /\bpostgres(?:ql)?:\/\/[^\s:@/'"`]{1,200}:[^\s@/'"`]{3,200}@[^\s'"`]{1,300}/g, note: 'database URL with embedded password' },
   { id: 'aws-access-key', re: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, note: 'AWS access key id' },
   { id: 'private-key-block', re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY(?: BLOCK)?-----/g, note: 'private key material' },
   { id: 'github-token', re: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/g, note: 'GitHub token' },
   { id: 'slack-token', re: /\bxox[abprs]-[A-Za-z0-9-]{10,}/g, note: 'Slack token' },
   { id: 'stripe-live-key', re: /\b[sr]k_live_[A-Za-z0-9]{16,}/g, note: 'Stripe live key' },
-  { id: 'credential-assignment', re: /\b[A-Za-z0-9_]*(?:secret|password|passwd|service[_-]?(?:role|key)|api[_-]?key|private[_-]?key)[A-Za-z0-9_]*\s*[:=]\s*['"]?([A-Za-z0-9_\-/+=.]{24,})/gi, group: 1, note: 'credential-looking assignment' },
+  { id: 'credential-assignment', re: /(?:secret|password|passwd|token|service[_-]?(?:role|key)|api[_-]?key|private[_-]?key)[A-Za-z0-9_]{0,60}\s*[:=]\s*['"]?([A-Za-z0-9_\-/+=.]{24,})/gi, group: 1, note: 'credential-looking assignment' },
 ];
 
-// Values that are plainly placeholders, fixtures or variable references rather than secrets.
-const PLACEHOLDER = /^(?:your[-_]|dummy|example|changeme|change[-_]me|placeholder|xxx|<|\$\{|process\.env|todo|redacted|fake|test[-_])|[-_]placeholder|\.{3}|^[A-Za-z0-9_]*$(?<=^[a-z_]+$)/i;
+// Placeholder detection is deliberately narrow: a value is a placeholder only if the WHOLE value is one of these
+// forms. Nothing is exempt because of its case, length or a prefix, so a long lowercase credential is still a finding.
+const PLACEHOLDER_WORDS = new Set([
+  'your', 'my', 'the', 'a', 'an', 'api', 'key', 'secret', 'token', 'password', 'pass', 'passwd', 'here', 'value', 'example', 'placeholder',
+  'changeme', 'change', 'me', 'dummy', 'fake', 'test', 'sample', 'replace', 'with', 'insert', 'todo', 'redacted', 'service', 'role', 'anon',
+  'supabase', 'project', 'url', 'server', 'only', 'private', 'public', 'xxx', 'xxxx', 'env', 'from', 'goes', 'please', 'real', 'actual', 'paste', 'enter', 'secure',
+]);
+const PLACEHOLDER_FORMS = [
+  /^<[^<>\s][^<>]*>$/,                 // <SUPABASE_ANON_KEY>, <paste your token here>
+  /^\$\{[A-Za-z_][A-Za-z0-9_ ]*\}$/,   // ${SECRET_FROM_ENV}
+  /^\$[A-Z_][A-Z0-9_]*$/,               // $SECRET_FROM_ENV
+  /^process\.env\.[A-Za-z_][A-Za-z0-9_]*$/, // process.env.NAME
+  /^[xX*.\-_#]{8,}$/,                   // xxxxxxxx, ********, ........
+];
+const isPlaceholder = (v) => {
+  if (PLACEHOLDER_FORMS.some((re) => re.test(v))) return true;
+  const tokens = v.split(/[-_.\s]+/).filter(Boolean);
+  // words from the placeholder vocabulary only (your-server-only-secret-key, changeme-changeme-changeme): no digits, no random-looking token
+  return tokens.length > 0 && tokens.every((t) => PLACEHOLDER_WORDS.has(t.toLowerCase()));
+};
 const SAFE_DB_HOSTS = /@(?:localhost|127\.0\.0\.1|\[::1\]|db\.example|example\.(?:com|invalid)|host\b|\$\{)/i;
+
+/** Documentation-style URLs: bracketed/obvious placeholder password, or a placeholder host. */
+function isPlaceholderDbUrl(url) {
+  let password = '';
+  try { password = decodeURIComponent(url.replace(/^postgres(?:ql)?:\/\/[^:]+:/, '').replace(/@[^@]*$/, '')); } catch { return false; }
+  const host = url.split('@').slice(1).join('@');
+  const placeholderPassword = /^\[[^\]]+\]$/.test(password) || /^<[^>]+>$/.test(password) || isPlaceholder(password);
+  const placeholderHost = /^(?:db\.)?(?:x{4,}|your[-_]project[-_a-z]*|project[-_]ref|\[[^\]]+\])\./i.test(host) || /^[^/]*\.example\.(?:com|invalid|test)\b/i.test(host);
+  return placeholderPassword || placeholderHost;
+}
 
 /** Known exposures already in history. They are reported as "known" (rotate the keys), never as new findings. */
 export const KNOWN_EXPOSED_HISTORY = [
@@ -37,35 +65,41 @@ export const KNOWN_EXPOSED_HISTORY = [
 ];
 
 const fingerprint = (s) => createHash('sha256').update(s).digest('hex').slice(0, 10);
-const isPlaceholder = (v) => PLACEHOLDER.test(v) || /^(?:[A-Za-z]+[-_]){2,}[A-Za-z]+$/.test(v) && v.length < 40;
 
-/** Documentation-style URLs: bracketed/obvious placeholder password, or a placeholder host. */
-function isPlaceholderDbUrl(url) {
-  let password = '';
-  try { password = decodeURIComponent(url.replace(/^postgres(?:ql)?:\/\/[^:]+:/, '').replace(/@[^@]*$/, '')); } catch { return true; }
-  const host = url.split('@').slice(1).join('@');
-  return /your|password|placeholder|changeme|example|xxx|\[.*\]/i.test(password) || /xxxx|your|project|\[|example/i.test(host);
-}
+// Lines are never skipped. A very long line (minified bundles, one-line JSON) is scanned in overlapping windows so the
+// regexes stay linear and a credential straddling a window edge is still seen (the overlap exceeds the longest match any rule can produce, so every match lies whole inside some window).
+const WINDOW = 60_000, STEP = 30_000;
 
 export function scanText(text, file, allow = []) {
   const findings = [];
+  const seen = new Set();
   const lines = text.split('\n');
   lines.forEach((line, i) => {
-    if (line.length > 4000) return;
+    for (let from = 0; ; from += STEP) {
+      const chunk = line.length <= WINDOW ? line : line.slice(from, from + WINDOW);
+      scanLine(chunk, i + 1);
+      if (line.length <= WINDOW || from + WINDOW >= line.length) break;
+    }
+  });
+  return findings;
+
+  function scanLine(line, lineNo) {
     for (const rule of RULES) {
       rule.re.lastIndex = 0;
       for (let m; (m = rule.re.exec(line)); ) {
+        if (m.index === rule.re.lastIndex) rule.re.lastIndex++;
         const value = rule.group ? m[rule.group] : m[0];
         if (rule.id === 'credential-assignment' && isPlaceholder(value)) continue;
         if (rule.id === 'db-url-with-password' && (SAFE_DB_HOSTS.test(m[0]) || isPlaceholderDbUrl(m[0]))) continue;
         const fp = fingerprint(value);
         if (allow.some((a) => a.rule === rule.id && a.file === file && (a.fingerprint === undefined || a.fingerprint === fp))) continue;
-        findings.push({ rule: rule.id, file, line: i + 1, fingerprint: fp, note: rule.note });
-        if (m.index === rule.re.lastIndex) rule.re.lastIndex++;
+        const key = `${rule.id}:${lineNo}:${fp}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        findings.push({ rule: rule.id, file, line: lineNo, fingerprint: fp, note: rule.note });
       }
     }
-  });
-  return findings;
+  }
 }
 
 const SKIP_PATH = /(^|\/)(node_modules|\.next|\.git)\//;
@@ -75,20 +109,32 @@ function git(args, cwd, maxBuffer = 256 * 1024 * 1024) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer });
 }
 
-export function scanWorkingTree(root, allow = []) {
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
+
+/**
+ * Scans tracked and untracked-but-not-ignored files. Returns { findings, skipped, unscanned }:
+ *   skipped   files excluded by design (dependency/build directories, binary extensions), with counts only
+ *   unscanned files that SHOULD have been scanned but could not be (unreadable, over MAX_FILE_BYTES); the CLI treats
+ *             any of these as a failure, so nothing is silently missed.
+ * Files containing NUL bytes (e.g. UTF-16 text) are scanned as latin1, not skipped.
+ */
+export function scanWorkingTreeDetailed(root, allow = []) {
   const files = git(['ls-files', '--cached', '--others', '--exclude-standard', '-z'], root).split('\0').filter(Boolean);
-  const findings = [];
+  const findings = [], unscanned = [];
+  const skipped = { 'dependency/build directory': 0, 'binary extension': 0 };
   for (const f of files) {
-    if (SKIP_PATH.test(f) || BINARY_EXT.test(f) || f === 'package-lock.json') continue;
+    if (SKIP_PATH.test(f)) { skipped['dependency/build directory']++; continue; }
+    if (BINARY_EXT.test(f)) { skipped['binary extension']++; continue; }
     const abs = path.join(root, f);
-    if (!existsSync(abs)) continue;
+    if (!existsSync(abs)) continue; // deleted but still indexed: nothing on disk to scan
     let buf;
-    try { buf = readFileSync(abs); } catch { continue; }
-    if (buf.length > 1_000_000 || buf.includes(0)) continue;
-    findings.push(...scanText(buf.toString('utf8'), f, allow));
+    try { buf = readFileSync(abs); } catch (e) { unscanned.push({ file: f, why: `unreadable (${e.code ?? 'error'})` }); continue; }
+    if (buf.length > MAX_FILE_BYTES) { unscanned.push({ file: f, why: `larger than ${MAX_FILE_BYTES} bytes` }); continue; }
+    findings.push(...scanText(buf.toString(buf.includes(0) ? 'latin1' : 'utf8'), f, allow));
   }
-  return findings;
+  return { findings, skipped, unscanned };
 }
+export const scanWorkingTree = (root, allow = []) => scanWorkingTreeDetailed(root, allow).findings;
 
 export function scanHistory(root, allow = []) {
   const out = git(['log', '--all', '-p', '--no-color', '--unified=0', '--format=@@COMMIT %H'], root);
@@ -98,7 +144,7 @@ export function scanHistory(root, allow = []) {
     if (raw.startsWith('@@COMMIT ')) { commit = raw.slice(9); continue; }
     if (raw.startsWith('+++ b/')) { file = raw.slice(6); continue; }
     if (!raw.startsWith('+') || raw.startsWith('+++')) continue;
-    if (BINARY_EXT.test(file) || file === 'package-lock.json') continue;
+    if (BINARY_EXT.test(file)) continue;
     for (const f of scanText(raw.slice(1), file, allow)) {
       const known = KNOWN_EXPOSED_HISTORY.find((k) => k.commit.test(commit) && k.file === file);
       findings.push({ ...f, commit: commit.slice(0, 7), line: undefined, known: known ? known.why : null });
@@ -120,10 +166,12 @@ const print = (f) => console.log(`  ${f.rule}  ${f.file}${f.line ? ':' + f.line 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const allow = loadAllow(root);
-  const wt = scanWorkingTree(root, allow);
+  const { findings: wt, skipped, unscanned } = scanWorkingTreeDetailed(root, allow);
   console.log(`working tree: ${wt.length} finding(s)`);
   wt.forEach(print);
-  let bad = wt.length;
+  console.log(`  excluded by design: ${Object.entries(skipped).map(([k, n]) => `${n} ${k}`).join(', ')}`);
+  for (const u of unscanned) console.log(`  UNSCANNED  ${u.file}  (${u.why})`);
+  let bad = wt.length + unscanned.length;
   if (process.argv.includes('--history')) {
     const h = scanHistory(root, allow);
     const fresh = h.filter((f) => !f.known), known = h.filter((f) => f.known);

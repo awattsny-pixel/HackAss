@@ -113,3 +113,48 @@ test('getEnv validates process.env lazily and caches; importing the module never
     assert.throws(() => getEnv(), EnvError);
   } finally { for (const k of Object.keys(process.env)) delete process.env[k]; Object.assign(process.env, saved); resetEnvCacheForTests(); }
 });
+
+test('getEnv caches per scope: a prior web call must not satisfy the worker scope, in either order', () => {
+  const saved = { ...process.env };
+  const workerUrl = pg('hackass_worker.proj123', 'pw-pw-pw', 'pooler.example.test:6543/postgres');
+  const reset = (extra: Record<string, string> = {}) => { for (const k of Object.keys(process.env)) delete process.env[k]; Object.assign(process.env, base(), extra); resetEnvCacheForTests(); };
+  try {
+    // web first (no worker URL), then worker: the worker call must still fail on the missing WORKER_DATABASE_URL
+    reset();
+    assert.equal(getEnv('web').workerDatabaseUrl, null);
+    assert.throws(() => getEnv('worker'), (e: unknown) => e instanceof EnvError && e.issues.some((i) => i.name === 'WORKER_DATABASE_URL'));
+    assert.equal(getEnv('web').workerDatabaseUrl, null, 'the web scope is unaffected by the failed worker call');
+    // worker first, then web: each scope returns its own validated result
+    reset({ WORKER_DATABASE_URL: workerUrl });
+    const worker = getEnv('worker');
+    assert.equal(worker.workerDatabaseUrl, workerUrl);
+    assert.equal(getEnv('worker'), worker, 'same scope is cached');
+    delete process.env.WORKER_DATABASE_URL;
+    assert.equal(getEnv('web').workerDatabaseUrl, null, 'the web scope is validated on its own, not copied from the worker result');
+    assert.equal(getEnv('worker'), worker, 'the worker result stays cached');
+    // a failed load is not cached: fixing the environment makes the next call succeed
+    reset();
+    assert.throws(() => getEnv('worker'), EnvError);
+    process.env.WORKER_DATABASE_URL = workerUrl;
+    assert.equal(getEnv('worker').workerDatabaseUrl, workerUrl);
+  } finally { for (const k of Object.keys(process.env)) delete process.env[k]; Object.assign(process.env, saved); resetEnvCacheForTests(); }
+});
+
+test('both public key names are validated: a valid preferred key does not hide a service-level legacy key (and vice versa)', () => {
+  const service = jwt({ role: 'service_role' });
+  const anon = jwt({ role: 'anon' });
+  const sbSecret = 'sb_' + 'secret_' + 'a'.repeat(24);
+  // valid preferred key + service-level legacy key that is never read but would still be inlined into the bundle
+  assert.ok(problems(() => loadEnv(base({ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: anon, NEXT_PUBLIC_SUPABASE_ANON_KEY: service }))).includes('NEXT_PUBLIC_SUPABASE_ANON_KEY'));
+  assert.ok(problems(() => loadEnv(base({ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: anon, NEXT_PUBLIC_SUPABASE_ANON_KEY: sbSecret }))).includes('NEXT_PUBLIC_SUPABASE_ANON_KEY'));
+  // and the other way round
+  assert.ok(problems(() => loadEnv(base({ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: service, NEXT_PUBLIC_SUPABASE_ANON_KEY: anon }))).includes('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'));
+  // any NEXT_PUBLIC_ variable holding a service-level key is refused, whatever it is called
+  assert.ok(problems(() => loadEnv(base({ NEXT_PUBLIC_SOMETHING_ELSE: service }))).includes('NEXT_PUBLIC_SOMETHING_ELSE'));
+  assert.ok(problems(() => loadEnv(base({ NEXT_PUBLIC_ANALYTICS_ID: sbSecret }))).includes('NEXT_PUBLIC_ANALYTICS_ID'));
+  // two ordinary public keys are fine, and the preferred one wins
+  assert.equal(loadEnv(base({ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: anon, NEXT_PUBLIC_SUPABASE_ANON_KEY: jwt({ role: 'anon', n: 2 }) })).env.supabasePublishableKey, anon);
+  // the report names the variable, never the key
+  try { loadEnv(base({ NEXT_PUBLIC_SUPABASE_ANON_KEY: service })); assert.fail('expected EnvError'); }
+  catch (e) { assert.ok(e instanceof EnvError); assert.ok(!e.message.includes(service) && !e.message.includes('service_role')); }
+});

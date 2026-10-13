@@ -9,8 +9,8 @@ export interface LogSink { write(line: string): void }
 const SENSITIVE_KEY = /(authorization|cookie|password|passwd|secret|token|api[-_]?key|apikey|service|private|jwt|session|credential|dsn|connection|signature|email|phone)/i;
 const JWT = /eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi;
-const DB_URL_CREDS = /\b(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp):\/\/[^\s/@:]+(?::[^\s/@]*)?@/gi;
-const SUPABASE_KEY = /\bsb_(?:secret|publishable)_[A-Za-z0-9_-]{8,}/g;
+const DB_URL_CREDS = /(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp):\/\/[^\s/@:]+(?::[^\s/@]*)?@/gi;
+const SUPABASE_KEY = /sb_(?:secret|publishable)_[A-Za-z0-9_-]{8,}/g;
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 export const REDACTED = '[redacted]';
 const MAX_DEPTH = 5, MAX_STRING = 500, MAX_ITEMS = 20;
@@ -26,7 +26,11 @@ export function redact(value: unknown, depth = 0): unknown {
   if (typeof value === 'bigint') return value.toString();
   if (typeof value === 'function' || typeof value === 'symbol') return '[unserializable]';
   if (depth >= MAX_DEPTH) return '[truncated]';
-  if (value instanceof Error) return { name: value.name, ...('code' in value && typeof (value as { code?: unknown }).code === 'string' ? { code: (value as { code: string }).code } : {}), message: redactString(value.message) };
+  if (value instanceof Error) {
+    // name and code are strings an error (or a driver) controls, so they are redacted exactly like the message
+    const code = (value as { code?: unknown }).code;
+    return { name: redactString(String(value.name)), ...(typeof code === 'string' ? { code: redactString(code) } : {}), message: redactString(value.message) };
+  }
   if (Array.isArray(value)) return value.slice(0, MAX_ITEMS).map((v) => redact(v, depth + 1));
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>).slice(0, MAX_ITEMS)) out[k] = SENSITIVE_KEY.test(k) ? REDACTED : redact(v, depth + 1);

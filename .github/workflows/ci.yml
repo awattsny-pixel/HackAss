@@ -30,7 +30,7 @@ jobs:
       - name: Install (lockfile only, no lifecycle scripts)
         run: npm ci --ignore-scripts
 
-      - name: Secret scan (working tree)
+      - name: Secret scan (in-repo scanner, supplementary)
         run: npm run scan:secrets
 
       - name: Lint

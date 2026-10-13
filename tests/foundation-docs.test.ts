@@ -59,3 +59,12 @@ test('the ADR records the five F2 invariants and the F2 acceptance contract has 
   assert.ok(existsSync(join(root, 'docs/spikes/f1-hosted-spikes.md')));
   assert.match(read('docs/spikes/f1-hosted-spikes.md'), /BLOCKED — no hosted staging project/);
 });
+
+test('the in-repo secret scanner is labelled supplementary in CI, and the Gitleaks proposal stays marked unverified until it is integrated', () => {
+  const step = ci.jobs.verify.steps.find((s) => s.run === 'npm run scan:secrets');
+  assert.match(String((step as { name?: string }).name), /supplementary/i);
+  assert.ok(!JSON.stringify(ci).toLowerCase().includes('gitleaks') || existsSync(join(root, 'scripts/gitleaks.sha256')), 'a Gitleaks CI step needs its committed digest');
+  const proposal = read('docs/proposals/gitleaks-integration.md');
+  assert.match(proposal, /UNVERIFIED/);
+  assert.match(proposal, /does not satisfy that requirement/);
+});
