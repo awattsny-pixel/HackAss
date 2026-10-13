@@ -55,9 +55,10 @@ function therefore cannot point one hack at another hack's publication or versio
 invoked directly, bypassing any web handler, so a handler calling `getUser()` protects nothing. Every consequential function
 re-verifies, in its own transaction: the user exists, is not banned or deleted and has an active profile; the session named
 by the JWT's `session_id` claim still exists and has not expired (`auth.sessions`); for staff functions, an active
-`staff_roles` row, `aal = aal2`, and a fresh MFA timestamp from the `amr` claim within the step-up window. Whether
-`auth.sessions` and these claims are available to a non-superuser `SECURITY DEFINER` owner is **unverified** (spikes S3, S4);
-if not, this ADR must be amended before F2 relies on it.
+`staff_roles` row, `aal = aal2`, and a fresh MFA timestamp from the `amr` claim within the step-up window. Local result (real local stack, 2026-10-13): a `SECURITY DEFINER` function owned by the non-superuser `postgres` role can read
+`auth.sessions` and sees a signed-out session disappear, `auth.jwt()` exposes `session_id`, `aal` and `amr` with timestamps, and
+PostgREST keeps accepting a revoked token, so the in-database check is required. **Hosted** feasibility (spikes S3, S4) is still
+unverified; if it fails there, this ADR must be amended before F2 relies on it.
 
 **I-4 Worker effects are bound to the leased subject.** A job carries immutable `job_type`, `subject_type`, `subject_id` and
 `subject_hash`; each job type has a declared set of permitted effects. Every worker function takes `(job_id, lease_epoch)`,

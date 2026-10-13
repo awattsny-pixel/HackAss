@@ -1,0 +1,13 @@
+{
+  "version": "2.120.0",
+  "source": "https://github.com/supabase/cli/releases/tag/v2.120.0",
+  "downloadBase": "https://github.com/supabase/cli/releases/download/v2.120.0/",
+  "checksumsFile": "checksums.txt",
+  "checksumsFileSha256": "21a47d8e7bafd4e5fd18126e80b56f769ba395448aef1273c045f6f962251b7f",
+  "assets": {
+    "linux-x64": { "file": "supabase_2.120.0_linux_amd64.tar.gz", "sha256": "7074584113aa00495beeac661c41fb09f1ddd0a483cd7333894b0d080086dc6e" },
+    "darwin-x64": { "file": "supabase_2.120.0_darwin_amd64.tar.gz", "sha256": "4c6fd79d3feaab3ba404f18044e6abee09d73c39376491476cb64880b3822f46" },
+    "darwin-arm64": { "file": "supabase_2.120.0_darwin_arm64.tar.gz", "sha256": "3b8546cc61aeabab6fd1f68edc7f664ebdfa96bdd6a9b18d8d612708f430ae28" }
+  },
+  "verification": "darwin-x64 and linux-x64: archives downloaded, SHA-256 recomputed locally, matched both the release checksums.txt and the GitHub API asset digest; the darwin-x64 binary was executed on an Intel Mac and reports 2.120.0. darwin-arm64 digest is from checksums.txt only and was not executed."
+}

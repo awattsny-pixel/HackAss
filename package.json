@@ -14,7 +14,9 @@
     "db:test": "node scripts/db-test.mjs",
     "probe:server-boundary": "node scripts/probe-server-boundary.mjs",
     "scan:gitleaks": "node scripts/scan-gitleaks.mjs",
-    "install:gitleaks": "node scripts/install-gitleaks.mjs"
+    "install:gitleaks": "node scripts/install-gitleaks.mjs",
+    "db:test:auth": "node scripts/db-test.mjs --auth-spikes",
+    "install:supabase-cli": "node scripts/install-supabase-cli.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

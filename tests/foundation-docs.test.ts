@@ -26,6 +26,15 @@ test('CI: verify job runs the secret scan before lint and every gate in order; d
   for (const job of Object.values(ci.jobs)) assert.ok(job['timeout-minutes'] && job['timeout-minutes'] <= 30);
 });
 
+test('the CLI version is pinned identically in CI and in scripts/supabase-cli-pin.json, and CI runs the local Auth checks between the pgTAP tests and the stop step', () => {
+  const pinFile = JSON.parse(read('scripts/supabase-cli-pin.json'));
+  const db = ci.jobs.database.steps;
+  assert.equal(db.find((s) => s.uses?.startsWith('supabase/setup-cli'))!.with?.version, pinFile.version);
+  assert.match(read('supabase/config.toml'), new RegExp(`CLI ${pinFile.version.replace(/\./g, '\\.')}`));
+  const i = (pred: (s: Step) => boolean) => db.findIndex(pred);
+  assert.ok(i((s) => s.run === 'supabase test db') < i((s) => /local-auth-spikes\.mjs/.test(s.run ?? '')) && i((s) => /local-auth-spikes\.mjs/.test(s.run ?? '')) < i((s) => /^supabase stop/.test(s.run ?? '')));
+});
+
 test('local Supabase config carries the settings the design depends on', () => {
   const toml = read('supabase/config.toml');
   assert.match(toml, /^project_id = "hackass-local"$/m);
@@ -45,7 +54,7 @@ test('pgTAP platform test exists and checks the real stack (roles, Auth sessions
 });
 
 test('db:test reports BLOCKED (exit 2) with an actionable message when Docker is unavailable, never a silent pass', () => {
-  const r = spawnSync(process.execPath, ['scripts/db-test.mjs'], { cwd: root, encoding: 'utf8', env: { PATH: '/nonexistent', HOME: process.env.HOME ?? '' } });
+  const r = spawnSync(process.execPath, ['scripts/db-test.mjs'], { cwd: root, encoding: 'utf8', env: { PATH: '/nonexistent', HOME: process.env.HOME ?? '', DOCKER_BIN: '/nonexistent/docker', SUPABASE_BIN: '/nonexistent/supabase' } }); // explicit overrides keep this hermetic even on a machine that has Docker Desktop installed
   assert.equal(r.status, 2, r.stderr);
   assert.match(r.stderr, /^BLOCKED\s+Docker is not available/m);
 });

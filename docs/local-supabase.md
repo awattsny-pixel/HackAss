@@ -17,7 +17,19 @@ cookie behaviour.
   and its tests arrive in F2.
 - CI: the `database` job in `.github/workflows/ci.yml`.
 
+## Tooling (pinned)
+- Supabase CLI **2.120.0**: `node scripts/install-supabase-cli.mjs` installs it into `.tools/` after checking the archive's SHA-256
+  against `scripts/supabase-cli-pin.json` (same procedure as Gitleaks). `db:test` refuses any other version (exit 2, BLOCKED).
+- Docker: Docker Desktop. On macOS the runner also finds Docker Desktop's own `docker` and per-user socket
+  (`~/.docker/run/docker.sock`) when `/usr/local/bin/docker` and `/var/run/docker.sock` are not linked. `DOCKER_BIN`,
+  `SUPABASE_BIN` and `DOCKER_HOST` override discovery.
+- `npm run db:test` runs the pgTAP tests; `npm run db:test:auth` additionally runs `scripts/local-auth-spikes.mjs` (local
+  Auth/session/MFA checks, see `docs/spikes/f1-hosted-spikes.md`) against the same stack before stopping it.
+
 ## Status
-Written and statically checked only. It has **not** been run: the development machine has no Docker. The first run on a
-Docker-capable machine or on GitHub Actions is the first verification; treat any failure there as expected feedback on
-this setup, not as a regression.
+Run on the development machine (Intel Mac, macOS 15.7.7, Docker Desktop 4.95.0, Docker engine 29.8.2, CLI 2.120.0) on 2026-10-13:
+the stack started, the 9 pgTAP checks passed, the 6 local Auth/session/MFA checks passed, `supabase stop --no-backup` ran, and
+afterwards `docker ps -a` and `docker volume ls` were empty. Raw (secret-redacted) output is in the F1 review package. The
+GitHub Actions `database` job runs the same commands but has not yet run on GitHub. These checks establish that the test
+environment works and that the local Auth behaviours below hold; they do not yet exercise application permissions or
+publication rules (F2).

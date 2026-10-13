@@ -64,16 +64,26 @@ jobs:
       - name: Isolated smoke checks (local fixture server only)
         run: npm run smoke
 
-  # Real local Supabase stack (Auth, PostgREST, Storage, Postgres in containers) and the pgTAP database tests.
-  # Added in F1 and NOT yet run on a machine with Docker; the first GitHub run is its first verification.
+  # Real local Supabase stack (Auth, PostgREST, Storage, Postgres in containers), the pgTAP database tests and the local
+  # Auth/session/MFA checks. The same commands passed locally on an Intel Mac with Docker Desktop; this job's first GitHub
+  # run is still its own first verification.
   database:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install (lockfile only, no lifecycle scripts)
+        run: npm ci --ignore-scripts
+
+      # The version must equal scripts/supabase-cli-pin.json (a test enforces it).
       - uses: supabase/setup-cli@v1
         with:
           version: 2.120.0
@@ -83,6 +93,9 @@ jobs:
 
       - name: Database tests (pgTAP)
         run: supabase test db
+
+      - name: Local Auth, session and MFA checks
+        run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-auth-spikes.mjs
 
       - name: Stop the stack
         if: always()
