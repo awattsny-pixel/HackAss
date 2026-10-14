@@ -77,3 +77,18 @@ the repository (`npm run scan:secrets`).
 | Approval rules | self-review, missing/prohibited/high-needs-admin assessment, unclear/expired/revoked rights per claim, unresolved profile/asset references, unfrozen content, hash mismatch; DB trigger backstop | done |
 | Concurrency | `X1` simultaneous decisions (1 wins, rest `decision_conflict`, chain linear), `X2` approval vs revocation / prohibited assessment (waits, then blocked), `X3` stress across submissions (no deadlock) | done locally |
 | S-1 .. S-3 (automated/shadow), publication pointer, worker effects, budgets | not started | out of scope |
+
+## F2-C2 progress (human publication records and withdrawal)
+| Row | F2-C2 evidence | Status |
+|---|---|---|
+| G-2 / G-3 | golden inventory extended to 20 tables and every new function (owner, definer, search_path, volatility, EXECUTE grantees); only `publish_version`, `withdraw_publication`, `get_publication` are executable by `authenticated`; no table privilege for any role; two deferrable commit-time checks and the pointer guard pinned by the trigger inventory | done for F2-C2 objects |
+| G-4 Forbidden writes | members, anon, service_role and the worker cannot read or write publications, rights rows, withdrawals or the pointer (pgTAP, real worker login `W5`) | done |
+| I-3 Direct RPC authorization | all three functions refuse anon, service_role, no claims, signed-out, non-staff, aal1, stale and future MFA, removed staff role (pgTAP matrix; real tokens `P2`, except stale MFA) | done locally |
+| Wrong-hack links | the database refuses a pointer to another hack's publication, a version of another hack, another hash, another submission's decision, assessment or rights review (composite keys; pgTAP §E) | done |
+| Publication rules | stale/superseded decision, wrong hash, tampered content, expired and revoked rights, unresolved references, self-publication, decision made by the submitter, high risk without an admin, unapproved lifecycle, slug rules (pgTAP §D, `P1`/`P2`) | done |
+| Snapshot | `HACKASS-PUB-1`, documented in `docs/db/f2c2-publication.md`; independently rebuilt in pgTAP and field-by-field from the API in `P1`; recomputed from recorded ids after later reviews; commit-time check | done |
+| Review/publication interplay | later REJECT, HOLD, rights revocation, prohibited and high assessment withdraw atomically; harmless later work does not (pgTAP §F, `Y3`) | done locally |
+| Concurrency | `Y1` 8 simultaneous publishes -> 1 publication; `Y2` two versions of a hack racing; `Y3` publish vs rejection / revocation / prohibited assessment / withdrawal in **both orders**; `Y4` mixed stress, no deadlock, every publication current-and-eligible or withdrawn | done locally |
+| Rollback | R4 alone and R3/R2/R1 chains rehearsed | done |
+| Public projection, caching, automated publication, jobs, budgets, UI, rights expiry sweeper | not started | out of scope |
+

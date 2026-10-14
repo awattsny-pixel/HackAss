@@ -251,13 +251,13 @@ select is(pg_temp.owner_val(format($q$select string_agg(seq::text || ':' || coal
 -- append-only
 select is(pg_temp.owner_do(format($$update app.moderation_decisions set decision = 'PUBLISH' where submission_id = %L$$, pg_temp.sid('main'))), 'PT409|record_immutable', 'a decision cannot be updated');
 select is(pg_temp.owner_do(format($$delete from app.moderation_decisions where submission_id = %L$$, pg_temp.sid('main'))), 'PT409|record_immutable', 'a decision cannot be deleted');
-select is(pg_temp.owner_do('truncate app.moderation_decisions'), 'PT409|truncate_forbidden', 'the decision table cannot be truncated');
+select ok(pg_temp.owner_do('truncate app.moderation_decisions') in ('PT409|truncate_forbidden', '0A000|cannot truncate a table referenced in a foreign key constraint'), 'the decision table cannot be truncated (by its trigger, or since F2-C2 by PostgreSQL itself: publications reference it)');
 select is(pg_temp.owner_do(format($$update app.rights_reviews set status = 'clear' where submission_id = %L$$, pg_temp.sid('main'))), 'PT409|record_immutable', 'a rights review cannot be updated');
 select is(pg_temp.owner_do(format($$delete from app.rights_reviews where submission_id = %L$$, pg_temp.sid('main'))), 'PT409|record_immutable', 'a rights review cannot be deleted');
-select is(pg_temp.owner_do('truncate app.rights_reviews'), 'PT409|truncate_forbidden', 'the rights table cannot be truncated');
+select ok(pg_temp.owner_do('truncate app.rights_reviews') in ('PT409|truncate_forbidden', '0A000|cannot truncate a table referenced in a foreign key constraint'), 'the rights table cannot be truncated (by its trigger, or since F2-C2 by PostgreSQL itself: publications reference it)');
 select is(pg_temp.owner_do(format($$update app.version_assessments set risk_class = 'low' where submission_id = %L$$, pg_temp.sid('main'))), 'PT409|record_immutable', 'an assessment cannot be updated');
 select is(pg_temp.owner_do(format($$delete from app.version_assessments where submission_id = %L$$, pg_temp.sid('main'))), 'PT409|record_immutable', 'an assessment cannot be deleted');
-select is(pg_temp.owner_do('truncate app.version_assessments'), 'PT409|truncate_forbidden', 'the assessment table cannot be truncated');
+select ok(pg_temp.owner_do('truncate app.version_assessments') in ('PT409|truncate_forbidden', '0A000|cannot truncate a table referenced in a foreign key constraint'), 'the assessment table cannot be truncated (by its trigger, or since F2-C2 by PostgreSQL itself: publications reference it)');
 -- binding is a database constraint, and the sequence/chain/claim hash are trigger-assigned (a caller cannot choose them)
 select pg_temp.lk(pg_temp.owner_do(format($$insert into app.moderation_decisions (submission_id, version_id, content_hash, canon_version, decision, reason_codes, actor_id) select id, version_id, decode(repeat('00', 32), 'hex'), canon_version, 'HOLD', array['other'], %L from app.submissions where id = %L$$, pg_temp.u(3), pg_temp.sid('main'))), 'PT409|hash_mismatch', 'a decision quoting the wrong content hash is refused by the trigger');
 select pg_temp.owner_run('alter table app.moderation_decisions disable trigger decisions_guard');
@@ -395,13 +395,17 @@ grant all on t_draft to public;
 select pg_temp.as_staff(5);
 select pg_temp.lk(pg_temp.err('authenticated', format('select api.record_decision(%L, %L, ''PUBLISH'', null, null, null)::text', (select r ->> 'version_id' from t_draft), repeat('a', 64))), 'PT404|not_found|%', 'a draft''s version id is not a submission: there is nothing to approve');
 select pg_temp.lk(pg_temp.err('authenticated', format('select api.start_review(%L, %L)::text', (select r ->> 'version_id' from t_draft), repeat('a', 64))), 'PT404|not_found|%', 'and it cannot be put under review');
+create temp table t_all as select pg_temp.call('authenticated', 'select api.list_submissions_for_review(50)') as r;
+grant all on t_all to public;
 create temp table t_p1 as select pg_temp.call('authenticated', 'select api.list_submissions_for_review(3)') as r;
 grant all on t_p1 to public;
 select is((select jsonb_array_length(r) from t_p1), 3, 'page 1 holds 3');
-create temp table t_p2 as select pg_temp.call('authenticated', format('select api.list_submissions_for_review(3, array[''submitted'', ''under_review'', ''approved'', ''rejected'']::text[], %L, %L)', (select r -> 2 ->> 'submitted_at' from t_p1), (select r -> 2 ->> 'submission_id' from t_p1))) as r;
+create temp table t_p2 as select pg_temp.call('authenticated', format('select api.list_submissions_for_review(3, array[''submitted'', ''under_review'']::text[], %L, %L)', (select r -> 2 ->> 'submitted_at' from t_p1), (select r -> 2 ->> 'submission_id' from t_p1))) as r;
 grant all on t_p2 to public;
-select is((select jsonb_array_length(r) from t_p2), 3, 'page 2 holds 3 more');
+select is((select jsonb_array_length(r) from t_p2), least(3, (select jsonb_array_length(r) - 3 from t_all)), 'page 2 holds the next 3 (or what remains) of the same filter');
 select is((select count(*)::int from jsonb_array_elements((select r from t_p1)) a join jsonb_array_elements((select r from t_p2)) b on a ->> 'submission_id' = b ->> 'submission_id'), 0, 'with no overlap between pages');
+select is((select jsonb_agg(e ->> 'submission_id' order by o) from (select e, o from jsonb_array_elements((select r from t_p1)) with ordinality x(e, o) union all select e, o + 3 from jsonb_array_elements((select r from t_p2)) with ordinality y(e, o)) z),
+          (select jsonb_agg(e ->> 'submission_id' order by o) from jsonb_array_elements((select r from t_all)) with ordinality w(e, o) where o <= 3 + (select jsonb_array_length(r) from t_p2)), 'and the two pages are exactly the first entries of the full, ordered queue');
 select pg_temp.lk(pg_temp.err('authenticated', 'select api.list_submissions_for_review(3, array[''bogus'']::text[])::text'), 'PT422|invalid_content|p_states', 'an unknown state filter is refused');
 select pg_temp.lk(pg_temp.err('authenticated', format('select api.list_submissions_for_review(3, array[''submitted'']::text[], %L, null)::text', now())), 'PT422|invalid_content|cursor', 'half a cursor is refused');
 

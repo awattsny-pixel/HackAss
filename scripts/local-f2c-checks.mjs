@@ -201,8 +201,10 @@ await check('X3', 'many reviewers across many submissions: no deadlock, every hi
   return `${runs.length} sessions over 4 submissions: no deadlock, one decision per submission, chains linear, all bound to their hash`;
 });
 
-await check('R3', 'F2-C1 rollback script: removes the review tables, functions and schema, restores submissions, leaves F2-A/F2-B intact (rehearsed in a rolled-back transaction)', async () => {
-  const down = readFileSync(path.join(root, 'supabase/rollbacks/20261015090000_f2c1_down.sql'), 'utf8');
+await check('R3', 'F2-C1 rollback script (run after the F2-C2 rollback): removes the review tables, functions and schema, restores submissions, leaves F2-A/F2-B intact (rehearsed in a rolled-back transaction)', async () => {
+  // F2-C2's tables and constraints reference F2-C1's, so its rollback runs first inside the same rehearsal transaction
+  const downC2 = readFileSync(path.join(root, 'supabase/rollbacks/20261016090000_f2c2_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
+  const down = readFileSync(path.join(root, 'supabase/rollbacks/20261015090000_f2c1_down.sql'), 'utf8').replace(/^begin;\s*$/m, () => `begin;\n${downC2}`);
   const probe = `
 select 'tables=' || count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r' and c.relname in ('version_assessments', 'rights_reviews', 'moderation_decisions');
 select 'app_review=' || count(*) from pg_namespace where nspname = 'app_review';
@@ -213,7 +215,7 @@ select 'f2ab=' || (to_regclass('app.submissions') is not null) || ',' || (to_reg
 `;
   const before = psql(probe).out.replace(/\n/g, ' ');
   ok(/tables=3 app_review=1 api=get_submission_for_review,list_submissions_for_review,record_decision,record_rights_review,record_risk_assessment,start_review binding=1 ledger=3 f2ab=true,true,true,true/.test(before), `before: ${before}`);
-  const after = psql(down.replace(/^commit;\s*$/m, `${probe}\nrollback;`)).out.replace(/\n/g, ' ');
+  const after = psql(down.replace(/^commit;\s*$/m, () => `${probe}\nrollback;`)).out.replace(/\n/g, ' ');
   ok(/tables=0 app_review=0 api= binding=0 ledger=0 f2ab=true,true,true,true/.test(after), `after rollback: ${after}`);
   ok(psql(probe).out.replace(/\n/g, ' ') === before, 'the rehearsal must leave the database unchanged');
   return 'after the rollback script: 0 review tables, no app_review schema, no review functions, binding constraint gone, F2-A/F2-B intact; transaction rolled back, state restored';

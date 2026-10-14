@@ -13,8 +13,8 @@ const sql = Object.fromEntries(files.map((f) => [f, readFileSync(join(migDir, f)
 const all = files.map((f) => sql[f]).join('\n');
 const code = (t: string) => t.replace(/--.*$/gm, '');
 
-test('F2-A, F2-B and F2-C1 migrations: ten timestamped, ordered files, no stray files', () => {
-  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql']);
+test('F2-A, F2-B, F2-C1 and F2-C2 migrations: thirteen timestamped, ordered files, no stray files', () => {
+  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql']);
   assert.deepEqual(readdirSync(migDir).filter((f) => !f.endsWith('.sql')), ['.gitkeep']);
   for (const f of files) assert.match(f, /^\d{14}_[a-z0-9_]+\.sql$/);
 });
@@ -48,6 +48,7 @@ test('no grant to PUBLIC, anon or service_role beyond the api schema USAGE, and 
   assert.deepEqual(executes.map((g) => g.replace(/^grant execute on function /i, '')).sort(), [
     'api.create_draft(uuid), api.save_draft(uuid, jsonb), api.get_version(uuid), api.list_my_versions(), api.submit_version(uuid, text), api.delete_draft(uuid) to authenticated;',
     'api.list_submissions_for_review(integer, text[], timestamptz, uuid), api.get_submission_for_review(uuid), api.start_review(uuid, text), api.record_risk_assessment(uuid, text, text, text), api.record_rights_review(uuid, text, integer, text, text, text, date), api.record_decision(uuid, text, text, text[], text, uuid) to authenticated;',
+    'api.publish_version(uuid, text, uuid, text), api.withdraw_publication(uuid, text, text), api.get_publication(uuid) to authenticated;',
     'api.whoami(), api.staff_probe(text, integer) to authenticated;',
     'app_bridge.session_valid(uuid, uuid) to hackass_owner;',
     'app_guard.on_auth_user_created(), app_guard.on_auth_user_deleted() to postgres;',
@@ -94,7 +95,7 @@ test('every function in an application schema has PUBLIC execute revoked, and no
 test('every application table has RLS enabled and is covered by the immutability / append-only / truncate triggers where it holds content', () => {
   const c = code(all).replace(/\s+/g, ' ');
   const tables = [...c.matchAll(/create table (app\.\w+)/g)].map((m) => m[1]);
-  assert.equal(tables.length, 17);
+  assert.equal(tables.length, 20);
   for (const t of tables) assert.match(c, new RegExp(`alter table ${t.replace('.', '\\.')} enable row level security;`), `${t} lacks RLS`);
   for (const t of ['hack_steps', 'hack_materials', 'hack_requirements', 'version_tags', 'version_attributions', 'source_claims', 'version_assets']) {
     assert.match(c, new RegExp(`create trigger ${t}_guard before insert or update or delete on app\\.${t} for each row execute function app_content\\.guard_child\\(\\);`), `${t} lacks the child guard`);
@@ -255,4 +256,58 @@ test('F2-C1 rollback removes everything it created, in order, and un-ledgers exa
   for (const f of fns) assert.ok(down.includes(f), f);
   assert.ok(down.indexOf('drop table') < down.indexOf('drop constraint') && down.indexOf('drop constraint') < down.indexOf('drop schema if exists app_review cascade'));
   assert.match(down, /version in \('20261015090000', '20261015090100', '20261015090200'\)/);
+});
+
+test('F2-C2: one lock protocol (submission row, then hack row, then lifecycle rows in ascending id order) is followed by publish, withdraw and every review write', () => {
+  const rules = code(sql['20261016090100_f2c2_publication_rules.sql']);
+  const rpc = code(sql['20261016090200_f2c2_publication_rpc.sql']);
+  // step 1 and 2 live in lock_submission, which every review write already calls first
+  const lock = rules.match(/create or replace function app_review\.lock_submission[\s\S]*?\n\$\$;/)![0];
+  assert.ok(lock.indexOf('from app.submissions where id = p_submission_id for update') > 0 && lock.indexOf('from app.hacks h where h.id = s.hack_id for no key update') > lock.indexOf('for update;'), 'submission FOR UPDATE, then hack FOR NO KEY UPDATE');
+  const pub = rpc.match(/create function api\.publish_version[\s\S]*?\n\$\$;/)![0];
+  const wd = rpc.match(/create function api\.withdraw_publication[\s\S]*?\n\$\$;/)![0];
+  assert.match(pub, /^[\s\S]*?begin\s+v_staff := app_guard\.require_staff\('reviewer', interval '15 minutes'\);/, 'publish starts with the staff guard');
+  assert.match(wd, /^[\s\S]*?begin\s+v_staff := app_guard\.require_staff\('reviewer', interval '15 minutes'\);/, 'withdraw starts with the staff guard');
+  const iLock = pub.indexOf('app_review.lock_submission'), iVerify = pub.indexOf('app_review.verify_binding'), iOk = pub.indexOf('app_review.assert_reviewer_ok'), iLife = pub.indexOf('from app.version_lifecycle l where l.version_id in (s.version_id, v_old.version_id) order by l.version_id for update');
+  assert.ok(iLock > 0 && iLock < iVerify && iVerify < iOk && iOk < iLife, 'publish: lock submission+hack, verify the hash, check the publisher, then the lifecycle rows in ascending order');
+  assert.ok(pub.indexOf('publication_blockers') > iLife && pub.indexOf('withdraw_locked') > pub.indexOf('publication_blockers') && pub.indexOf('insert into app.publications') > pub.indexOf('withdraw_locked') && pub.indexOf('update app.hacks set') > pub.indexOf('insert into app.publication_rights'), 'publish: checks, then supersede, then the insert, then the pointer');
+  assert.match(pub, /decision_conflict/);
+  assert.ok(wd.indexOf('app_review.lock_submission') > 0 && wd.indexOf('app_review.lock_submission') < wd.indexOf('not_current') && wd.indexOf('not_current') < wd.indexOf('from app.version_lifecycle l where l.version_id = p.version_id for update') && wd.indexOf('for update') < wd.indexOf('withdraw_locked'), 'withdraw: lock submission+hack, re-check currency under the lock, then the lifecycle row, then the withdrawal');
+  for (const body of [pub, wd]) assert.ok(!/\b(p_actor|p_reviewer|p_user|p_staff|p_account)\w*/i.test(body), 'no caller identity parameter');
+  // withdrawal order: record first, pointer second, lifecycle last (the triggers depend on it)
+  const w = rules.match(/create function app_review\.withdraw_locked[\s\S]*?\n\$\$;/)![0];
+  assert.ok(w.indexOf('insert into app.publication_withdrawals') < w.indexOf('update app.hacks set current_publication_id = null') && w.indexOf('update app.hacks') < w.indexOf('update app.version_lifecycle'));
+  // review writes that can make a publication ineligible withdraw it in the same transaction
+  for (const t of ['decisions_after_write after insert on app.moderation_decisions', 'assessments_after_write after insert on app.version_assessments', 'rights_reviews_after_write after insert on app.rights_reviews']) assert.ok(rules.includes(`create trigger ${t} for each row execute function app_review.after_review_write();`), t);
+  // the insert guard repeats the rules for any other writer, and the pointer guard allows only the two lawful moves
+  const g = rules.match(/create function app_review\.guard_publication\(\)[\s\S]*?\n\$\$;/)![0];
+  for (const needle of ['lock_submission(new.submission_id)', 'assert_reviewer_ok(s, new.published_by)', "is distinct from 'approved'", 'decision_conflict', 'assessment_stale', 'publication_blockers(s.id, new.published_by)', 'publisher_role', 'snapshot_mismatch']) assert.ok(g.includes(needle), `guard_publication: ${needle}`);
+  const hk = rules.match(/create function app_review\.guard_hack\(\)[\s\S]*?\n\$\$;/)![0];
+  for (const needle of ['identity_immutable', 'slug_immutable', 'pointer_must_be_cleared', 'publication_withdrawn', 'withdrawal_required']) assert.ok(hk.includes(needle), `guard_hack: ${needle}`);
+  assert.match(rules, /create constraint trigger publications_children_check after insert on app\.publications deferrable initially deferred/);
+  assert.match(rules, /create constraint trigger withdrawals_cleared_check after insert on app\.publication_withdrawals deferrable initially deferred/);
+  // keys
+  const tables = code(sql['20261016090000_f2c2_publication_tables.sql']);
+  assert.match(tables, /foreign key \(version_id, hack_id\) references app\.hack_versions \(id, hack_id\)/, 'a publication\'s version belongs to its hack');
+  assert.match(tables, /foreign key \(current_publication_id, id\) references app\.publications \(id, hack_id\)/, 'the pointer targets a publication of the same hack');
+  assert.match(tables, /foreign key \(submission_id, version_id, content_hash, canon_version\)\s+references app\.submissions \(id, version_id, content_hash, canon_version\)/);
+  assert.match(tables, /constraint publications_one_per_decision unique \(decision_id\)/);
+  assert.match(tables, /snapshot_format = 'HACKASS-PUB-1'/);
+  // nothing for members: no public projection, no grants
+  assert.ok(!/\bgrant\b[^;]*\bto\s+(anon|public|service_role)\b/i.test(rules + rpc + tables));
+});
+
+test('F2-C2 rollback removes everything it created, in order, restores the F2-C1 lock_submission, and un-ledgers exactly its three versions', () => {
+  const down = code(readFileSync(join(root, 'supabase/rollbacks/20261016090000_f2c2_down.sql'), 'utf8'));
+  for (const t of ['app.publications', 'app.publication_rights', 'app.publication_withdrawals', 'current_publication_id', 'decisions_id_submission', 'assessments_id_submission', 'rights_review_binding']) assert.ok(down.includes(t), t);
+  const fns = [...code(sql['20261016090200_f2c2_publication_rpc.sql']).matchAll(/create function (api\.\w+)\(/g)].map((m) => m[1]);
+  assert.equal(fns.length, 3);
+  for (const f of fns) assert.ok(down.includes(f), f);
+  for (const f of [...code(sql['20261016090100_f2c2_publication_rules.sql']).matchAll(/create function (app_review\.\w+)\(/g)].map((m) => m[1])) assert.ok(down.includes(f), f);
+  assert.ok(down.indexOf('drop function if exists app_review.withdraw_locked') < down.indexOf('drop table if exists app.publication_withdrawals'), 'the function over the row type goes before the table');
+  assert.ok(down.indexOf('drop trigger if exists decisions_after_write') < down.indexOf('drop function if exists app_review.after_review_write'));
+  assert.ok(down.indexOf('drop table') < down.indexOf('drop constraint if exists decisions_id_submission'));
+  const orig = code(sql['20261015090100_f2c1_review_rules.sql']).match(/create function app_review\.lock_submission[\s\S]*?\n\$\$;/)![0].replace('create function', 'create or replace function');
+  assert.ok(down.replace(/\s+/g, ' ').includes(orig.replace(/\s+/g, ' ')), 'the restored lock_submission is exactly the F2-C1 definition');
+  assert.match(down, /version in \('20261016090000', '20261016090100', '20261016090200'\)/);
 });

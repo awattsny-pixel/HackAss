@@ -84,8 +84,8 @@ select is(
 select is((select count(*)::int from pg_policy p join pg_class c on c.oid = p.polrelid join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app'), 0, 'no RLS policy exists (default deny)');
 select is(
   (select string_agg(c.relname, ', ' order by c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r'),
-  'accounts, categories, hack_materials, hack_requirements, hack_steps, hack_versions, hacks, moderation_decisions, rights_reviews, source_claims, staff_assignments, submissions, version_assessments, version_assets, version_attributions, version_lifecycle, version_tags',
-  'app contains exactly these 17 tables (any new table must be added here, with its grants reviewed)');
+  'accounts, categories, hack_materials, hack_requirements, hack_steps, hack_versions, hacks, moderation_decisions, publication_rights, publication_withdrawals, publications, rights_reviews, source_claims, staff_assignments, submissions, version_assessments, version_assets, version_attributions, version_lifecycle, version_tags',
+  'app contains exactly these 20 tables (any new table must be added here, with its grants reviewed)');
 select is(
   (select string_agg(c.relname, ', ' order by c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r'
       and not exists (select 1 from pg_trigger t where t.tgrelid = c.oid and t.tgname like '%\_guard' or t.tgrelid = c.oid and t.tgname like '%\_append\_only') and c.relname in ('hack_versions', 'hack_steps', 'hack_materials', 'hack_requirements', 'version_tags', 'version_attributions', 'source_claims', 'version_assets', 'submissions')),
@@ -99,8 +99,16 @@ select is(
 select is(
   (select string_agg(c.relname || ':' || t.tgname, ', ' order by c.relname, t.tgname) from pg_class c join pg_trigger t on t.tgrelid = c.oid and not t.tgisinternal
     where c.oid in ('app.version_assessments'::regclass, 'app.rights_reviews'::regclass, 'app.moderation_decisions'::regclass)),
-  'moderation_decisions:decisions_append_only, moderation_decisions:decisions_guard, moderation_decisions:decisions_no_truncate, rights_reviews:rights_reviews_append_only, rights_reviews:rights_reviews_guard, rights_reviews:rights_reviews_no_truncate, version_assessments:assessments_append_only, version_assessments:assessments_guard, version_assessments:assessments_no_truncate',
-  'the three review record tables are append-only, truncate-proof, and carry their insert guards');
+  'moderation_decisions:decisions_after_write, moderation_decisions:decisions_append_only, moderation_decisions:decisions_guard, moderation_decisions:decisions_no_truncate, rights_reviews:rights_reviews_after_write, rights_reviews:rights_reviews_append_only, rights_reviews:rights_reviews_guard, rights_reviews:rights_reviews_no_truncate, version_assessments:assessments_after_write, version_assessments:assessments_append_only, version_assessments:assessments_guard, version_assessments:assessments_no_truncate',
+  'the three review record tables are append-only, truncate-proof, and carry their insert guards and their after-write publication check');
+select is(
+  (select string_agg(c.relname || ':' || t.tgname, ', ' order by c.relname, t.tgname) from pg_class c join pg_trigger t on t.tgrelid = c.oid and not t.tgisinternal
+    where c.oid in ('app.publications'::regclass, 'app.publication_rights'::regclass, 'app.publication_withdrawals'::regclass, 'app.hacks'::regclass)),
+  'hacks:hacks_guard, publication_rights:publication_rights_append_only, publication_rights:publication_rights_no_truncate, publication_withdrawals:publication_withdrawals_append_only, publication_withdrawals:publication_withdrawals_no_truncate, publication_withdrawals:withdrawals_cleared_check, publications:publications_append_only, publications:publications_children_check, publications:publications_guard, publications:publications_no_truncate',
+  'the publication tables are append-only and truncate-proof, publications carry their insert guard and commit-time snapshot check, withdrawals their commit-time pointer check, and hacks its pointer guard');
+select is(
+  (select string_agg(t.tgname || ':' || t.tgdeferrable::text || ':' || t.tginitdeferred::text, ', ' order by t.tgname) from pg_trigger t where t.tgconstraint <> 0 and t.tgisinternal = false),
+  'publications_children_check:true:true, withdrawals_cleared_check:true:true', 'the two commit-time checks are deferrable constraint triggers, initially deferred');
 select is(
   (select string_agg(t.tgname, ', ' order by t.tgname) from pg_trigger t where t.tgrelid = 'app.categories'::regclass and not t.tgisinternal),
   'categories_guard, categories_no_truncate', 'categories: slug/id immutability trigger and TRUNCATE guard are installed');
@@ -117,10 +125,12 @@ select is(
     where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review')),
   $golden$api.create_draft(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.delete_draft(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+api.get_publication(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.get_submission_for_review(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.get_version(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.list_my_versions() owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.list_submissions_for_review(integer,text[],timestamp with time zone,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+api.publish_version(uuid,text,uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.record_decision(uuid,text,text,text[],text,uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.record_rights_review(uuid,text,integer,text,text,text,date) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.record_risk_assessment(uuid,text,text,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
@@ -129,6 +139,7 @@ api.staff_probe(text,integer) owner=hackass_owner definer=true vol=s search_path
 api.start_review(uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.submit_version(uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.whoami() owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+api.withdraw_publication(uuid,text,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 app_bridge.session_valid(uuid,uuid) owner=postgres definer=true vol=s search_path="" execute=hackass_owner,postgres
 app_content.assert_keys(jsonb,text[],text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
 app_content.assert_limits(jsonb) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
@@ -157,17 +168,26 @@ app_guard.on_auth_user_created() owner=hackass_owner definer=true vol=v search_p
 app_guard.on_auth_user_deleted() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,supabase_auth_admin
 app_guard.require_member() owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_guard.require_staff(text,interval) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_review.after_review_write() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.approval_blockers(uuid,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_review.assert_reviewer_ok(app.submissions,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_review.check_publication_children() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_review.check_withdrawal_cleared() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.claim_hash(uuid,integer) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_review.claim_line(uuid,integer) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_review.effective_rights(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_review.guard_append_only() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.guard_assessment() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.guard_decision() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_review.guard_hack() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_review.guard_publication() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.guard_rights_review() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.lock_submission(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_review.publication_blockers(uuid,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_review.snapshot_text(uuid,uuid,uuid,bytea,smallint,uuid,uuid,uuid,text,uuid[]) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_review.unresolved_references(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_review.verify_binding(app.submissions,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_review.withdraw_locked(app.publications,text,text,text,text[],text,uuid,uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 worker.healthcheck() owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner,hackass_worker$golden$,
   'function inventory: owner, SECURITY DEFINER, search_path = empty, volatility, explicit EXECUTE grantees (never PUBLIC, anon or service_role). Only the api functions are executable by authenticated; vol: v volatile (writers and triggers), s stable, i immutable');
 
@@ -196,7 +216,7 @@ select ok(
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname in ('api', 'app_guard', 'worker', 'app_bridge', 'app_content', 'app_review') and p.provolatile = 'v' and p.prorettype <> 'trigger'::regtype),
-  'api.create_draft(uuid), api.delete_draft(uuid), api.record_decision(uuid,text,text,text[],text,uuid), api.record_rights_review(uuid,text,integer,text,text,text,date), api.record_risk_assessment(uuid,text,text,text), api.save_draft(uuid,jsonb), api.start_review(uuid,text), api.submit_version(uuid,text), app_content.freeze_version(uuid,uuid,bytea), app_content.write_doc(uuid,jsonb), app_review.lock_submission(uuid), app_review.verify_binding(app.submissions,text)',
+  'api.create_draft(uuid), api.delete_draft(uuid), api.publish_version(uuid,text,uuid,text), api.record_decision(uuid,text,text,text[],text,uuid), api.record_rights_review(uuid,text,integer,text,text,text,date), api.record_risk_assessment(uuid,text,text,text), api.save_draft(uuid,jsonb), api.start_review(uuid,text), api.submit_version(uuid,text), api.withdraw_publication(uuid,text,text), app_content.freeze_version(uuid,uuid,bytea), app_content.write_doc(uuid,jsonb), app_review.lock_submission(uuid), app_review.verify_binding(app.submissions,text), app_review.withdraw_locked(app.publications,text,text,text,text[],text,uuid,uuid,text)',
   'exactly the writing functions are VOLATILE; every reader, guard, validator and hash function is STABLE or IMMUTABLE');
 
 -- ---- hackass_owner holds nothing it does not need -----------------------------------------------------------------------

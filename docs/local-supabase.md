@@ -26,7 +26,7 @@ cookie behaviour.
 - `npm run db:test` runs the pgTAP tests (platform sanity, F2-A role/grant inventory, F2-A authorization matrix); `npm run db:test:auth`
   additionally runs `scripts/local-auth-spikes.mjs` (local Auth/session/MFA checks, `docs/spikes/f1-hosted-spikes.md`) and
   `scripts/local-f2a-checks.mjs` (real-JWT RPC calls, worker login, grant inventory, rollback rehearsal; `docs/db/f2a-authority.md`),
-  `scripts/local-f2b-checks.mjs` (content, immutability, concurrency; `docs/db/f2b-content.md`) and `scripts/local-f2c-checks.mjs` (staff review RPCs, self-review, concurrent decisions; `docs/db/f2c1-review.md`)
+  `scripts/local-f2b-checks.mjs` (content, immutability, concurrency; `docs/db/f2b-content.md`) and `scripts/local-f2c-checks.mjs` (staff review RPCs, self-review, concurrent decisions; `docs/db/f2c1-review.md`) and `scripts/local-f2c2-checks.mjs` (staff publication RPCs, publish/withdraw races; `docs/db/f2c2-publication.md`)
   against the same stack before stopping it. The discovery probe (`docker --version`) is time-bounded like every other command.
 
 ## Status
