@@ -187,7 +187,7 @@ app_review.guard_job() owner=hackass_owner definer=true vol=v search_path="" exe
 app_review.guard_publication() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.guard_rights_review() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.job_after_publication() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
-app_review.job_assert_lease(app.jobs,bigint) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_review.job_assert_lease(app.jobs,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.job_claim(text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.job_complete(uuid,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.job_effect_publication_recheck(app.jobs) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
@@ -199,6 +199,7 @@ app_review.lock_submission(uuid) owner=hackass_owner definer=true vol=v search_p
 app_review.publication_blockers(uuid,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_review.snapshot_text(uuid,uuid,uuid,bytea,smallint,uuid,uuid,uuid,text,uuid[]) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_review.unresolved_references(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_review.utc_today() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.verify_binding(app.submissions,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.withdraw_locked(app.publications,text,text,text,text[],text,uuid,uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 worker.claim_job(text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,hackass_worker
@@ -234,7 +235,7 @@ select ok(
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname in ('api', 'app_guard', 'worker', 'app_bridge', 'app_content', 'app_review') and p.provolatile = 'v' and p.prorettype <> 'trigger'::regtype),
-  'api.create_draft(uuid), api.delete_draft(uuid), api.publish_version(uuid,text,uuid,text), api.record_decision(uuid,text,text,text[],text,uuid), api.record_rights_review(uuid,text,integer,text,text,text,date), api.record_risk_assessment(uuid,text,text,text), api.save_draft(uuid,jsonb), api.start_review(uuid,text), api.submit_version(uuid,text), api.withdraw_publication(uuid,text,text), app_content.freeze_version(uuid,uuid,bytea), app_content.write_doc(uuid,jsonb), app_review.job_claim(text), app_review.job_complete(uuid,bigint), app_review.job_effect_publication_recheck(app.jobs), app_review.job_ensure_recheck(app.publications), app_review.job_fail(uuid,bigint,text), app_review.job_heartbeat(uuid,bigint), app_review.lock_submission(uuid), app_review.verify_binding(app.submissions,text), app_review.withdraw_locked(app.publications,text,text,text,text[],text,uuid,uuid,text), worker.claim_job(text), worker.complete_job(uuid,bigint), worker.fail_job(uuid,bigint,text), worker.heartbeat_job(uuid,bigint)',
+  'api.create_draft(uuid), api.delete_draft(uuid), api.publish_version(uuid,text,uuid,text), api.record_decision(uuid,text,text,text[],text,uuid), api.record_rights_review(uuid,text,integer,text,text,text,date), api.record_risk_assessment(uuid,text,text,text), api.save_draft(uuid,jsonb), api.start_review(uuid,text), api.submit_version(uuid,text), api.withdraw_publication(uuid,text,text), app_content.freeze_version(uuid,uuid,bytea), app_content.write_doc(uuid,jsonb), app_review.job_assert_lease(app.jobs,bigint), app_review.job_claim(text), app_review.job_complete(uuid,bigint), app_review.job_effect_publication_recheck(app.jobs), app_review.job_ensure_recheck(app.publications), app_review.job_fail(uuid,bigint,text), app_review.job_heartbeat(uuid,bigint), app_review.lock_submission(uuid), app_review.utc_today(), app_review.verify_binding(app.submissions,text), app_review.withdraw_locked(app.publications,text,text,text,text[],text,uuid,uuid,text), worker.claim_job(text), worker.complete_job(uuid,bigint), worker.fail_job(uuid,bigint,text), worker.heartbeat_job(uuid,bigint)',
   'exactly the writing functions are VOLATILE; every reader, guard, validator and hash function is STABLE or IMMUTABLE');
 
 -- ---- hackass_owner holds nothing it does not need -----------------------------------------------------------------------

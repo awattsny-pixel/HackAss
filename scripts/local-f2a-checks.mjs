@@ -222,12 +222,12 @@ select 'auth_users_table=' || (to_regclass('auth.users') is not null);
 select 'default_acl=' || count(*) from pg_default_acl d where pg_get_userbyid(d.defaclrole) = 'hackass_owner';
 `;
   const before = psql(probe).out.replace(/\n/g, ' ');
-  ok(/schemas=7 roles=2 triggers=2 ledger=16/.test(before), `before rollback: ${before}`);
+  ok(/schemas=7 roles=2 triggers=2 ledger=17/.test(before), `before rollback: ${before}`);
   const body = down.replace(/^commit;\s*$/m, () => `${probe}\nrollback;`);
   const after = psql(body).out.replace(/\n/g, ' ');
   ok(/schemas=0 roles=0 triggers=0 ledger=0 auth_users_table=true default_acl=0/.test(after), `inside rolled-back rollback: ${after}`);
   const restored = psql(probe).out.replace(/\n/g, ' ');
-  ok(/schemas=7 roles=2 triggers=2 ledger=16/.test(restored), `after the rehearsal the database must be unchanged: ${restored}`);
+  ok(/schemas=7 roles=2 triggers=2 ledger=17/.test(restored), `after the rehearsal the database must be unchanged: ${restored}`);
   return `before: ${before} | after rollback script: ${after} | rehearsal transaction rolled back: state restored`;
 });
 

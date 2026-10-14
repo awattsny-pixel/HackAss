@@ -35,8 +35,11 @@ comment on table app.jobs is 'Durable jobs for the restricted worker. Owner-only
 alter table app.jobs enable row level security;
 
 -- the system can end a publication (a recheck), so a withdrawal row may have no staff actor
-alter table app.publication_withdrawals drop constraint publication_withdrawals_cause_check;
-alter table app.publication_withdrawals drop constraint publication_withdrawals_trigger_table_check;
+-- Re-runnable: after the F2-D1 rollback these four constraints are still there (deliberately retained), so each is dropped if it exists and added again.
+alter table app.publication_withdrawals drop constraint if exists publication_withdrawals_cause_check;
+alter table app.publication_withdrawals drop constraint if exists publication_withdrawals_trigger_table_check;
+alter table app.publication_withdrawals drop constraint if exists withdrawals_recheck_names_job;
+alter table app.publication_withdrawals drop constraint if exists withdrawals_actor_unless_recheck;
 alter table app.publication_withdrawals alter column withdrawn_by drop not null;
 alter table app.publication_withdrawals add constraint publication_withdrawals_cause_check check (cause in ('staff', 'superseded', 'review_change', 'recheck'));
 alter table app.publication_withdrawals add constraint publication_withdrawals_trigger_table_check check (trigger_table in ('moderation_decisions', 'version_assessments', 'rights_reviews', 'jobs'));

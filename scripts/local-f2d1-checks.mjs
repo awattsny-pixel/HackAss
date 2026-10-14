@@ -12,7 +12,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DB_CONTAINER, DOCKER, NETWORK, asMember, asOwner, confirmedSession, createRunner, decode, elevateToAal2, ok, psql, rpc, session } from './lib/local-stack.mjs';
+import { DB_CONTAINER, DOCKER, NETWORK, SUPABASE, asMember, asOwner, confirmedSession, createRunner, decode, elevateToAal2, ok, psql, rpc, session } from './lib/local-stack.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { check, failed } = createRunner();
@@ -234,6 +234,22 @@ await check('J4', 'the recheck racing review writes, a superseding publish and a
     ok(/withdrawn/.test(r.out) && r.ms >= HOLD - LATE - 400, `the recheck must wait for the submission/hack locks (took ${r.ms} ms): ${r.out} ${r.err.split('\n')[0]}`);
     notes.push(`submission+hack lock held: recheck waited ${r.ms} ms, then withdrew`);
   }
+  // 0a. the lease EXPIRES while the completion waits for a lock: the transaction began before the expiry, so now() would still call the lease good.
+  // The lease is judged with the wall clock after the locks are held: lease_lost, and the lapsed publication is NOT withdrawn by this stale completion.
+  {
+    const a = await published('J4 expiry during lock wait'); lapse(a.s); const c = lease(a.pub);
+    owner(`update app.jobs set lease_expires_at = clock_timestamp() + interval '2 seconds' where id = '${c.job_id}';`);
+    const hold = session(asOwner(`begin;\nselect app_review.lock_submission('${a.s.submissionId}');\nselect pg_sleep(${HOLD / 1000 + 1});\ncommit;`));
+    const late = session(asOwner(complete(c.job_id, c.lease_epoch)), 500);
+    const [, r] = await Promise.all([hold, late]);
+    ok(/lease_lost/.test(r.err) && !/withdrawn/.test(r.out) && r.ms >= 2500, `a completion that waited past its lease expiry must fail with lease_lost (took ${r.ms} ms): ${r.err.split('\n')[0]} ${r.out}`);
+    ok(pointer(a.s.hackId) === a.pub && nWd(a.pub) === 0, 'and must have no withdrawal effect');
+    // recovery: the job is reclaimed (epoch + 1) and the new lease does withdraw
+    const c2 = JSON.parse(last(owner(`select app_review.job_claim('publication_recheck')::text;`)));
+    ok(c2 && c2.job_id === c.job_id && c2.lease_epoch === c.lease_epoch + 1, `the expired job is reclaimable: ${JSON.stringify(c2)}`);
+    ok(/withdrawn/.test(last(owner(`select app_review.job_complete('${c2.job_id}', ${c2.lease_epoch});`))) && nWd(a.pub) === 1, 'and the fresh lease withdraws it');
+    notes.push(`lease expired while the completion waited ${r.ms} ms for a lock: lease_lost, no withdrawal; the reclaimed job then withdraws`);
+  }
   // 0b. the protocol's ORDER matters: a publisher-style transaction takes submission+hack and only LATER the lifecycle row. A recheck that took the lifecycle row
   // first (skipping steps 1-2) would deadlock with it; with the protocol the recheck simply queues behind the first lock.
   {
@@ -338,6 +354,38 @@ await check('J5', 'mixed stress: real workers, rechecks, staff review writes, wi
   return `${runs.length} simultaneous operations (real workers, owner-path claims, staff revocations and withdrawals) over 6 lapsed publications: no deadlock; every publication withdrawn exactly once (${causes})`;
 });
 
+await check('T1', 'a session time zone cannot move the UTC rights-expiry boundary: input check, approval rule and the commit-time check all agree (zone chosen from the wall clock so the session date really differs from the UTC date)', async () => {
+  const hour = new Date().getUTCHours();
+  const ahead = hour >= 10;                                // UTC+14 is already "tomorrow" from 10:00 UTC; UTC-12 is still "yesterday" until 12:00 UTC
+  const zone = ahead ? 'Pacific/Kiritimati' : 'Etc/GMT+12';
+  const r = await staff();
+  const s = await submission('T1 zone');
+  ok((await api('start_review', r.token, rev(s))).status === 200 && (await api('record_risk_assessment', r.token, rev(s, { p_risk_class: 'low', p_rationale: 'Ordinary household tip, no hazard.' }))).status === 200, 'fixture review steps');
+  const inZone = (body) => session(asMember(r.claims, `set timezone = '${zone}';\n${body}`));
+  const review = (day) => `select api.record_rights_review('${s.submissionId}', '${s.hash}', 1, 'clear', 'staff_original_check', 'Checked the original thoroughly.', '${day}');`;
+  let note;
+  if (ahead) {
+    // tomorrow (UTC) is the day AFTER the session's own idea of today: it must be accepted
+    const x = await inZone(review(isoDay(1)));
+    ok(/"rights_review_id"/.test(x.out), `an expiry of tomorrow (UTC) must be accepted from a UTC+14 session: ${x.err.split('\n')[0]} ${x.out}`);
+    note = `session ${zone} (a day ahead): expiry tomorrow(UTC) accepted`;
+  } else {
+    const x = await inZone(review(isoDay(0)));
+    ok(/expires_on/.test(x.err) && !/"rights_review_id"/.test(x.out), `an expiry of today (UTC) must be refused from a UTC-12 session: ${x.err.split('\n')[0]} ${x.out}`);
+    ok((await inZone(review(isoDay(10)))).out.includes('rights_review_id'), 'a future expiry is accepted');
+    note = `session ${zone} (a day behind): expiry today(UTC) refused`;
+  }
+  // the review now expires TODAY (UTC): still valid for the rest of the UTC day, whatever the session says
+  owner(`alter table app.rights_reviews disable trigger rights_reviews_append_only;\nupdate app.rights_reviews set expires_on = (clock_timestamp() at time zone 'UTC')::date where id = any (app_review.effective_rights('${s.submissionId}'));\nalter table app.rights_reviews enable trigger rights_reviews_append_only;`);
+  const d = await api('record_decision', r.token, rev(s, { p_decision: 'PUBLISH', p_reason_codes: null, p_note: null, p_expected_prior_decision_id: null }));
+  ok(d.status === 200, `approval from a UTC session: HTTP ${d.status} ${msg(d)}`);
+  // publish from the odd-zone session: its COMMIT runs the deferred snapshot check, which must also use the UTC day
+  const p = await inZone(`select api.publish_version('${s.submissionId}', '${s.hash}', '${d.body.decision_id}', '${slug()}');`);
+  ok(/"publication_id"/.test(p.out) && !/ERROR/.test(p.err), `publishing a review that expires today (UTC) from a ${zone} session must succeed and commit: ${p.err.split('\n')[0]} ${p.out}`);
+  ok(pointer(s.hackId) !== 'none', 'and it is current');
+  return `${note}; approval and publish (incl. the commit-time check) of a review expiring today(UTC) succeed from the ${zone} session`;
+});
+
 await check('R5', 'F2-D1 rollback script: removes the jobs table and the worker functions, restores the F2-C2 definitions, leaves F2-C2 and earlier intact; recheck withdrawal history is kept (rehearsed in a rolled-back transaction)', async () => {
   const down = readFileSync(path.join(root, 'supabase/rollbacks/20261017090000_f2d1_down.sql'), 'utf8');
   const probe = `
@@ -351,11 +399,49 @@ select 'ledger=' || count(*) from supabase_migrations.schema_migrations where ve
 select 'c2=' || (to_regclass('app.publications') is not null) || ',' || (to_regclass('app.publication_withdrawals') is not null) || ',' || (to_regprocedure('api.publish_version(uuid,text,uuid,text)') is not null);
 `;
   const before = psql(probe).out.replace(/\n/g, ' ');
-  ok(/jobs=1 workerfns=claim_job,complete_job,fail_job,get_job_subject,healthcheck,heartbeat_job jobfns=9 schedtrigger=1 after_has_jobs=true children_has_evidence=true ledger=3 c2=true,true,true/.test(before), `before: ${before}`);
+  ok(/jobs=1 workerfns=claim_job,complete_job,fail_job,get_job_subject,healthcheck,heartbeat_job jobfns=9 schedtrigger=1 after_has_jobs=true children_has_evidence=true ledger=4 c2=true,true,true/.test(before), `before: ${before}`);
   const after = psql(down.replace(/^commit;\s*$/m, () => `${probe}\nrollback;`)).out.replace(/\n/g, ' ');
   ok(/jobs=0 workerfns=healthcheck jobfns=0 schedtrigger=0 after_has_jobs=false children_has_evidence=false ledger=0 c2=true,true,true/.test(after), `after rollback: ${after}`);
   ok(psql(probe).out.replace(/\n/g, ' ') === before, 'the rehearsal must leave the database unchanged');
   return 'after the rollback script: no jobs table, only worker.healthcheck, no job functions or schedule trigger, F2-C2 after_review_write and check_publication_children restored, F2-C2 intact; transaction rolled back, state restored';
+});
+
+await check('R6', 'rollback COMMITTED, then the migrations re-applied (supabase migration up) over the retained withdrawal history, then the recheck works again', async () => {
+  // existing recheck-withdrawal history that the rollback must preserve
+  const h = await published('R6 history'); lapse(h.s); due(h.pub);
+  owner(`update app.jobs set available_at = now() + interval '1 day' where status = 'queued' and target_publication_id <> '${h.pub}';`);
+  const c0 = parseClaim(asWorker(claimSql));
+  ok(/"outcome": "withdrawn"/.test(asWorker(`select (worker.complete_job('${c0.job_id}', ${c0.lease_epoch}))::text;`).out), 'fixture: a recheck withdrawal exists');
+  const count = () => last(owner(`select count(*) from app.publication_withdrawals where cause = 'recheck';`));
+  const n0 = count(); ok(Number(n0) >= 1, 'recheck withdrawals exist');
+  const snapshot = () => last(owner(`select md5(string_agg(publication_id::text || cause || coalesce(trigger_id::text, '') || array_to_string(blockers, ','), ',' order by publication_id)) from app.publication_withdrawals where cause = 'recheck';`));
+  const hist0 = snapshot();
+  const probe = () => psql(`select 'jobs=' || count(*) from pg_class where relname = 'jobs' and relnamespace = 'app'::regnamespace;
+select 'ctr=' || (select count(*) from pg_constraint where conname in ('withdrawals_recheck_names_job', 'withdrawals_actor_unless_recheck', 'publication_withdrawals_cause_check', 'publication_withdrawals_trigger_table_check'));
+select 'workerfns=' || (select count(*) from pg_proc where pronamespace = 'worker'::regnamespace);
+select 'utc=' || count(*) from pg_proc where proname = 'utc_today';
+select 'ledger=' || count(*) from supabase_migrations.schema_migrations where version like '20261017%';`).out.replace(/\n/g, ' ');
+  ok(/jobs=1 ctr=4 workerfns=6 utc=1 ledger=4/.test(probe()), `before: ${probe()}`);
+  // 1. committed rollback (psql as postgres, begin ... commit)
+  const down = psql(readFileSync(path.join(root, 'supabase/rollbacks/20261017090000_f2d1_down.sql'), 'utf8'));
+  ok(!/ERROR/.test(down.out + (down.err ?? '')), `rollback failed: ${down.out.slice(-300)}`);
+  const mid = probe();
+  ok(/jobs=0 ctr=4 workerfns=1 utc=0 ledger=0/.test(mid), `after the committed rollback the retained constraints must remain: ${mid}`);
+  ok(count() === n0 && snapshot() === hist0, 'the recheck-withdrawal history is untouched by the rollback');
+  // 2. re-apply with the real migration runner
+  const up = spawnSync(SUPABASE, ['migration', 'up', '--local'], { cwd: root, encoding: 'utf8', timeout: 240_000 });
+  ok(up.status === 0, `migration up failed (${up.status}): ${(up.stderr + up.stdout).slice(-500)}`);
+  const end = probe();
+  ok(/jobs=1 ctr=4 workerfns=6 utc=1 ledger=4/.test(end), `after re-application: ${end}`);
+  ok(count() === n0 && snapshot() === hist0, 'the history is still exactly as it was');
+  // 3. the re-applied code works: a fresh lapse is rechecked and withdrawn by the real worker
+  psql(`alter role hackass_worker password '${workerPw}'`);
+  const x = await published('R6 after reapply'); lapse(x.s); due(x.pub);
+  owner(`update app.jobs set available_at = now() + interval '1 day' where status = 'queued' and target_publication_id <> '${x.pub}';`);
+  const c1 = parseClaim(asWorker(claimSql));
+  ok(c1 && /"outcome": "withdrawn"/.test(asWorker(`select (worker.complete_job('${c1.job_id}', ${c1.lease_epoch}))::text;`).out), 'the re-applied worker functions recheck and withdraw');
+  ok(wdRow(x.pub) === 'recheck|jobs' && Number(count()) === Number(n0) + 1, 'with one more recheck withdrawal');
+  return `${n0} recheck withdrawal(s) preserved (history hash unchanged) through a COMMITTED rollback and a supabase migration up re-application; retained constraints re-applied without error (4 present each time); worker functions, UTC helper and ledger (4) restored; a fresh recheck withdraws`;
 });
 
 const n = failed();

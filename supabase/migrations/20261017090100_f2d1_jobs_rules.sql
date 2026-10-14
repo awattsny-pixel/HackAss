@@ -38,16 +38,25 @@ create trigger jobs_guard before insert or update or delete on app.jobs for each
 create trigger jobs_no_truncate before truncate on app.jobs for each statement execute function app_content.guard_truncate();
 
 -- ---- the lease check, one definition ----------------------------------------------------------------------------------------------------
+-- THE CLOCK: every deadline in this file is judged with clock_timestamp() (the wall clock at the moment of use), never now(): now() is frozen at the START of
+-- the transaction, so a transaction that began before an expiry and then waited (for a lock, say) would otherwise still pass. Callers check the lease after
+-- they hold their locks.
 -- A lease is good only if the job is leased, at exactly this epoch, and not expired. Anything else is the same error, with no detail about which.
 create function app_review.job_assert_lease(p_job app.jobs, p_epoch bigint) returns void
-  language plpgsql stable security definer set search_path = ''
+  language plpgsql security definer set search_path = ''
 as $$
 begin
-  if p_job.id is null or p_epoch is null or p_job.status <> 'leased' or p_job.lease_epoch <> p_epoch or p_job.lease_expires_at <= pg_catalog.now() then
+  if p_job.id is null or p_epoch is null or p_job.status <> 'leased' or p_job.lease_epoch <> p_epoch or p_job.lease_expires_at <= pg_catalog.clock_timestamp() then
     raise exception 'lease_lost' using errcode = 'PT409';
   end if;
 end
 $$;
+
+-- The rights-expiry boundary is the UTC calendar day (scheduling already uses UTC midnight). current_date follows the SESSION time zone, so no eligibility
+-- check uses it: they all use this.
+create function app_review.utc_today() returns date
+  language sql security definer set search_path = ''
+as $$ select (pg_catalog.clock_timestamp() at time zone 'UTC')::date $$;
 
 -- ---- scheduling ---------------------------------------------------------------------------------------------------------------------------
 -- Make sure a recheck is queued for the first moment the publication's EFFECTIVE rights can lapse (the day after the earliest expires_on). No expiry, no job.
@@ -68,7 +77,7 @@ begin
   if not found then
     insert into app.jobs (job_type, target_publication_id, available_at) values ('publication_recheck', p_pub.id, t);
   elsif j.status = 'queued' and j.available_at > t then
-    update app.jobs set available_at = t, updated_at = pg_catalog.now() where id = j.id;
+    update app.jobs set available_at = t, updated_at = pg_catalog.clock_timestamp() where id = j.id;
   end if;
 end
 $$;
@@ -121,7 +130,7 @@ begin
     from app.publication_rights pr where pr.publication_id = new.id;
   select pg_catalog.count(*) into v_claims from app.source_claims c where c.version_id = new.version_id;
   if v_claims = 0 or v_listed <> v_claims or v_rights is distinct from app_review.effective_rights(new.submission_id)
-     or exists (select 1 from app.rights_reviews rr where rr.id = any (v_rights) and (rr.status <> 'clear' or (rr.expires_on is not null and rr.expires_on < current_date)))
+     or exists (select 1 from app.rights_reviews rr where rr.id = any (v_rights) and (rr.status <> 'clear' or (rr.expires_on is not null and rr.expires_on < app_review.utc_today())))
      or exists (select 1 from app.publication_rights pr join app.rights_reviews rr on rr.id = pr.rights_review_id
                  where pr.publication_id = new.id and pr.evidence_note_hash is distinct from app_content.hash_text(rr.evidence_note)) then
     raise exception 'snapshot_mismatch' using errcode = 'PT409', detail = 'rights';
@@ -147,7 +156,7 @@ begin
   if p_type is distinct from 'publication_recheck' then raise exception 'invalid_content' using errcode = 'PT422', detail = 'job_type'; end if;
   loop
     select * into j from app.jobs x
-     where x.job_type = p_type and ((x.status = 'queued' and x.available_at <= pg_catalog.now()) or (x.status = 'leased' and x.lease_expires_at <= pg_catalog.now()))
+     where x.job_type = p_type and ((x.status = 'queued' and x.available_at <= pg_catalog.clock_timestamp()) or (x.status = 'leased' and x.lease_expires_at <= pg_catalog.clock_timestamp()))
      order by coalesce(x.lease_expires_at, x.available_at), x.id
      limit 1 for update skip locked;
     if not found then return null; end if;
@@ -155,11 +164,11 @@ begin
     if j.status = 'leased' then                          -- the previous lease expired unanswered: that was an attempt
       v_retry := v_retry + 1;
       if v_retry >= j.max_attempts then
-        update app.jobs set status = 'failed', lease_expires_at = null, retry_count = v_retry, last_error_code = 'lease_expired', completed_at = pg_catalog.now(), updated_at = pg_catalog.now() where id = j.id;
+        update app.jobs set status = 'failed', lease_expires_at = null, retry_count = v_retry, last_error_code = 'lease_expired', completed_at = pg_catalog.clock_timestamp(), updated_at = pg_catalog.clock_timestamp() where id = j.id;
         continue;
       end if;
     end if;
-    update app.jobs set status = 'leased', lease_epoch = lease_epoch + 1, lease_expires_at = pg_catalog.now() + interval '5 minutes', retry_count = v_retry, updated_at = pg_catalog.now()
+    update app.jobs set status = 'leased', lease_epoch = lease_epoch + 1, lease_expires_at = pg_catalog.clock_timestamp() + interval '5 minutes', retry_count = v_retry, updated_at = pg_catalog.clock_timestamp()
      where id = j.id returning * into j;
     return pg_catalog.jsonb_build_object('job_id', j.id, 'job_type', j.job_type, 'lease_epoch', j.lease_epoch, 'lease_expires_at', j.lease_expires_at, 'attempt', j.retry_count + 1);
   end loop;
@@ -173,7 +182,7 @@ declare j app.jobs;
 begin
   select * into j from app.jobs where id = p_job_id for update;
   perform app_review.job_assert_lease(j, p_epoch);
-  update app.jobs set lease_expires_at = pg_catalog.now() + interval '5 minutes', updated_at = pg_catalog.now() where id = j.id returning * into j;
+  update app.jobs set lease_expires_at = pg_catalog.clock_timestamp() + interval '5 minutes', updated_at = pg_catalog.clock_timestamp() where id = j.id returning * into j;
   return pg_catalog.jsonb_build_object('job_id', j.id, 'lease_epoch', j.lease_epoch, 'lease_expires_at', j.lease_expires_at);
 end
 $$;
@@ -212,10 +221,10 @@ begin
   perform app_review.job_assert_lease(j, p_epoch);
   v_retry := j.retry_count + 1;
   if v_retry >= j.max_attempts then
-    update app.jobs set status = 'failed', lease_expires_at = null, retry_count = v_retry, last_error_code = p_error_code, completed_at = pg_catalog.now(), updated_at = pg_catalog.now() where id = j.id returning * into j;
+    update app.jobs set status = 'failed', lease_expires_at = null, retry_count = v_retry, last_error_code = p_error_code, completed_at = pg_catalog.clock_timestamp(), updated_at = pg_catalog.clock_timestamp() where id = j.id returning * into j;
   else
     update app.jobs set status = 'queued', lease_expires_at = null, retry_count = v_retry, last_error_code = p_error_code,
-           available_at = pg_catalog.now() + pg_catalog.make_interval(secs => least(30 * pg_catalog.power(2, j.retry_count), 3600)), updated_at = pg_catalog.now()
+           available_at = pg_catalog.clock_timestamp() + pg_catalog.make_interval(secs => least(30 * pg_catalog.power(2, j.retry_count), 3600)), updated_at = pg_catalog.clock_timestamp()
      where id = j.id returning * into j;
   end if;
   return pg_catalog.jsonb_build_object('job_id', j.id, 'status', j.status, 'retry_count', j.retry_count);
@@ -262,13 +271,13 @@ begin
   else
     raise exception 'invalid_state' using errcode = 'PT409', detail = 'job_type';
   end if;
-  update app.jobs set status = 'succeeded', outcome = v_outcome, lease_expires_at = null, completed_at = pg_catalog.now(), updated_at = pg_catalog.now() where id = j.id returning * into j;
+  update app.jobs set status = 'succeeded', outcome = v_outcome, lease_expires_at = null, completed_at = pg_catalog.clock_timestamp(), updated_at = pg_catalog.clock_timestamp() where id = j.id returning * into j;
   if v_outcome = 'still_eligible' then perform app_review.job_ensure_recheck(p); end if;
   return pg_catalog.jsonb_build_object('job_id', j.id, 'status', j.status, 'outcome', v_outcome);
 end
 $$;
 
-revoke all on function app_review.guard_job(), app_review.job_assert_lease(app.jobs, bigint), app_review.job_ensure_recheck(app.publications), app_review.job_after_publication(),
+revoke all on function app_review.guard_job(), app_review.job_assert_lease(app.jobs, bigint), app_review.job_ensure_recheck(app.publications), app_review.job_after_publication(), app_review.utc_today(),
   app_review.job_claim(text), app_review.job_heartbeat(uuid, bigint), app_review.job_subject(uuid, bigint), app_review.job_fail(uuid, bigint, text),
   app_review.job_effect_publication_recheck(app.jobs), app_review.job_complete(uuid, bigint) from public;
 

@@ -75,7 +75,7 @@ create temp table t_s (k text primary key, r jsonb);
 grant all on t_s to public;
 
 -- ---- fixtures ----------------------------------------------------------------------------------------------------------------------------
-insert into t_s select k, pg_temp.submit_as(1, pg_temp.doc('Submission ' || k)) from unnest(array['e1', 'noexp', 'e2', 'e3', 'e4', 'sup1', 'wd', 'bk']) k;
+insert into t_s select k, pg_temp.submit_as(1, pg_temp.doc('Submission ' || k)) from unnest(array['e1', 'noexp', 'e2', 'e3', 'e4', 'sup1', 'wd', 'bk', 'ck', 'tz1', 'tz2', 'tz3']) k;
 create function pg_temp.sid(k text) returns text language sql as $$ select r ->> 'submission_id' from t_s where t_s.k = $1 $$;
 create function pg_temp.vid(k text) returns text language sql as $$ select r ->> 'version_id' from t_s where t_s.k = $1 $$;
 create function pg_temp.hid(k text) returns text language sql as $$ select r ->> 'hack_id' from t_s where t_s.k = $1 $$;
@@ -206,7 +206,7 @@ select is((select r ->> 'job_id' from t_c1), pg_temp.jid('e1'), 'claim returns t
 select is((select r ->> 'lease_epoch' from t_c1), '1', 'at lease epoch 1');
 select is((select (r ? 'target_publication_id' or r ? 'publication_id')::text from t_c1), 'false', 'and does not hand the worker the target');
 select is(pg_temp.jcol('e1', 'status') || '/' || pg_temp.jcol('e1', 'retry_count'), 'leased/0', 'the job is leased, no retry yet');
-select is(pg_temp.q(format($$select (lease_expires_at > now() + interval '4 minutes' and lease_expires_at <= now() + interval '5 minutes')::text from app.jobs where id = %L$$, pg_temp.jid('e1'))), 'true', 'the lease is five minutes, chosen by the database');
+select is(pg_temp.q(format($$select (lease_expires_at > clock_timestamp() + interval '4 minutes' and lease_expires_at <= clock_timestamp() + interval '5 minutes')::text from app.jobs where id = %L$$, pg_temp.jid('e1'))), 'true', 'the lease is five minutes, chosen by the database');
 select is(pg_temp.claim(), 'NULL', 'a second claim finds nothing: an active lease is not claimable');
 select is(pg_temp.owner_val(format($$select (select string_agg(k, ',' order by k) from jsonb_object_keys(app_review.job_subject(%L, 1)) k)$$, pg_temp.jid('e1'))),
   'hack_id,is_current,job_id,job_type,lease_epoch,next_rights_expiry,publication_id,version_id', 'get_job_subject returns exactly the allowlisted keys for this job type (ids, a flag, a date: no content, notes, hashes, names)');
@@ -215,7 +215,7 @@ select is((select string_agg(distinct pg_temp.j('e1', fn, ep), ',') from unnest(
 select is(pg_temp.owner_do(format($$select app_review.job_fail(%L, 2, 'transient')$$, pg_temp.jid('e1'))), 'PT409|lease_lost', 'so does fail');
 select is(pg_temp.owner_do($$select app_review.job_heartbeat('00000000-0000-4000-8000-0000000000aa', 1)$$), 'PT409|lease_lost', 'and an unknown job id (no existence oracle)');
 select pg_temp.owner_run(format($$update app.jobs set lease_expires_at = now() + interval '10 seconds' where id = %L$$, pg_temp.jid('e1')));
-select is(pg_temp.owner_val(format($$select ((app_review.job_heartbeat(%L, 1) ->> 'lease_expires_at')::timestamptz > now() + interval '4 minutes')::text$$, pg_temp.jid('e1'))), 'true', 'heartbeat extends the lease to five minutes from now');
+select is(pg_temp.owner_val(format($$select ((app_review.job_heartbeat(%L, 1) ->> 'lease_expires_at')::timestamptz > clock_timestamp() + interval '4 minutes')::text$$, pg_temp.jid('e1'))), 'true', 'heartbeat extends the lease to five minutes from now');
 select is(pg_temp.owner_do(format($$select app_review.job_fail(%L, 1, 'whatever')$$, pg_temp.jid('e1'))), 'PT422|invalid_content', 'fail takes only an allowlisted error code');
 select is((pg_temp.owner_val(format($$select app_review.job_fail(%L, 1, 'transient')::text$$, pg_temp.jid('e1')))::jsonb) ->> 'status', 'queued', 'a failed attempt goes back to queued while attempts remain');
 select is(pg_temp.jcol('e1', 'retry_count') || '/' || (pg_temp.q(format($$select (available_at > now() + interval '20 seconds')::text from app.jobs where id = %L$$, pg_temp.jid('e1')))), '1/true', 'with the retry counted and a back-off before it is available again');
@@ -347,6 +347,63 @@ select is(pg_temp.owner_do('truncate app.jobs'), 'PT409|truncate_forbidden', 'or
 select is(pg_temp.owner_do(format($$insert into app.publication_withdrawals (publication_id, cause, trigger_table, trigger_id, withdrawn_by) values (%L, 'recheck', 'jobs', gen_random_uuid(), %L)$$, pg_temp.pid('noexp'), pg_temp.u(3))), '23514|new row for relation "publication_withdrawals" violates check constraint "withdrawals_actor_unless_recheck"', 'a recheck withdrawal cannot carry a staff actor');
 select is(pg_temp.owner_do(format($$insert into app.publication_withdrawals (publication_id, cause, reason_code) values (%L, 'staff', 'other')$$, pg_temp.pid('noexp'))), '23514|new row for relation "publication_withdrawals" violates check constraint "withdrawals_actor_unless_recheck"', 'and a staff withdrawal must have one');
 select is(pg_temp.owner_do(format($$insert into app.publication_withdrawals (publication_id, cause) values (%L, 'recheck')$$, pg_temp.pid('noexp'))), '23514|new row for relation "publication_withdrawals" violates check constraint "withdrawals_recheck_names_job"', 'a recheck withdrawal must name the job that made it');
+
+-- ===================================================================================================================
+-- H. the DATABASE CLOCK, not the transaction's: now() is frozen at transaction start, so a lease must be judged with the wall clock
+--    (clock_timestamp()) at the point of use. This whole file is ONE transaction, so every now() below is far older than these deadlines.
+-- ===================================================================================================================
+insert into t_dec values ('ck', pg_temp.ready(3, 'ck', 'low', current_date + 10));
+select pg_temp.publish(3, 'ck', 'job-ck');
+select pg_temp.lapse('ck');
+select pg_temp.due('ck');
+select pg_sleep(1);
+select is((pg_temp.claim()::jsonb) ->> 'lease_epoch', '1', 'clock: the job is leased');
+select ok(pg_temp.q(format($$select (lease_expires_at >= clock_timestamp() + interval '5 minutes' - interval '0.5 second')::text from app.jobs where id = %L$$, pg_temp.jid('ck'))) = 'true', 'clock: the lease is issued five minutes from the wall clock, not from the transaction start');
+select pg_temp.owner_run(format($$update app.jobs set lease_expires_at = clock_timestamp() + interval '1 second' where id = %L$$, pg_temp.jid('ck')));
+select pg_temp.owner_run(format($$update app.jobs set lease_expires_at = clock_timestamp() + interval '1 second' where id = %L$$, pg_temp.jid('ck')));
+select pg_sleep(1.6);
+select is((select string_agg(distinct pg_temp.j('ck', fn, 1), ',') from unnest(array['job_subject', 'job_heartbeat', 'job_complete']) fn), 'PT409|lease_lost', 'clock: a transaction that began before the expiry cannot read the subject, heartbeat or complete after it');
+select is(pg_temp.owner_do(format($$select app_review.job_fail(%L, 1, 'transient')$$, pg_temp.jid('ck'))), 'PT409|lease_lost', 'clock: nor fail');
+select is(pg_temp.q(format($$select (lease_expires_at < clock_timestamp())::text from app.jobs where id = %L$$, pg_temp.jid('ck'))), 'true', 'clock: and the refused heartbeat did not revive the expired lease');
+select is(pg_temp.cur('ck'), pg_temp.pid('ck'), 'clock: the refused completion had no withdrawal effect, although the rights have lapsed');
+-- heartbeat extension and retry scheduling use the wall clock too
+select pg_temp.owner_run(format($$update app.jobs set lease_expires_at = clock_timestamp() + interval '30 seconds' where id = %L$$, pg_temp.jid('ck')));
+select pg_sleep(1);
+select ok(pg_temp.owner_val(format($$select ((app_review.job_heartbeat(%L, 1) ->> 'lease_expires_at')::timestamptz >= clock_timestamp() + interval '5 minutes' - interval '0.5 second')::text$$, pg_temp.jid('ck'))) = 'true', 'clock: a heartbeat extends to five minutes from the wall clock');
+select pg_temp.owner_run(format($$select app_review.job_fail(%L, 1, 'transient')$$, pg_temp.jid('ck')));
+select ok(pg_temp.q(format($$select (available_at >= clock_timestamp() + interval '30 seconds' - interval '0.5 second')::text from app.jobs where id = %L$$, pg_temp.jid('ck'))) = 'true', 'clock: the retry back-off counts from the wall clock');
+select pg_temp.owner_run(format($$update app.jobs set available_at = clock_timestamp() - interval '1 second' where id = %L$$, pg_temp.jid('ck')));
+select is(pg_temp.claim() is not null, true, 'clock: a job whose availability passed during this transaction is claimable');
+select pg_temp.owner_run(format($$update app.jobs set lease_expires_at = clock_timestamp() + interval '1 second' where id = %L$$, pg_temp.jid('ck')));
+select pg_sleep(1.4);
+select is((pg_temp.claim()::jsonb) ->> 'lease_epoch', '3', 'clock: a lease that expired during this transaction is reclaimable (epoch 3)');
+
+-- ===================================================================================================================
+-- I. the rights-expiry boundary is the UTC calendar day, whatever the session time zone says (scheduling already uses UTC midnight)
+--    Time zones are chosen from the wall clock so that the session date really differs from the UTC date: UTC+14 is a day ahead from 10:00 UTC,
+--    UTC-12 is a day behind until 12:00 UTC. At any hour at least one of the two bites.
+-- ===================================================================================================================
+create function pg_temp.utc_hour() returns integer language sql as $$ select extract(hour from clock_timestamp() at time zone 'UTC')::integer $$;
+create function pg_temp.utc_today() returns date language sql as $$ select (clock_timestamp() at time zone 'UTC')::date $$;
+-- a clear review that expires TODAY (UTC) is still valid today
+insert into t_dec values ('tz1', pg_temp.ready(3, 'tz1', 'low', current_date + 10));
+select pg_temp.owner_run(format($$alter table app.rights_reviews disable trigger rights_reviews_append_only;
+    update app.rights_reviews set expires_on = (clock_timestamp() at time zone 'UTC')::date where id = any (app_review.effective_rights(%L));
+    alter table app.rights_reviews enable trigger rights_reviews_append_only$$, pg_temp.sid('tz1')));
+select is(pg_temp.owner_val(format($$select app_review.publication_blockers(%L, %L)::text$$, pg_temp.sid('tz1'), pg_temp.u(3))), '{}', 'tz: a review expiring today (UTC) is eligible in a UTC session');
+set local timezone = 'Pacific/Kiritimati';
+select case when pg_temp.utc_hour() >= 10 then is(pg_temp.owner_val(format($$select app_review.publication_blockers(%L, %L)::text$$, pg_temp.sid('tz1'), pg_temp.u(3))), '{}', 'tz: ... and still eligible in a session whose date is already tomorrow (UTC+14)') else skip('UTC+14 is not a day ahead before 10:00 UTC; the UTC-12 case below bites instead', 1) end;
+set local timezone = 'Etc/GMT+12';
+select pg_temp.as_staff(3);
+select case when pg_temp.utc_hour() < 12 then is(pg_temp.err('authenticated', format('select api.record_rights_review(%L, %L, 1, ''clear'', ''source_page_checked'', ''Evidence that is long enough.'', %L)::text', pg_temp.sid('tz1'), pg_temp.hash('tz1'), pg_temp.utc_today())), 'PT422|invalid_content|expires_on', 'tz: an expiry of today (UTC) is refused although a UTC-12 session still thinks it is yesterday') else skip('UTC-12 is not a day behind from 12:00 UTC; the UTC+14 case above bites instead', 1) end;
+set local timezone = 'UTC';
+-- scheduling is UTC midnight in any session zone
+set local timezone = 'Pacific/Kiritimati';
+insert into t_dec values ('tz2', pg_temp.ready(3, 'tz2', 'low', current_date + 10));
+select pg_temp.publish(3, 'tz2', 'job-tz2');
+select is(pg_temp.jcol('tz2', 'available_at'), (select (((select min(expires_on) from app.rights_reviews where submission_id = pg_temp.sid('tz2')::uuid) + 1)::timestamp at time zone 'UTC')::text), 'tz: the recheck is scheduled for UTC midnight after the expiry whatever the session zone');
+set local timezone = 'UTC';
+select is(pg_temp.q(format($$select (available_at at time zone 'UTC')::time::text from app.jobs where id = %L$$, pg_temp.jid('tz2'))), '00:00:00', 'tz: and that is midnight UTC');
 
 -- ===================================================================================================================
 -- G. global invariants

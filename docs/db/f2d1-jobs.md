@@ -1,6 +1,6 @@
 # F2-D1 — durable jobs and restricted worker execution
 
-Branch `f2d1-jobs`, from `60a4745`. Migrations `20261017090000…090200`. Rollback `supabase/rollbacks/20261017090000_f2d1_down.sql`.
+Branch `f2d1-jobs`, from `60a4745`. Migrations `20261017090000…090300`. Rollback `supabase/rollbacks/20261017090000_f2d1_down.sql`.
 **Out of scope and not built:** AI/provider calls, budgets, automated publication, public projections or reads, UI, a worker *process* (the five functions below are the contract a future process will call).
 One job type exists: `publication_recheck`.
 
@@ -39,13 +39,22 @@ Retries and duplicate delivery are harmless by construction: a finished job reje
 ## Also in this slice: the evidence-note-hash backstop (F2-C2 review follow-up)
 `check_publication_children` (commit-time) now also compares every stored `publication_rights.evidence_note_hash` with the hash of the referenced review's actual note. Regression: a child row with a zero hash, and one hashing a different note, cannot commit; the correct hash passes the same path.
 
+## The clock and the UTC day (correction)
+* **Leases use the wall clock.** `now()` is frozen at transaction start, so a transaction that began before an expiry and then waited (for a lock, a sleep) would still have passed a `now()` comparison. Every deadline in the job logic —
+  lease validation, issuance, heartbeat extension, claim eligibility, retry back-off — uses `clock_timestamp()` at the point of use, and `complete_job` checks the lease **after** it holds its locks. A completion that waited past its expiry
+  gets `lease_lost` and has no effect; a refused heartbeat never revives an expired lease.
+* **Rights expiry is the UTC calendar day.** Scheduling already used UTC midnight; eligibility used `current_date`, which follows the *session* time zone (UTC+14 saw "expires today" as expired; UTC-12 accepted "today" as future). The approval rule,
+  the rights-review input check and the commit-time check now use `app_review.utc_today()`.
+* **Re-application.** The up migration drops-if-exists and re-adds the four `publication_withdrawals` constraints the rollback deliberately retains, so `rollback` followed by `supabase migration up` works over existing recheck history
+  (check R6 does exactly that, with a committed rollback, on the disposable stack).
+
 ## Errors
 `PT409 lease_lost | invalid_state | epoch_monotonic | identity_immutable | record_immutable`; `PT422 invalid_content` (unknown job type or error code); `42501 not_worker` (any login but `hackass_worker`).
 
 ## Rollback
-`supabase/rollbacks/20261017090000_f2d1_down.sql` drops the five worker functions, the schedule trigger, the job functions, the `app.jobs` table (**destroying the job history**) and restores the F2-C2 `after_review_write` and `check_publication_children`.
+`supabase/rollbacks/20261017090000_f2d1_down.sql` drops the five worker functions, the schedule trigger, the job functions, the `app.jobs` table (**destroying the job history**) and restores the F2-C1 `approval_blockers` / `record_rights_review` and the F2-C2 `after_review_write` / `check_publication_children`, and drops `utc_today`.
 The three constraints F2-D1 relaxed on `publication_withdrawals` are **deliberately left relaxed** so withdrawals a recheck already made keep their history. Local: `supabase stop --no-backup`. Linked project afterwards:
-`supabase migration repair --status reverted 20261017090000 20261017090100 20261017090200`. Rehearsed by check R5 (alone) and R4/R3/R2/R1 (ahead of the F2-C2, F2-C1, F2-B, F2-A rollbacks).
+`supabase migration repair --status reverted 20261017090000 20261017090100 20261017090200 20261017090300`. Rehearsed by check R5 (alone) and R4/R3/R2/R1 (ahead of the F2-C2, F2-C1, F2-B, F2-A rollbacks).
 
 ## Not established
 Hosted behaviour, including the worker login through the pooler. A worker process (none exists). Clock skew between a worker and the database does not matter (the database decides every time), but a database clock jump would move leases and expiry together.

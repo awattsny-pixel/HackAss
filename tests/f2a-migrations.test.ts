@@ -13,8 +13,8 @@ const sql = Object.fromEntries(files.map((f) => [f, readFileSync(join(migDir, f)
 const all = files.map((f) => sql[f]).join('\n');
 const code = (t: string) => t.replace(/--.*$/gm, '');
 
-test('F2-A, F2-B, F2-C1, F2-C2 and F2-D1 migrations: sixteen timestamped, ordered files, no stray files', () => {
-  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql', 'f2d1_jobs_tables.sql', 'f2d1_jobs_rules.sql', 'f2d1_worker_rpc.sql']);
+test('F2-A, F2-B, F2-C1, F2-C2 and F2-D1 migrations: seventeen timestamped, ordered files, no stray files', () => {
+  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql', 'f2d1_jobs_tables.sql', 'f2d1_jobs_rules.sql', 'f2d1_worker_rpc.sql', 'f2d1_utc_boundary.sql']);
   assert.deepEqual(readdirSync(migDir).filter((f) => !f.endsWith('.sql')), ['.gitkeep']);
   for (const f of files) assert.match(f, /^\d{14}_[a-z0-9_]+\.sql$/);
 });
@@ -355,5 +355,24 @@ test('F2-D1 rollback drops the functions over the row type before the table, res
     const orig = c2.match(new RegExp(`create function app_review\\.${name}\\(\\)[\\s\\S]*?\\n\\$\\$;`))![0].replace('create function', 'create or replace function');
     assert.ok(down.replace(/\s+/g, ' ').includes(orig.replace(/\s+/g, ' ')), `${name}: the restored definition is exactly the F2-C2 one`);
   }
-  assert.match(down, /version in \('20261017090000', '20261017090100', '20261017090200'\)/);
+  assert.match(down, /version in \('20261017090000', '20261017090100', '20261017090200', '20261017090300'\)/);
+});
+
+test('F2-D1 correction: lease and expiry logic use the wall clock and the UTC day, never now() or current_date; the migration can be re-applied over its retained constraints', () => {
+  const rules = code(sql['20261017090100_f2d1_jobs_rules.sql']);
+  const utc = code(sql['20261017090300_f2d1_utc_boundary.sql']);
+  const tables = code(sql['20261017090000_f2d1_jobs_tables.sql']);
+  assert.ok(!/\bnow\(\)/.test(rules), 'the job rules must not use now() (frozen at transaction start)');
+  assert.ok(!/\bcurrent_date\b/.test(rules + utc), 'eligibility must not use current_date (session time zone)');
+  assert.equal((utc.match(/app_review\.utc_today\(\)/g) ?? []).length, 2, 'the approval rule and the rights-review input check both use the UTC day');
+  assert.match(rules, /create function app_review\.utc_today\(\) returns date\s+language sql security definer set search_path = ''\s+as \$\$ select \(pg_catalog\.clock_timestamp\(\) at time zone 'UTC'\)::date \$\$;/);
+  const lease = rules.match(/create function app_review\.job_assert_lease[\s\S]*?\n\$\$;/)![0];
+  assert.ok(lease.includes('p_job.lease_expires_at <= pg_catalog.clock_timestamp()') && !/\bstable\b/.test(lease.split('as $$')[0]), 'the lease check reads the wall clock (so it is not STABLE)');
+  for (const c of ['publication_withdrawals_cause_check', 'publication_withdrawals_trigger_table_check', 'withdrawals_recheck_names_job', 'withdrawals_actor_unless_recheck']) {
+    assert.match(tables, new RegExp(`drop constraint if exists ${c};`), `${c} is dropped if it exists before it is added again`);
+    assert.ok(tables.indexOf(`drop constraint if exists ${c};`) < tables.indexOf(`add constraint ${c} `), `${c}: drop before add`);
+  }
+  const down = code(readFileSync(join(root, 'supabase/rollbacks/20261017090000_f2d1_down.sql'), 'utf8'));
+  assert.ok(down.includes('app_review.approval_blockers') && down.includes('api.record_rights_review') && down.includes('current_date'), 'the rollback restores the F2-C1 definitions');
+  assert.match(down, /drop function if exists app_review\.utc_today\(\);/);
 });
