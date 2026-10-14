@@ -92,3 +92,16 @@ the repository (`npm run scan:secrets`).
 | Rollback | R4 alone and R3/R2/R1 chains rehearsed | done |
 | Public projection, caching, automated publication, jobs, budgets, UI, rights expiry sweeper | not started | out of scope |
 
+
+## F2-D1 progress (durable jobs and restricted worker execution)
+| Row | F2-D1 evidence | Status |
+|---|---|---|
+| G-2 / G-3 | golden inventory extended to 21 tables and every new function; `app.jobs` owner-only; EXECUTE on the five job functions only to `hackass_worker` (pgTAP catalog check of every function the worker can execute) | done for F2-D1 objects |
+| G-4 / worker confinement | the real worker login (`W6`): 18 protected statements refused, 4 job functions answer `lease_lost`, 0 table grants, EXECUTE = 5 job functions + healthcheck; every worker function begins with the login check | done locally |
+| Lease binding | parallel claims (`J1`: 8 workers/1 job -> 1 claim; 12/6 -> 6 distinct); reclaim bumps the epoch and rejects the earlier epoch on all operations, an expired lease fails closed, 6 simultaneous completes apply once (`J2`); target A cannot affect B (pgTAP) | done locally |
+| Recheck effect | rights lapse by the calendar -> worker withdraws with cause `recheck`, history and snapshot kept; retries / duplicates / stale jobs never restore a pointer or touch a newer publication (`J3`, pgTAP) | done locally |
+| Races | recheck vs rights revocation, manual withdrawal, superseding publish, both orders (`J4`); mixed stress, no deadlock (`J5`) | done locally |
+| F2-C2 follow-up | evidence-note-hash enforced at commit; zero-hash and wrong-note regressions | done |
+| Rollback | R5 alone and R4..R1 chains rehearsed | done |
+| Read-time expiry for public reads | **gate for the catalog slice** (the recheck is eventual) | not started |
+| AI/provider calls, budgets, automated publication, public projections, UI, a worker process | | out of scope |

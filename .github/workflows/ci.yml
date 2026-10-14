@@ -109,6 +109,9 @@ jobs:
       - name: Local F2-C2 checks (staff JWT RPC, withdrawal and review races, rollback rehearsal)
         run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-f2c2-checks.mjs
 
+      - name: Local F2-D1 job checks (real worker login, parallel claims, lease epochs, recheck races, rollback rehearsal)
+        run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-f2d1-checks.mjs
+
       - name: Stop the stack
         if: always()
         run: supabase stop --no-backup

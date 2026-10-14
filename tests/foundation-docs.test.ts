@@ -51,7 +51,7 @@ test('pgTAP platform test exists and checks the real stack (roles, Auth sessions
   const sql = read('supabase/tests/database/000_platform.test.sql');
   for (const needle of ["has_role('anon'", "has_role('authenticated'", "has_role('service_role'", "has_table('auth', 'sessions'", "'pg_trgm'", "'citext'", 'select plan(9)']) assert.ok(sql.includes(needle), needle);
   assert.equal((sql.match(/^select (has_|ok)/gm) ?? []).length, 9, 'plan count must match the assertions');
-  assert.deepEqual(readdirSync(join(root, 'supabase/migrations')).filter((f) => f !== '.gitkeep').map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql'], 'only the F2-A, F2-B, F2-C1 and F2-C2 migrations exist (checked in detail by f2a-migrations.test.ts)');
+  assert.deepEqual(readdirSync(join(root, 'supabase/migrations')).filter((f) => f !== '.gitkeep').map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql', 'f2d1_jobs_tables.sql', 'f2d1_jobs_rules.sql', 'f2d1_worker_rpc.sql'], 'only the F2-A, F2-B, F2-C1, F2-C2 and F2-D1 migrations exist (checked in detail by f2a-migrations.test.ts)');
 });
 
 test('db:test reports BLOCKED (exit 2) with an actionable message when Docker is unavailable, never a silent pass', () => {
@@ -118,4 +118,19 @@ test('docs/db/f2c2-publication.md names every publication blocker, function, err
   assert.match(doc, /FOR NO KEY UPDATE/);
   assert.match(doc, /rollback/i);
   assert.match(doc, /restores the F2-C1 `lock_submission`/);
+});
+
+test('docs/db/f2d1-jobs.md documents every worker function, the lock order with the job row last, the allowlisted subject, the fail-closed error, the rollback and the read-time expiry gate', () => {
+  const doc = read('docs/db/f2d1-jobs.md');
+  const rpc = read('supabase/migrations/20261017090200_f2d1_worker_rpc.sql');
+  for (const fn of [...rpc.matchAll(/create function worker\.(\w+)\(/g)].map((m) => m[1])) assert.ok(doc.includes(fn), fn);
+  const rules = read('supabase/migrations/20261017090100_f2d1_jobs_rules.sql');
+  const keys = [...rules.match(/create function app_review\.job_subject[\s\S]*?\n\$\$;/)![0].matchAll(/'(\w+)', (?:j|p|exists|\(select)/g)].map((m) => m[1]);
+  assert.ok(keys.length >= 8, `found subject keys ${keys.join(',')}`);
+  for (const k of new Set(keys)) assert.ok(doc.includes(k), `the docs do not list the subject field ${k}`);
+  assert.match(doc, /submission row → hack row → lifecycle row\(s\) → job row/);
+  assert.match(doc, /lease_lost/);
+  assert.match(doc, /read time/i);
+  assert.match(doc, /deliberately left relaxed/);
+  assert.match(doc, /rollback/i);
 });

@@ -313,8 +313,9 @@ await check('C7', 'global invariant over everything created in this run: stored 
 });
 
 await check('R2', 'F2-B rollback script (run after the F2-C1 rollback): removes every content table, function and schema, leaves F2-A intact (rehearsed in a rolled-back transaction)', async () => {
-  // F2-C1's tables reference F2-B's, and F2-C2's reference F2-C1's, so their rollbacks run first (C2, then C1) inside the same rehearsal transaction
-  const downC2 = readFileSync(path.join(root, 'supabase/rollbacks/20261016090000_f2c2_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
+  // F2-C1's tables reference F2-B's, F2-C2's reference F2-C1's and F2-D1's reference F2-C2's, so their rollbacks run first (D1, C2, then C1) inside the same rehearsal transaction
+  const downD1 = readFileSync(path.join(root, 'supabase/rollbacks/20261017090000_f2d1_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
+  const downC2 = downD1 + readFileSync(path.join(root, 'supabase/rollbacks/20261016090000_f2c2_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
   const downC1 = downC2 + readFileSync(path.join(root, 'supabase/rollbacks/20261015090000_f2c1_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
   const down = readFileSync(path.join(root, 'supabase/rollbacks/20261014090000_f2b_down.sql'), 'utf8').replace(/^begin;\s*$/m, () => `begin;\n${downC1}`);
   const probe = `
@@ -325,7 +326,7 @@ select 'ledger=' || count(*) from supabase_migrations.schema_migrations where ve
 select 'f2a=' || (to_regclass('app.accounts') is not null) || ',' || (to_regclass('app.staff_assignments') is not null) || ',' || (to_regprocedure('app_guard.require_member()') is not null) || ',' || (select count(*) from pg_roles where rolname in ('hackass_owner', 'hackass_worker'));
 `;
   const before = psql(probe).out.replace(/\n/g, ' ');
-  ok(/content_tables=18 app_content=1 api_functions=create_draft,delete_draft,get_publication,get_submission_for_review,get_version,list_my_versions,list_submissions_for_review,publish_version,record_decision,record_rights_review,record_risk_assessment,save_draft,staff_probe,start_review,submit_version,whoami,withdraw_publication ledger=4 f2a=true,true,true,2/.test(before), `before: ${before}`);
+  ok(/content_tables=19 app_content=1 api_functions=create_draft,delete_draft,get_publication,get_submission_for_review,get_version,list_my_versions,list_submissions_for_review,publish_version,record_decision,record_rights_review,record_risk_assessment,save_draft,staff_probe,start_review,submit_version,whoami,withdraw_publication ledger=4 f2a=true,true,true,2/.test(before), `before: ${before}`);
   const after = psql(down.replace(/^commit;\s*$/m, () => `${probe}\nrollback;`)).out.replace(/\n/g, ' ');
   ok(/content_tables=0 app_content=0 api_functions=staff_probe,whoami ledger=0 f2a=true,true,true,2/.test(after), `after rollback: ${after}`);
   const restored = psql(probe).out.replace(/\n/g, ' ');

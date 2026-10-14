@@ -107,7 +107,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const probe = (d) => probeCommand(d, timeouts.probeMs);
   const tools = resolveTools({ probe });
   const extraSteps = process.argv.includes('--auth-spikes')
-    ? ['local-auth-spikes.mjs', 'local-f2a-checks.mjs', 'local-f2b-checks.mjs', 'local-f2c-checks.mjs', 'local-f2c2-checks.mjs'].map((file) => ({ name: { 'local-f2a-checks.mjs': 'F2-A authority checks', 'local-f2b-checks.mjs': 'F2-B content checks', 'local-f2c-checks.mjs': 'F2-C1 review checks', 'local-f2c2-checks.mjs': 'F2-C2 publication checks' }[file] ?? 'local Auth/session/MFA checks', cmd: process.execPath, args: ['--conditions=react-server', '--disable-warning=MODULE_TYPELESS_PACKAGE_JSON', path.join(root, 'scripts', file)], env: { SUPABASE_BIN: tools.supabase, DOCKER_BIN: tools.docker } }))
+    ? ['local-auth-spikes.mjs', 'local-f2a-checks.mjs', 'local-f2b-checks.mjs', 'local-f2c-checks.mjs', 'local-f2c2-checks.mjs', 'local-f2d1-checks.mjs'].map((file) => ({ name: { 'local-f2a-checks.mjs': 'F2-A authority checks', 'local-f2b-checks.mjs': 'F2-B content checks', 'local-f2c-checks.mjs': 'F2-C1 review checks', 'local-f2c2-checks.mjs': 'F2-C2 publication checks', 'local-f2d1-checks.mjs': 'F2-D1 job checks' }[file] ?? 'local Auth/session/MFA checks', cmd: process.execPath, args: ['--conditions=react-server', '--disable-warning=MODULE_TYPELESS_PACKAGE_JSON', path.join(root, 'scripts', file)], env: { SUPABASE_BIN: tools.supabase, DOCKER_BIN: tools.docker } }))
     : [];
   process.exitCode = runDbTests({ timeouts, tools: { docker: tools.docker, supabase: tools.supabase }, env: tools.env, expectCliVersion: tools.cliVersion, extraSteps });
 }

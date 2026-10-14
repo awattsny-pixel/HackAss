@@ -203,7 +203,8 @@ await check('X3', 'many reviewers across many submissions: no deadlock, every hi
 
 await check('R3', 'F2-C1 rollback script (run after the F2-C2 rollback): removes the review tables, functions and schema, restores submissions, leaves F2-A/F2-B intact (rehearsed in a rolled-back transaction)', async () => {
   // F2-C2's tables and constraints reference F2-C1's, so its rollback runs first inside the same rehearsal transaction
-  const downC2 = readFileSync(path.join(root, 'supabase/rollbacks/20261016090000_f2c2_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
+  const downD1 = readFileSync(path.join(root, 'supabase/rollbacks/20261017090000_f2d1_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
+  const downC2 = downD1 + readFileSync(path.join(root, 'supabase/rollbacks/20261016090000_f2c2_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
   const down = readFileSync(path.join(root, 'supabase/rollbacks/20261015090000_f2c1_down.sql'), 'utf8').replace(/^begin;\s*$/m, () => `begin;\n${downC2}`);
   const probe = `
 select 'tables=' || count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r' and c.relname in ('version_assessments', 'rights_reviews', 'moderation_decisions');

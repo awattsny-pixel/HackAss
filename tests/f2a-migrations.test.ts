@@ -13,8 +13,8 @@ const sql = Object.fromEntries(files.map((f) => [f, readFileSync(join(migDir, f)
 const all = files.map((f) => sql[f]).join('\n');
 const code = (t: string) => t.replace(/--.*$/gm, '');
 
-test('F2-A, F2-B, F2-C1 and F2-C2 migrations: thirteen timestamped, ordered files, no stray files', () => {
-  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql']);
+test('F2-A, F2-B, F2-C1, F2-C2 and F2-D1 migrations: sixteen timestamped, ordered files, no stray files', () => {
+  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql', 'f2d1_jobs_tables.sql', 'f2d1_jobs_rules.sql', 'f2d1_worker_rpc.sql']);
   assert.deepEqual(readdirSync(migDir).filter((f) => !f.endsWith('.sql')), ['.gitkeep']);
   for (const f of files) assert.match(f, /^\d{14}_[a-z0-9_]+\.sql$/);
 });
@@ -54,6 +54,7 @@ test('no grant to PUBLIC, anon or service_role beyond the api schema USAGE, and 
     'app_guard.on_auth_user_created(), app_guard.on_auth_user_deleted() to postgres;',
     'app_guard.on_auth_user_created(), app_guard.on_auth_user_deleted() to supabase_auth_admin;',
     'worker.healthcheck() to hackass_worker;',
+    'worker.claim_job(text), worker.heartbeat_job(uuid, bigint), worker.get_job_subject(uuid, bigint), worker.complete_job(uuid, bigint), worker.fail_job(uuid, bigint, text) to hackass_worker;',
   ].sort(), 'the complete list of EXECUTE grants');
 });
 
@@ -95,7 +96,7 @@ test('every function in an application schema has PUBLIC execute revoked, and no
 test('every application table has RLS enabled and is covered by the immutability / append-only / truncate triggers where it holds content', () => {
   const c = code(all).replace(/\s+/g, ' ');
   const tables = [...c.matchAll(/create table (app\.\w+)/g)].map((m) => m[1]);
-  assert.equal(tables.length, 20);
+  assert.equal(tables.length, 21);
   for (const t of tables) assert.match(c, new RegExp(`alter table ${t.replace('.', '\\.')} enable row level security;`), `${t} lacks RLS`);
   for (const t of ['hack_steps', 'hack_materials', 'hack_requirements', 'version_tags', 'version_attributions', 'source_claims', 'version_assets']) {
     assert.match(c, new RegExp(`create trigger ${t}_guard before insert or update or delete on app\\.${t} for each row execute function app_content\\.guard_child\\(\\);`), `${t} lacks the child guard`);
@@ -310,4 +311,49 @@ test('F2-C2 rollback removes everything it created, in order, restores the F2-C1
   const orig = code(sql['20261015090100_f2c1_review_rules.sql']).match(/create function app_review\.lock_submission[\s\S]*?\n\$\$;/)![0].replace('create function', 'create or replace function');
   assert.ok(down.replace(/\s+/g, ' ').includes(orig.replace(/\s+/g, ' ')), 'the restored lock_submission is exactly the F2-C1 definition');
   assert.match(down, /version in \('20261016090000', '20261016090100', '20261016090200'\)/);
+});
+
+test('F2-D1: worker functions check the worker login first, take only a job id and an epoch, and grant nothing else; the job row is locked last', () => {
+  const rpc = code(sql['20261017090200_f2d1_worker_rpc.sql']);
+  const rules = code(sql['20261017090100_f2d1_jobs_rules.sql']);
+  const tables = code(sql['20261017090000_f2d1_jobs_tables.sql']);
+  const fns = [...rpc.matchAll(/create function (worker\.\w+)\(([^)]*)\) returns jsonb\s+language plpgsql[^\n]*\nas \$\$([\s\S]*?)\n\$\$;/g)];
+  assert.equal(fns.length, 5);
+  for (const [, name, params, body] of fns) {
+    assert.match(body, /^\s*begin\s+if session_user <> 'hackass_worker' then raise exception 'not_worker' using errcode = '42501'; end if;\s+return app_review\.job_\w+\(/, `${name}: the worker-login check comes first, then the owner-only logic`);
+    assert.ok(!/\b(target|publication|hack|version|submission|lease_secs|interval|note|text_)\w*/i.test(params.replace(/p_job_type text|p_error_code text/g, '')), `${name} takes a target or free text: ${params}`);
+  }
+  assert.match(rpc, /grant execute on function worker\.claim_job\(text\), worker\.heartbeat_job\(uuid, bigint\), worker\.get_job_subject\(uuid, bigint\), worker\.complete_job\(uuid, bigint\), worker\.fail_job\(uuid, bigint, text\) to hackass_worker;/);
+  assert.ok(!/\bgrant\b[^;]*\bon\s+(table|all tables|schema)\b/i.test(rpc + rules + tables), 'no table or schema grant');
+  assert.ok(!/\bgrant\b[^;]*\bto\s+(anon|public|authenticated|service_role)\b/i.test(rpc + rules + tables));
+  // complete: unlocked read of the job, then submission+hack, lifecycle, THEN the job row, then the lease check, then the effect
+  const c = rules.match(/create function app_review\.job_complete[\s\S]*?\n\$\$;/)![0];
+  const i = ['from app.jobs where id = p_job_id;', 'app_review.lock_submission(p.submission_id)', 'from app.version_lifecycle l where l.version_id = p.version_id for update', 'from app.jobs where id = p_job_id for update', 'app_review.job_assert_lease(j, p_epoch)', 'job_effect_publication_recheck(j)', "update app.jobs set status = 'succeeded'"].map((n) => c.indexOf(n));
+  assert.ok(i.every((x) => x > 0) && i.every((x, k) => k === 0 || x > i[k - 1]), `job_complete lock order: ${i}`);
+  // claim: skip locked, expiry counts as an attempt, epoch +1
+  const cl = rules.match(/create function app_review\.job_claim[\s\S]*?\n\$\$;/)![0];
+  assert.match(cl, /for update skip locked/);
+  assert.match(cl, /lease_epoch = lease_epoch \+ 1/);
+  assert.match(cl, /interval '5 minutes'/);
+  // the effect only ends a publication; it never sets a pointer
+  const eff = rules.match(/create function app_review\.job_effect_publication_recheck[\s\S]*?\n\$\$;/)![0];
+  assert.ok(!/update\s+app\.hacks/.test(eff) && eff.includes("withdraw_locked(p, 'recheck'"), 'the recheck can only withdraw');
+  assert.match(tables, /constraint withdrawals_actor_unless_recheck check \(\(cause = 'recheck'\) = \(withdrawn_by is null\)\)/);
+  assert.match(tables, /create unique index jobs_one_active on app\.jobs \(job_type, target_publication_id\) where status in \('queued', 'leased'\)/);
+  // the evidence-note-hash backstop
+  assert.match(rules, /pr\.evidence_note_hash is distinct from app_content\.hash_text\(rr\.evidence_note\)/);
+});
+
+test('F2-D1 rollback drops the functions over the row type before the table, restores the F2-C2 definitions, and un-ledgers exactly its three versions', () => {
+  const down = code(readFileSync(join(root, 'supabase/rollbacks/20261017090000_f2d1_down.sql'), 'utf8'));
+  for (const f of [...code(sql['20261017090200_f2d1_worker_rpc.sql']).matchAll(/create function (worker\.\w+)\(/g)].map((m) => m[1])) assert.ok(down.includes(f), f);
+  for (const f of [...code(sql['20261017090100_f2d1_jobs_rules.sql']).matchAll(/create function (app_review\.job_\w+|app_review\.guard_job)\(/g)].map((m) => m[1])) assert.ok(down.includes(f), f);
+  assert.ok(down.indexOf('job_effect_publication_recheck(app.jobs)') < down.indexOf('drop table if exists app.jobs') && down.indexOf('drop trigger if exists publications_schedule_recheck') < down.indexOf('drop table if exists app.jobs'));
+  assert.ok(down.indexOf('drop table if exists app.jobs') < down.indexOf('drop function if exists app_review.guard_job()'));
+  const c2 = code(sql['20261016090100_f2c2_publication_rules.sql']);
+  for (const name of ['after_review_write', 'check_publication_children']) {
+    const orig = c2.match(new RegExp(`create function app_review\\.${name}\\(\\)[\\s\\S]*?\\n\\$\\$;`))![0].replace('create function', 'create or replace function');
+    assert.ok(down.replace(/\s+/g, ' ').includes(orig.replace(/\s+/g, ' ')), `${name}: the restored definition is exactly the F2-C2 one`);
+  }
+  assert.match(down, /version in \('20261017090000', '20261017090100', '20261017090200'\)/);
 });
