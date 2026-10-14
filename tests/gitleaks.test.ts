@@ -4,7 +4,7 @@
 // when REQUIRE_GITLEAKS=1 (set in CI), where absence is a failure.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -252,11 +252,22 @@ realTest('real binary: a new synthetic secret at the exact former documentation-
       assert.equal(scanRepo(r.dir).code, 0, 'the placeholder document is clean');
       const lines = readFileSync(join(r.dir, 'API_SPECIFICATION.md'), 'utf8').split('\n');
       assert.match(lines[line - 1], /"token": "<JWT-PLACEHOLDER>"/, `line ${line} should hold the placeholder`);
-      // High-entropy on purpose: Gitleaks' generic rules have an entropy threshold, and a low-entropy random draw would make this test flaky.
-      const entropy = (x: string) => { const f = new Map<string, number>(); for (const ch of x) f.set(ch, (f.get(ch) ?? 0) + 1); return -[...f.values()].reduce((a, n) => a + (n / x.length) * Math.log2(n / x.length), 0); };
+      // Gitleaks' generic rule has an entropy threshold and word filters, so about 1 random draw in 80 is not flagged at all (measured). The value
+      // is therefore drawn until a CONTROL scan of the same file content, in a scratch directory with no exemptions, detects it. The assertion
+      // below is then about placement (the former example lines, uncommitted), not about whether the rule fires for an unlucky random draw.
       const seg = (n: number) => randomBytes(n).toString('base64url');
+      const planted = (secretValue: string) => { const l = readFileSync(join(r.dir, 'API_SPECIFICATION.md'), 'utf8').split('\n'); l[line - 1] = `  "token": "${secretValue}",`; return l.join('\n'); };
       let secret = '';
-      do { secret = `eyJ${seg(20)}.eyJ${seg(22)}.${seg(24)}`; } while (entropy(secret) < 4.3);
+      for (let attempt = 0; attempt < 40 && !secret; attempt++) {
+        const candidate = `eyJ${seg(20)}.eyJ${seg(22)}.${seg(24)}`;
+        const ctl = mkdtempSync(join(tmpdir(), 'hackass-gl-control-')), none = mkdtempSync(join(tmpdir(), 'hackass-gl-none-'));
+        try {
+          writeFileSync(join(ctl, 'API_SPECIFICATION.md'), planted(candidate));
+          const c = spawnSync(real!, ['dir', ctl, '--config', join(root, '.gitleaks.toml'), '--gitleaks-ignore-path', none, '--redact', '--no-banner', '--no-color', '--exit-code', '10'], { encoding: 'utf8' });
+          if (c.status === 10) secret = candidate;
+        } finally { rmSync(ctl, { recursive: true, force: true }); rmSync(none, { recursive: true, force: true }); }
+      }
+      assert.ok(secret, 'could not draw a secret the control scan detects');
       lines[line - 1] = `  "token": "${secret}",`;
       writeFileSync(join(r.dir, 'API_SPECIFICATION.md'), lines.join('\n')); // modified, NOT committed
       const res = scanRepo(r.dir);

@@ -358,6 +358,33 @@ select is(
   '', 'content that no longer recomputes to its frozen hash blocks every review write even when the reviewer quotes the right hash');
 select pg_temp.lk(pg_temp.err('authenticated', format('select api.record_decision(%L, %L, ''PUBLISH'', null, null, null)::text', pg_temp.sid('tamper'), pg_temp.hash('tamper'))), 'PT409|hash_mismatch|%', 'in particular an approval of tampered content is refused');
 
+-- states in which a submission may not be reviewed
+select pg_temp.as_staff(5);
+reset role;
+select pg_temp.owner_run(format($$update app.version_lifecycle set state = 'withdrawn' where version_id = %L$$, pg_temp.vid('chain')));
+select pg_temp.as_staff(5);
+select is(
+  (select coalesce(string_agg(fn, ', ' order by fn), '') from pg_temp.calls(pg_temp.sid('chain'), pg_temp.hash('chain')) where fn in ('start_review', 'record_risk_assessment', 'record_rights_review', 'record_decision')
+     and pg_temp.err('authenticated', sql) not like 'PT409|invalid_state|withdrawn'),
+  '', 'a withdrawn version cannot be put under review, assessed, rights-reviewed or decided (invalid_state)');
+reset role;
+select pg_temp.owner_run(format($$update app.version_lifecycle set state = 'superseded' where version_id = %L$$, pg_temp.vid('chain')));
+select pg_temp.as_staff(5);
+select is(
+  (select coalesce(string_agg(fn, ', ' order by fn), '') from pg_temp.calls(pg_temp.sid('chain'), pg_temp.hash('chain')) where fn in ('start_review', 'record_risk_assessment', 'record_rights_review', 'record_decision')
+     and pg_temp.err('authenticated', sql) not like 'PT409|invalid_state|superseded'),
+  '', 'and neither can a superseded version');
+reset role;
+select pg_temp.owner_run(format($$update app.version_lifecycle set state = 'under_review' where version_id = %L$$, pg_temp.vid('chain')));
+
+-- a rights review that names a stale claim hash never clears (defence in depth: the trigger normally assigns the hash)
+select pg_temp.owner_run('alter table app.rights_reviews disable trigger rights_reviews_guard');
+select pg_temp.owner_run(format($$insert into app.rights_reviews (submission_id, version_id, content_hash, canon_version, claim_no, claim_hash, seq, status, basis_code, evidence_note, reviewer_id) select id, version_id, content_hash, canon_version, 1, decode(repeat('00', 32), 'hex'), 90, 'clear', 'staff_original_check', 'A clear review carrying a hash that is not the claim''s.', %L from app.submissions where id = %L$$, pg_temp.u(5), pg_temp.sid('chain')));
+select pg_temp.owner_run('alter table app.rights_reviews enable trigger rights_reviews_guard');
+select is(pg_temp.owner_val(format($q$select pg_catalog.array_to_string(app_review.approval_blockers(%L, %L), ',')$q$, pg_temp.sid('chain'), pg_temp.u(5))), 'rights_not_clear:1', 'a clear review whose claim_hash is not the claim''s current hash does not clear it');
+select pg_temp.owner_run(format($$insert into app.rights_reviews (submission_id, version_id, content_hash, canon_version, claim_no, status, basis_code, evidence_note, reviewer_id) select id, version_id, content_hash, canon_version, 1, 'clear', 'staff_original_check', 'A correct, freshly recorded clearance.', %L from app.submissions where id = %L$$, pg_temp.u(5), pg_temp.sid('chain')));
+select is(pg_temp.owner_val(format($q$select pg_catalog.array_to_string(app_review.approval_blockers(%L, %L), ',')$q$, pg_temp.sid('chain'), pg_temp.u(5))), '', 'while a correct newer clearance leaves nothing in the way');
+
 -- ===================================================================================================================
 -- I. unfrozen content cannot be reviewed; the queue paginates deterministically
 -- ===================================================================================================================
