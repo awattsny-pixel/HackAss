@@ -13,8 +13,8 @@ const sql = Object.fromEntries(files.map((f) => [f, readFileSync(join(migDir, f)
 const all = files.map((f) => sql[f]).join('\n');
 const code = (t: string) => t.replace(/--.*$/gm, '');
 
-test('F2-A and F2-B migrations: seven timestamped, ordered files, no stray files', () => {
-  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql']);
+test('F2-A, F2-B and F2-C1 migrations: ten timestamped, ordered files, no stray files', () => {
+  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql']);
   assert.deepEqual(readdirSync(migDir).filter((f) => !f.endsWith('.sql')), ['.gitkeep']);
   for (const f of files) assert.match(f, /^\d{14}_[a-z0-9_]+\.sql$/);
 });
@@ -47,6 +47,7 @@ test('no grant to PUBLIC, anon or service_role beyond the api schema USAGE, and 
   const executes = grants.filter((g) => /grant execute/i.test(g));
   assert.deepEqual(executes.map((g) => g.replace(/^grant execute on function /i, '')).sort(), [
     'api.create_draft(uuid), api.save_draft(uuid, jsonb), api.get_version(uuid), api.list_my_versions(), api.submit_version(uuid, text), api.delete_draft(uuid) to authenticated;',
+    'api.list_submissions_for_review(integer, text[], timestamptz, uuid), api.get_submission_for_review(uuid), api.start_review(uuid, text), api.record_risk_assessment(uuid, text, text, text), api.record_rights_review(uuid, text, integer, text, text, text, date), api.record_decision(uuid, text, text, text[], text, uuid) to authenticated;',
     'api.whoami(), api.staff_probe(text, integer) to authenticated;',
     'app_bridge.session_valid(uuid, uuid) to hackass_owner;',
     'app_guard.on_auth_user_created(), app_guard.on_auth_user_deleted() to postgres;',
@@ -80,7 +81,7 @@ test('the staff guard has no MFA switch, no clock-skew allowance, and validates 
 
 test('every function in an application schema has PUBLIC execute revoked, and no table is ever granted to anyone', () => {
   const c = code(all);
-  const created = [...c.matchAll(/create function ((?:api|app_guard|app_content|app_bridge|worker)\.\w+)\(/g)].map((m) => m[1]);
+  const created = [...c.matchAll(/create function ((?:api|app_guard|app_content|app_bridge|app_review|worker)\.\w+)\(/g)].map((m) => m[1]);
   assert.ok(created.length >= 30, `only ${created.length} functions found`);
   const revokes = (c.match(/revoke all on function[\s\S]*?from public;/gi) ?? []).join('\n');
   const defaults = /alter default privileges revoke all on functions from public;/.test(c);
@@ -93,7 +94,7 @@ test('every function in an application schema has PUBLIC execute revoked, and no
 test('every application table has RLS enabled and is covered by the immutability / append-only / truncate triggers where it holds content', () => {
   const c = code(all).replace(/\s+/g, ' ');
   const tables = [...c.matchAll(/create table (app\.\w+)/g)].map((m) => m[1]);
-  assert.equal(tables.length, 14);
+  assert.equal(tables.length, 17);
   for (const t of tables) assert.match(c, new RegExp(`alter table ${t.replace('.', '\\.')} enable row level security;`), `${t} lacks RLS`);
   for (const t of ['hack_steps', 'hack_materials', 'hack_requirements', 'version_tags', 'version_attributions', 'source_claims', 'version_assets']) {
     assert.match(c, new RegExp(`create trigger ${t}_guard before insert or update or delete on app\\.${t} for each row execute function app_content\\.guard_child\\(\\);`), `${t} lacks the child guard`);
@@ -133,7 +134,7 @@ test('the rollback scripts remove every schema, table, role and trigger the migr
   const downA = read('20261013130000_f2a_down.sql');
   const downB = read('20261014090000_f2b_down.sql');
   const createdSchemas = [...all.matchAll(/create schema (\w+)/g)].map((m) => m[1]).sort();
-  assert.deepEqual(createdSchemas, ['api', 'app', 'app_bridge', 'app_content', 'app_guard', 'worker']);
+  assert.deepEqual(createdSchemas, ['api', 'app', 'app_bridge', 'app_content', 'app_guard', 'app_review', 'worker']);
   for (const s of ['api', 'worker', 'app_guard', 'app', 'app_bridge']) assert.match(downA, new RegExp(`drop schema if exists ${s} cascade;`), `F2-A rollback must drop schema ${s}`);
   assert.match(downB, /drop schema if exists app_content cascade;/);
   for (const r of ['hackass_worker', 'hackass_owner']) assert.match(downA, new RegExp(`drop role if exists ${r};`));
@@ -209,4 +210,49 @@ test('F2-B correction round: identifier format, list caps and the quota/category
   // category guard
   assert.match(imm, /create trigger categories_guard before update on app\.categories/);
   assert.match(imm, /new\.slug is distinct from old\.slug/);
+});
+
+test('F2-C1: the review functions take no caller identity, require the reviewed hash, start with the staff guard, and lock the submission first', () => {
+  const rpc = code(sql['20261015090200_f2c1_review_rpc.sql']);
+  const rules = code(sql['20261015090100_f2c1_review_rules.sql']);
+  const fns = [...rpc.matchAll(/create function (api\.\w+)\(([\s\S]*?)\) returns jsonb\s+language plpgsql[^\n]*\nas \$\$([\s\S]*?)\n\$\$;/g)];
+  assert.equal(fns.length, 6);
+  for (const [, name, params, body] of fns) {
+    assert.ok(!/\b(p_actor|p_reviewer|p_user|p_staff|p_account|_id_of_reviewer)\w*/i.test(params), `${name} has a caller-identity parameter`);
+    assert.match(body, /^\s*(?:declare[\s\S]*?)?begin\s+v_staff := app_guard\.require_staff\('reviewer', interval '15 minutes'\);/, `${name} must start with the staff guard`);
+    if (!/^api\.(list_submissions_for_review|get_submission_for_review)$/.test(name)) {
+      assert.match(params, /p_expected_hash text/, `${name} must name the reviewed hash`);
+      const iLock = body.indexOf('app_review.lock_submission'), iVerify = body.indexOf('app_review.verify_binding'), iOk = body.indexOf('app_review.assert_reviewer_ok');
+      assert.ok(iLock > 0 && iLock < iVerify && iVerify < iOk, `${name}: lock the submission, verify the hash, check reviewer eligibility, in that order`);
+    }
+  }
+  const dec = fns.find(([, n]) => n === 'api.record_decision')![3];
+  assert.ok(dec.indexOf('decision_conflict') > dec.indexOf('lock_submission') && dec.indexOf('approval_blockers') > dec.indexOf('decision_conflict') && dec.indexOf('insert into app.moderation_decisions') > dec.indexOf('approval_blockers'), 'record_decision: lock, conflict check, blockers, then insert');
+  assert.match(dec, /v_latest is distinct from p_expected_prior_decision_id/, 'the optimistic-concurrency check exists');
+  // the trigger repeats the important rules for any other writer
+  const g = rules.match(/create function app_review\.guard_decision\(\)[\s\S]*?\n\$\$;/)![0];
+  for (const needle of ['lock_submission(new.submission_id)', 'assert_reviewer_ok(s, new.actor_id)', 'version_hash(new.version_id) is distinct from new.content_hash', 'new.seq :=', 'new.supersedes_id :=', "approval_blockers(new.submission_id, new.actor_id)"]) assert.ok(g.includes(needle), `guard_decision lacks ${needle}`);
+  assert.match(rules, /rights_reviews_guard before insert on app\.rights_reviews/);
+  assert.match(rules, /new\.claim_hash := app_review\.claim_hash\(new\.version_id, new\.claim_no\)/);
+  // approval blockers: the full list of reasons
+  const b = rules.match(/create function app_review\.approval_blockers[\s\S]*?\n\$\$;/)![0];
+  for (const reason of ['self_review', 'assessment_missing', 'risk_prohibited', 'risk_high_needs_admin', 'rights_not_clear:', 'unresolved_references:', 'submission_missing']) assert.ok(b.includes(reason), `missing blocker ${reason}`);
+  assert.match(b, /rr\.status = 'clear'/);
+  assert.match(b, /rr\.expires_on is null or rr\.expires_on >= current_date/);
+  assert.match(b, /rr\.claim_hash = app_review\.claim_hash\(s\.version_id, r\.claim_no\)/);
+  const tables = code(sql['20261015090000_f2c1_review_tables.sql']);
+  assert.equal([...tables.matchAll(/foreign key \(submission_id, version_id, content_hash, canon_version\)\s+references app\.submissions \(id, version_id, content_hash, canon_version\)/g)].length, 3, 'all three record tables are bound to the exact submission');
+  assert.match(tables, /foreign key \(version_id, claim_no\) references app\.source_claims \(version_id, claim_no\)/, 'rights reviews name individual claims');
+  assert.match(tables, /decided_by_kind text\s+not null default 'human' check \(decided_by_kind = 'human'\)/);
+  assert.match(tables, /create unique index decisions_one_successor on app\.moderation_decisions \(supersedes_id\)/);
+});
+
+test('F2-C1 rollback removes everything it created, in order, and un-ledgers exactly its three versions', () => {
+  const down = code(readFileSync(join(root, 'supabase/rollbacks/20261015090000_f2c1_down.sql'), 'utf8'));
+  for (const t of ['app.moderation_decisions', 'app.rights_reviews', 'app.version_assessments']) assert.ok(down.includes(t), t);
+  const fns = [...code(sql['20261015090200_f2c1_review_rpc.sql']).matchAll(/create function (api\.\w+)\(/g)].map((m) => m[1]);
+  assert.equal(fns.length, 6);
+  for (const f of fns) assert.ok(down.includes(f), f);
+  assert.ok(down.indexOf('drop table') < down.indexOf('drop constraint') && down.indexOf('drop constraint') < down.indexOf('drop schema if exists app_review cascade'));
+  assert.match(down, /version in \('20261015090000', '20261015090100', '20261015090200'\)/);
 });

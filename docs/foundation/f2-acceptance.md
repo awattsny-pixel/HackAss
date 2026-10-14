@@ -65,3 +65,15 @@ the repository (`npm run scan:secrets`).
 | child-count backstop took only shared parent locks, so two direct writers could both pass the count | all child operations take `FOR NO KEY UPDATE` on the parent(s), ascending; count read after the lock; one lock mode, no upgrades | `C11` for tags (10), requirements (30), assets (20): racing inserts, racing moves into a nearly full target, move vs insert (11 rows on the old code); `C12` no deadlock: 6 parallel inserts, opposite multi-statement moves, 2 writers + a freeze |
 | `delete_draft` locked account and version before the hack | account → hack → version, everything re-read under the locks | `C13` (a transaction holding the hack row then wanting the version: deadlock on the old code, none now) |
 | a concurrently deleted draft reported success | `not_found` after the lock for delete, save and submit | `C14` (delete/save/submit after a concurrent delete; hack deleted and hack kept cases) |
+
+## F2-C1 progress (moderation records and human review decisions)
+| Row | F2-C1 evidence | Status |
+|---|---|---|
+| G-2 / G-3 | golden inventory extended to 17 tables, 7 schemas and all review functions (owner, definer, search_path, volatility, EXECUTE grantees); only the six staff functions are executable by `authenticated`; no table privilege for any role | done for F2-C1 objects |
+| G-4 Forbidden writes | members, anon, service_role and the worker cannot read or write assessments, rights reviews or decisions (pgTAP, real worker login) | done |
+| I-3 Direct RPC authorization | all six staff functions refuse: anon, service_role, no claims, signed-out, disabled account, removed staff role, non-staff member, aal1, no TOTP, stale and future MFA (pgTAP matrix; real tokens for each except stale MFA) | done locally |
+| Binding | composite foreign keys to the frozen submission; hash quoted by the reviewer must equal the frozen and the recomputed hash; tampered content blocks every write | done |
+| Append-only | UPDATE/DELETE/TRUNCATE refused on all three tables; seq and supersedes_id trigger-assigned | done |
+| Approval rules | self-review, missing/prohibited/high-needs-admin assessment, unclear/expired/revoked rights per claim, unresolved profile/asset references, unfrozen content, hash mismatch; DB trigger backstop | done |
+| Concurrency | `X1` simultaneous decisions (1 wins, rest `decision_conflict`, chain linear), `X2` approval vs revocation / prohibited assessment (waits, then blocked), `X3` stress across submissions (no deadlock) | done locally |
+| S-1 .. S-3 (automated/shadow), publication pointer, worker effects, budgets | not started | out of scope |

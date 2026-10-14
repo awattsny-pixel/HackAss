@@ -51,7 +51,7 @@ test('pgTAP platform test exists and checks the real stack (roles, Auth sessions
   const sql = read('supabase/tests/database/000_platform.test.sql');
   for (const needle of ["has_role('anon'", "has_role('authenticated'", "has_role('service_role'", "has_table('auth', 'sessions'", "'pg_trgm'", "'citext'", 'select plan(9)']) assert.ok(sql.includes(needle), needle);
   assert.equal((sql.match(/^select (has_|ok)/gm) ?? []).length, 9, 'plan count must match the assertions');
-  assert.deepEqual(readdirSync(join(root, 'supabase/migrations')).filter((f) => f !== '.gitkeep').map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql'], 'only the F2-A and F2-B migrations exist (checked in detail by f2a-migrations.test.ts)');
+  assert.deepEqual(readdirSync(join(root, 'supabase/migrations')).filter((f) => f !== '.gitkeep').map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql'], 'only the F2-A, F2-B and F2-C1 migrations exist (checked in detail by f2a-migrations.test.ts)');
 });
 
 test('db:test reports BLOCKED (exit 2) with an actionable message when Docker is unavailable, never a silent pass', () => {
@@ -86,4 +86,14 @@ test('docs/db/hashcanon-1.md names every hashed field in the order the implement
   const vectors = JSON.parse(read('tests/fixtures/hashcanon-vectors.json')).vectors.length;
   assert.match(doc, new RegExp(`\\(${vectors}\\)`), 'the document states the number of golden vectors');
   assert.match(read('docs/db/f2b-content.md'), /one lock rule|One lock rule/i);
+});
+
+test('docs/db/f2c1-review.md names every approval blocker the SQL can return, and every review function', () => {
+  const doc = read('docs/db/f2c1-review.md');
+  const rules = read('supabase/migrations/20261015090100_f2c1_review_rules.sql');
+  const blockers = [...rules.matchAll(/array_append\(b, '([a-z_]+)(?::)?'/g)].map((m) => m[1]);
+  assert.ok(blockers.length >= 6, `found ${blockers.length} blockers`);
+  for (const b of new Set(blockers)) assert.ok(doc.includes(b.replace(/_$/, '')) || doc.includes(b), `the docs do not mention the blocker ${b}`);
+  for (const fn of ['list_submissions_for_review', 'get_submission_for_review', 'start_review', 'record_risk_assessment', 'record_rights_review', 'record_decision']) assert.ok(doc.includes(fn), fn);
+  assert.match(doc, /rollback/i);
 });

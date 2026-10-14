@@ -1,7 +1,7 @@
 // Shared helpers for the scripts that run against the REAL local Supabase stack (disposable `hackass-local` project).
 // Nothing here prints keys, tokens or passwords. Exit code 2 (BLOCKED) when the stack is not reachable.
 import { createHmac, createPublicKey, createVerify, randomBytes } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createClient } from '@supabase/supabase-js';
 
 export const SUPABASE = process.env.SUPABASE_BIN || 'supabase';
@@ -103,3 +103,20 @@ export function createRunner() {
   };
 }
 export const ok = (cond, msg) => { if (!cond) throw new Error(msg); };
+
+/** Run a psql script in its own database session (a separate docker exec), after a delay. Resolves { out, err, ms }. */
+export function session(script, delayMs = 0) {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const t0 = Date.now();
+      const p = spawn(DOCKER, ['exec', '-i', DB_CONTAINER, 'psql', '-U', 'postgres', '-d', 'postgres', '-At', '-X', '-v', 'ON_ERROR_STOP=0'], { stdio: ['pipe', 'pipe', 'pipe'] });
+      let out = '', err = '';
+      p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
+      p.on('close', () => resolve({ out: out.trim(), err: err.trim(), ms: Date.now() - t0 }));
+      p.stdin.end(script);
+    }, delayMs);
+  });
+}
+/** A script that runs `body` as the `authenticated` role with the given verified claims (as PostgREST would set them). */
+export const asMember = (claims, body) => `select set_config('request.jwt.claims', '${JSON.stringify(claims).replace(/'/g, "''")}', false) as _c \\gset\nset role authenticated;\n${body}\nreset role;`;
+export const asOwner = (body) => `set role hackass_owner;\n${body}\nreset role;`;
