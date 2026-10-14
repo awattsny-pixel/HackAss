@@ -140,7 +140,7 @@ function session(script, delayMs = 0) {
     }, delayMs);
   });
 }
-const asMember = (claims, body) => `select set_config('request.jwt.claims', '${JSON.stringify(claims).replace(/'/g, "''")}', false);\nset role authenticated;\n${body}\nreset role;`;
+const asMember = (claims, body) => `select set_config('request.jwt.claims', '${JSON.stringify(claims).replace(/'/g, "''")}', false) as _c \\gset\nset role authenticated;\n${body}\nreset role;`;
 const asOwner = (body) => `set role hackass_owner;\n${body}\nreset role;`;
 
 /** A fresh member with a complete saved draft; returns ids, claims and the token. */
@@ -256,13 +256,13 @@ await check('C5', 'opposite child moves between two drafts at the same time do n
   return `both transactions completed in ${r1.ms}/${r2.ms} ms with no deadlock; the tags swapped parents`;
 });
 
-await check('C6', 'randomized races (36 rounds): every frozen version always hashes to its stored hash; only the expected errors occur', async () => {
+await check('C6', 'randomized races (36 rounds, 5 scenarios): every frozen version always hashes to its stored hash; only the expected errors occur', async () => {
   const unexpected = [];
   let waited = 0, ok2 = 0;
   for (let i = 0; i < 36; i++) {
     const f = await draftFor(`C6 round ${i}`);
     const g = await draftFor(`C6 round ${i} other`);
-    const kind = randomInt(0, 4);
+    const kind = randomInt(0, 5);
     const delay = randomInt(0, 700), hold = randomInt(300, 1200);
     const tag = `c6-${i}`;
     let a, b;
@@ -276,6 +276,13 @@ await check('C6', 'randomized races (36 rounds): every frozen version always has
       owner(`insert into app.version_tags (version_id, slug) values ('${f.versionId}', '${tag}');`);
       a = session(asOwner(`begin;\nupdate app.version_tags set version_id = '${g.versionId}' where version_id = '${f.versionId}' and slug = '${tag}';\nselect pg_sleep(${hold / 1000});\ncommit;`));
       b = session(asOwner(`select app_content.freeze_version('${g.versionId}', '${g.userId}', decode('${g.hash}', 'hex'));`), delay);
+    } else if (kind === 4) { // two child writers (capped lists) and a freeze on the same version
+      const tagHash = f.hash;
+      a = session(asOwner(`begin;\ninsert into app.version_tags (version_id, slug) values ('${f.versionId}', '${tag}x');\nselect pg_sleep(${hold / 1000});\ncommit;`));
+      const extra = session(asOwner(`insert into app.hack_requirements (version_id, kind, name) values ('${f.versionId}', 'tool', '${tag}y');`), randomInt(0, 400));
+      b = session(asMember(f.claims, `select api.submit_version('${f.versionId}', '${tagHash}');`), delay);
+      const [, rx] = await Promise.all([Promise.resolve(), extra]);
+      if (/deadlock/i.test(rx.err)) unexpected.push(`round ${i} kind 4: deadlock in the extra writer`);
     } else { // freeze both sides while moves happen in opposite directions
       owner(`insert into app.version_tags (version_id, slug) values ('${f.versionId}', '${tag}a'), ('${g.versionId}', '${tag}b');`);
       a = session(asOwner(`begin;\nupdate app.version_tags set version_id = '${g.versionId}' where version_id = '${f.versionId}' and slug = '${tag}a';\nselect pg_sleep(${hold / 1000});\ncommit;`));
@@ -400,6 +407,121 @@ await check('C10', 'quota under concurrent deletion and creation: a create waits
     const okDeletes = all.slice(0, 5).filter((r) => /deleted/.test(r.out)).length;
     return `one delete + two creates -> 1 created, 1 refused, waited ${Math.max(r2.ms, r3.ms)} ms; burst of ${okDeletes} deletes + 8 creates: ${n} open drafts (<= 20), no deadlock`;
   } finally { fastInsert(); }
+});
+
+// ---- correction round 2: concurrency-safe child-count backstop; delete follows the documented lock order -------------------------------------
+const CAPPED = [
+  { tbl: 'version_tags', cap: 10, cols: '(version_id, slug)', row: (v, i) => `('${v}', 'cc${i}')` },
+  { tbl: 'hack_requirements', cap: 30, cols: '(version_id, kind, name)', row: (v, i) => `('${v}', 'tool', 'cc${i}')` },
+  { tbl: 'version_assets', cap: 20, cols: '(version_id, sha256, asset_id)', row: (v, i) => `('${v}', decode(lpad(to_hex(${i} + 7000), 64, '0'), 'hex'), gen_random_uuid())` },
+];
+const fill = (c, v, n, from = 1) => owner(`delete from app.${c.tbl} where version_id = '${v}';${n > 0 ? `\ninsert into app.${c.tbl} ${c.cols} values ${Array.from({ length: n }, (_, k) => c.row(v, from + k)).join(', ')};` : ''}`);
+const countOf = (c, v) => Number(owner(`select count(*) from app.${c.tbl} where version_id = '${v}';`).split('\n').pop());
+const moveSql = (c, from, to, i) => {
+  // move the row created by c.row(from, i) (identified by its key column) into `to`
+  const key = c.tbl === 'version_tags' ? `slug = 'cc${i}'` : c.tbl === 'hack_requirements' ? `name = 'cc${i}'` : `sha256 = decode(lpad(to_hex(${i} + 7000), 64, '0'), 'hex')`;
+  return `update app.${c.tbl} set version_id = '${to}' where version_id = '${from}' and ${key};`;
+};
+
+await check('C11', 'the child-count backstop is concurrency-safe for tags, requirements and assets: two writers racing for the last slot cannot both succeed (inserts and moves)', async () => {
+  const facts = [];
+  for (const c of CAPPED) {
+    // (a) two direct inserts racing for the last slot
+    const v = (await draftFor(`C11 ${c.tbl} insert`)).versionId;
+    fill(c, v, c.cap - 1);
+    const s1 = session(asOwner(`begin;\ninsert into app.${c.tbl} ${c.cols} values ${c.row(v, 901)};\nselect pg_sleep(${HOLD / 1000});\ncommit;`));
+    const s2 = session(asOwner(`insert into app.${c.tbl} ${c.cols} values ${c.row(v, 902)};`), LATE);
+    const [, r2] = await Promise.all([s1, s2]);
+    ok(countOf(c, v) === c.cap, `${c.tbl}: ${countOf(c, v)} rows after two racing inserts into ${c.cap - 1}, cap ${c.cap}`);
+    ok(/limit_exceeded/.test(r2.err) && r2.ms >= HOLD - LATE - 400, `${c.tbl}: the second insert must wait and then fail with limit_exceeded (took ${r2.ms} ms): ${r2.err.split('\n')[0]}`);
+    // (b) two moves from different sources into a nearly full target
+    const t = (await draftFor(`C11 ${c.tbl} target`)).versionId, a = (await draftFor(`C11 ${c.tbl} a`)).versionId, b = (await draftFor(`C11 ${c.tbl} b`)).versionId;
+    fill(c, t, c.cap - 1); fill(c, a, 1, 801); fill(c, b, 1, 802);
+    const m1 = session(asOwner(`begin;\n${moveSql(c, a, t, 801)}\nselect pg_sleep(${HOLD / 1000});\ncommit;`));
+    const m2 = session(asOwner(moveSql(c, b, t, 802)), LATE);
+    const [, mr2] = await Promise.all([m1, m2]);
+    ok(countOf(c, t) === c.cap && countOf(c, b) === 1, `${c.tbl}: target has ${countOf(c, t)} after two racing moves, source b has ${countOf(c, b)}`);
+    ok(/limit_exceeded/.test(mr2.err) && mr2.ms >= HOLD - LATE - 400, `${c.tbl}: the second move must wait and fail (took ${mr2.ms} ms): ${mr2.err.split('\n')[0]}`);
+    // (c) a move racing an insert for the last slot
+    const t2 = (await draftFor(`C11 ${c.tbl} target2`)).versionId, a2 = (await draftFor(`C11 ${c.tbl} a2`)).versionId;
+    fill(c, t2, c.cap - 1); fill(c, a2, 1, 803);
+    const i1 = session(asOwner(`begin;\ninsert into app.${c.tbl} ${c.cols} values ${c.row(t2, 904)};\nselect pg_sleep(${HOLD / 1000});\ncommit;`));
+    const i2 = session(asOwner(moveSql(c, a2, t2, 803)), LATE);
+    const [, ir2] = await Promise.all([i1, i2]);
+    ok(countOf(c, t2) === c.cap && /limit_exceeded/.test(ir2.err), `${c.tbl}: move vs insert: target ${countOf(c, t2)}, ${ir2.err.split('\n')[0]}`);
+    facts.push(`${c.tbl}: ${c.cap - 1}+2 racing inserts -> ${c.cap}; 2 racing moves -> ${c.cap}; move vs insert -> ${c.cap}`);
+  }
+  return facts.join(' | ');
+});
+
+await check('C12', 'the stronger child locks do not deadlock: parallel same-parent writers, opposite moves, and writers racing a freeze', async () => {
+  const facts = [];
+  for (const c of CAPPED) {
+    // six parallel inserts into one version: they serialize on the parent and all succeed
+    const v = (await draftFor(`C12 ${c.tbl} parallel`)).versionId;
+    fill(c, v, 0);
+    const runs = await Promise.all(Array.from({ length: 6 }, (_, k) => session(asOwner(`${BARRIER(1500)}\ninsert into app.${c.tbl} ${c.cols} values ${c.row(v, 100 + k)};`))));
+    ok(!runs.some((r) => /deadlock/i.test(r.err)) && !runs.some((r) => /ERROR/.test(r.err)), `${c.tbl}: parallel inserts failed: ${runs.map((r) => r.err.split('\n')[0]).filter(Boolean)[0]}`);
+    ok(countOf(c, v) === 6, `${c.tbl}: ${countOf(c, v)} of 6 parallel inserts landed`);
+    // opposite multi-statement moves between two drafts: both lock (low id, high id) in the same order, so they queue instead of deadlocking
+    const a = (await draftFor(`C12 ${c.tbl} a`)).versionId, b = (await draftFor(`C12 ${c.tbl} b`)).versionId;
+    fill(c, a, 2, 10); fill(c, b, 2, 20);
+    const s1 = session(asOwner(`begin;\n${moveSql(c, a, b, 10)}\nselect pg_sleep(1);\ninsert into app.${c.tbl} ${c.cols} values ${c.row(b, 31)};\ncommit;`));
+    const s2 = session(asOwner(`begin;\n${moveSql(c, b, a, 20)}\nselect pg_sleep(1);\ninsert into app.${c.tbl} ${c.cols} values ${c.row(a, 32)};\ncommit;`), 300);
+    const [r1, r2] = await Promise.all([s1, s2]);
+    ok(!/deadlock/i.test(r1.err + r2.err) && !/ERROR/.test(r1.err + r2.err), `${c.tbl}: opposite moves: ${(r1.err + r2.err).split('\n')[0]}`);
+    ok(countOf(c, a) + countOf(c, b) === 6, `${c.tbl}: rows lost or duplicated by opposite moves (${countOf(c, a)}+${countOf(c, b)})`);
+    // two writers and a freeze on one version
+    const f = await draftFor(`C12 ${c.tbl} freeze`);
+    fill(c, f.versionId, 1);
+    const w1 = session(asOwner(`begin;\ninsert into app.${c.tbl} ${c.cols} values ${c.row(f.versionId, 51)};\nselect pg_sleep(${HOLD / 1000});\ncommit;`));
+    const w2 = session(asOwner(`insert into app.${c.tbl} ${c.cols} values ${c.row(f.versionId, 52)};`), 500);
+    const fz = session(asMember(f.claims, `select api.submit_version('${f.versionId}', (select encode(app_content.version_hash('${f.versionId}'), 'hex')));`), 800);
+    const all = await Promise.all([w1, w2, fz]);
+    ok(!all.some((r) => /deadlock/i.test(r.err)), `${c.tbl}: deadlock between two writers and a freeze: ${all.map((r) => r.err.split('\n')[0]).join(' | ')}`);
+    ok(mismatchCount() === 0, `${c.tbl}: stored hash != recomputed hash after writers raced a freeze`);
+    facts.push(`${c.tbl}: 6 parallel inserts ok, opposite moves ${Math.max(r1.ms, r2.ms)} ms no deadlock, 2 writers + freeze no deadlock`);
+  }
+  return facts.join(' | ');
+});
+
+await check('C13', 'delete_draft follows account -> hack -> version: a transaction holding the hack row and then wanting the version no longer deadlocks with it', async () => {
+  const f = await draftFor('C13 lock order');
+  const hold = session(asOwner(`begin;\nselect 1 from app.hacks where id = '${f.hackId}' for update;\nselect pg_sleep(2.5);\nselect 1 from app.hack_versions where id = '${f.versionId}' for update;\ncommit;`));
+  const del = session(asMember(f.claims, `select api.delete_draft('${f.versionId}');`), 800);
+  const [h, d] = await Promise.all([hold, del]);
+  ok(!/deadlock/i.test(h.err + d.err), `deadlock: ${(h.err + d.err).split('\n')[0]}`);
+  ok(!/ERROR/.test(h.err), `the hack-first transaction failed: ${h.err.split('\n')[0]}`);
+  ok(d.ms >= 1500 && /deleted/.test(d.out), `delete_draft should wait for the hack lock and then succeed (took ${d.ms} ms): ${d.err.split('\n')[0]} ${d.out.slice(0, 50)}`);
+  ok(owner(`select count(*) from app.hack_versions where id = '${f.versionId}';`).split('\n').pop() === '0', 'the draft should be gone');
+  return `delete waited ${d.ms} ms for the transaction that held the hack, then deleted; no deadlock`;
+});
+
+await check('C14', 'a concurrent deletion makes the loser report not_found (never success on a missing draft), for delete, save and submit', async () => {
+  const facts = [];
+  // (i) the hack has only this draft: both the version and the hack disappear
+  for (const [label, second] of [['delete', (f) => `select api.delete_draft('${f.versionId}');`], ['save_draft', (f) => `select api.save_draft('${f.versionId}', '{"title":"late"}'::jsonb);`], ['submit_version', (f) => `select api.submit_version('${f.versionId}', '${'a'.repeat(64)}');`]]) {
+    const f = await draftFor(`C14 ${label} vs delete`);
+    const s1 = session(asMember(f.claims, `begin;\nselect api.delete_draft('${f.versionId}');\nselect pg_sleep(${HOLD / 1000});\ncommit;`));
+    const s2 = session(asMember(f.claims, second(f)), LATE);
+    const [, r2] = await Promise.all([s1, s2]);
+    ok(/not_found/.test(r2.err) && r2.ms >= HOLD - LATE - 400, `${label} after a concurrent delete must wait and report not_found (took ${r2.ms} ms): ${r2.err.split('\n')[0]} ${r2.out.slice(0, 60)}`);
+    ok(!/deleted|content_hash/.test(r2.out), `${label} reported success on a missing draft: ${r2.out.slice(0, 80)}`);
+    facts.push(`${label}: waited ${r2.ms} ms -> not_found`);
+  }
+  // (ii) the hack survives (an earlier frozen version exists): only the version row disappears
+  const g = await draftFor('C14 revision');
+  await api('submit_version', g.t, { p_version_id: g.versionId, p_expected_hash: g.hash });
+  const rev = await api('create_draft', g.t, { p_hack_id: g.hackId });
+  ok(rev.status === 200, `revision fixture: HTTP ${rev.status}`);
+  const rv = rev.body.version_id;
+  const s1 = session(asMember(g.claims, `begin;\nselect api.delete_draft('${rv}');\nselect pg_sleep(${HOLD / 1000});\ncommit;`));
+  const s2 = session(asMember(g.claims, `select api.delete_draft('${rv}');`), LATE);
+  const [, r2] = await Promise.all([s1, s2]);
+  ok(/not_found/.test(r2.err) && !/deleted/.test(r2.out), `second delete of a revision draft must be not_found: ${r2.err.split('\n')[0]} ${r2.out.slice(0, 60)}`);
+  ok(owner(`select count(*) from app.hacks where id = '${g.hackId}';`).split('\n').pop() === '1', 'the hack with its frozen version must survive');
+  facts.push(`revision: waited ${r2.ms} ms -> not_found, hack kept`);
+  return facts.join(' | ');
 });
 
 const n = failed();

@@ -9,10 +9,15 @@
 --     row to another version checks BOTH the old and the new parent.
 --   * categories: the slug (hashed through category_slug) and id never change; names do.
 --   * submissions: append-only.
--- Lock order (one rule everywhere): lock version rows in ascending id order. Draft RPCs and the freeze take FOR UPDATE on the
--- version row; child-row triggers take FOR SHARE on every parent they touch, in ascending id order. A child write and a freeze of
--- the same version therefore serialize on that row, and the trigger re-reads frozen_at AFTER the lock is held: either the child
--- write commits first (and the freeze then hashes it) or the freeze commits first (and the child write is rejected).
+-- Lock order (one rule everywhere): account row -> hack row -> version rows, and version rows in ascending id order. Draft RPCs and the
+-- freeze take FOR UPDATE on the version row; every child-row trigger takes FOR NO KEY UPDATE on each parent it touches (ascending id order) and reads
+-- frozen_at and, for the capped lists, the current count AFTER the lock is held. FOR NO KEY UPDATE conflicts with itself and with the freeze's FOR UPDATE
+-- but not with the foreign-key checks (FOR KEY SHARE), so writers to the same version queue instead of racing: a child write and a freeze serialize
+-- (either the write commits first and the freeze hashes it, or the freeze commits first and the write is rejected), and two writers racing for the last
+-- slot of a capped list cannot both count one fewer than the cap. One lock mode is used for every child operation (insert, update, move, delete), so no
+-- transaction ever upgrades a shared lock (the classic upgrade deadlock). A move locks the old and the new parent together in ascending id order, so
+-- opposite moves queue. Residual: a single transaction that writes children of two different versions in opposite orders in separate statements, run
+-- against another doing the reverse, can deadlock (PostgreSQL aborts one of them with 40P01; no data is corrupted); no RPC touches two versions.
 -- Error code PT409 (HTTP 409 through PostgREST), message version_frozen.
 
 set local role hackass_owner;
@@ -73,10 +78,10 @@ begin
   if tg_op in ('UPDATE', 'DELETE') then v_old := (pg_catalog.to_jsonb(old) ->> 'version_id')::uuid; end if;
   if tg_op in ('UPDATE', 'INSERT') then v_new := (pg_catalog.to_jsonb(new) ->> 'version_id')::uuid; end if;
   v_ids := array(select distinct x from pg_catalog.unnest(array[v_old, v_new]) as x where x is not null);
-  -- lock every affected parent FOR SHARE, ascending id order, then judge frozen_at from the locked rows
+  -- lock every affected parent FOR NO KEY UPDATE, ascending id order, then judge frozen_at (and the list size below) from the locked rows
   select pg_catalog.count(*), pg_catalog.count(*) filter (where p.frozen_at is not null)
     into v_found, v_frozen
-    from (select v.id, v.frozen_at from app.hack_versions v where v.id = any (v_ids) order by v.id for share) p;
+    from (select v.id, v.frozen_at from app.hack_versions v where v.id = any (v_ids) order by v.id for no key update) p;
   if v_frozen > 0 then
     raise exception 'version_frozen' using errcode = 'PT409';
   end if;

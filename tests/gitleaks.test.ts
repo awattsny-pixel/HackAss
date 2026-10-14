@@ -252,8 +252,11 @@ realTest('real binary: a new synthetic secret at the exact former documentation-
       assert.equal(scanRepo(r.dir).code, 0, 'the placeholder document is clean');
       const lines = readFileSync(join(r.dir, 'API_SPECIFICATION.md'), 'utf8').split('\n');
       assert.match(lines[line - 1], /"token": "<JWT-PLACEHOLDER>"/, `line ${line} should hold the placeholder`);
-      const seg = (n: number) => randomBytes(n).toString('base64url').replace(/[^A-Za-z0-9]/g, 'q');
-      const secret = `eyJ${seg(10)}.eyJ${seg(12)}.${seg(14)}`;
+      // High-entropy on purpose: Gitleaks' generic rules have an entropy threshold, and a low-entropy random draw would make this test flaky.
+      const entropy = (x: string) => { const f = new Map<string, number>(); for (const ch of x) f.set(ch, (f.get(ch) ?? 0) + 1); return -[...f.values()].reduce((a, n) => a + (n / x.length) * Math.log2(n / x.length), 0); };
+      const seg = (n: number) => randomBytes(n).toString('base64url');
+      let secret = '';
+      do { secret = `eyJ${seg(20)}.eyJ${seg(22)}.${seg(24)}`; } while (entropy(secret) < 4.3);
       lines[line - 1] = `  "token": "${secret}",`;
       writeFileSync(join(r.dir, 'API_SPECIFICATION.md'), lines.join('\n')); // modified, NOT committed
       const res = scanRepo(r.dir);

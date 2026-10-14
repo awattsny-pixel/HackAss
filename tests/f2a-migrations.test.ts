@@ -103,9 +103,10 @@ test('every application table has RLS enabled and is covered by the immutability
   assert.match(c, /create trigger submissions_append_only before update or delete on app\.submissions/);
 });
 
-test('lock order and the freeze: child guards lock parents FOR SHARE in ascending id order; the freeze locks FOR UPDATE and hashes after the lock', () => {
+test('lock order and the freeze: child guards lock parents FOR NO KEY UPDATE (one mode, so no upgrades) in ascending id order; the freeze locks FOR UPDATE and hashes after the lock', () => {
   const guard = code(sql['20261014090200_f2b_immutability.sql']).match(/create function app_content\.guard_child\(\)[\s\S]*?\n\$\$;/)![0];
-  assert.match(guard, /order by v\.id for share/);
+  assert.match(guard, /order by v\.id for no key update/);
+  assert.ok(!/for share/.test(guard), 'one lock mode for every child operation: no shared lock that could later be upgraded');
   assert.match(guard, /v\.id = any \(v_ids\)/);
   const freeze = code(sql['20261014090300_f2b_content_rpc.sql']).match(/create function app_content\.freeze_version[\s\S]*?\n\$\$;/)![0];
   const iLock = freeze.indexOf('for update'), iHash = freeze.indexOf('app_content.version_hash(p_version_id)'), iCmp = freeze.indexOf('p_expected is distinct from v_hash'), iSet = freeze.indexOf('update app.hack_versions set frozen_at');
@@ -199,7 +200,12 @@ test('F2-B correction round: identifier format, list caps and the quota/category
   const cd = rpc.match(/create function api\.create_draft[\s\S]*?\n\$\$;/)![0];
   assert.ok(cd.indexOf('for no key update') > 0 && cd.indexOf('for no key update') < cd.indexOf('pg_catalog.count(*)'), 'create_draft locks the account before counting');
   const dd = rpc.match(/create function api\.delete_draft[\s\S]*?\n\$\$;/)![0];
-  assert.ok(dd.indexOf('for no key update') > 0 && dd.indexOf('for no key update') < dd.indexOf('for update;'), 'delete_draft locks the account before the version row');
+  const iAcct = dd.indexOf('from app.accounts a where a.user_id = v_actor.user_id for no key update'), iHack = dd.indexOf('from app.hacks h where h.id = v_hack'), iVer = dd.indexOf('and v.hack_id = v_locked_hack for update'), iDelV = dd.indexOf('delete from app.hack_versions'), iDelH = dd.indexOf('delete from app.hacks');
+  assert.ok(iAcct > 0 && iAcct < iHack && iHack < iVer && iVer < iDelV && iDelV < iDelH, 'delete_draft: account, then hack, then version, then deletes');
+  assert.match(dd, /h\.created_by = v_actor\.user_id for update;\s+if v_locked_hack is null then raise exception 'not_found'/, 'a vanished hack is not_found');
+  assert.match(dd, /for update;\s+if not found or v_owner is distinct from v_actor\.user_id then raise exception 'not_found'/, 'a vanished version is not_found');
+  const sd = rpc.match(/create function api\.save_draft[\s\S]*?\n\$\$;/)![0];
+  assert.match(sd, /for update;[^\n]*\n[^\n]*\n\s+if not found or v_owner is distinct from v_actor\.user_id then raise exception 'not_found'/, 'save_draft re-checks existence under the lock');
   // category guard
   assert.match(imm, /create trigger categories_guard before update on app\.categories/);
   assert.match(imm, /new\.slug is distinct from old\.slug/);

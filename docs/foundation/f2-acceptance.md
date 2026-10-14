@@ -58,3 +58,10 @@ the repository (`npm run scan:secrets`).
 | requirements/tags/assets had no cap; no size cap | `assert_limits` before replacement; DB backstop trigger for the three lists | `040` H2: boundaries for all 7 lists and the document size, canary proves nothing was updated/deleted |
 | UUID/digest spelling could differ between hashing and storage | strict lowercase hyphenated UUID / 64 lowercase hex, rejected otherwise, in SQL and TypeScript | 10 rejection vectors (SQL, TypeScript, storage) |
 | Roadmap | `list_my_versions()` needs cursor pagination before the contributor UI | documented in `docs/db/f2b-content.md` |
+
+### F2-B correction round 2
+| Defect found in review | Fix | Evidence |
+|---|---|---|
+| child-count backstop took only shared parent locks, so two direct writers could both pass the count | all child operations take `FOR NO KEY UPDATE` on the parent(s), ascending; count read after the lock; one lock mode, no upgrades | `C11` for tags (10), requirements (30), assets (20): racing inserts, racing moves into a nearly full target, move vs insert (11 rows on the old code); `C12` no deadlock: 6 parallel inserts, opposite multi-statement moves, 2 writers + a freeze |
+| `delete_draft` locked account and version before the hack | account → hack → version, everything re-read under the locks | `C13` (a transaction holding the hack row then wanting the version: deadlock on the old code, none now) |
+| a concurrently deleted draft reported success | `not_found` after the lock for delete, save and submit | `C14` (delete/save/submit after a concurrent delete; hack deleted and hack kept cases) |

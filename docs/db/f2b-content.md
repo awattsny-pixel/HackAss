@@ -29,10 +29,17 @@ PT429 too_many_drafts (PostgREST maps `PTnnn` to HTTP `nnn`).
   Identity columns never change. A version cannot be inserted already frozen. TRUNCATE is refused.
 * Each hashed child: INSERT, UPDATE and DELETE are rejected when the parent is frozen; an UPDATE that changes `version_id` judges **both** parents.
 * `submissions`: append-only. `version_lifecycle`: ordinary updates (superseding/withdrawing a frozen version touches lifecycle only).
-* **One lock rule:** version rows are locked in ascending id order. Draft RPCs and the freeze take `FOR UPDATE` on the version row; every child
-  trigger takes `FOR SHARE` on each parent it touches, ascending, and reads `frozen_at` after holding the lock. A child write and a freeze therefore
-  serialize: either the write commits first and the freeze hashes it, or the freeze commits first and the write is rejected. The freeze
-  computes its hash only after the lock, from committed rows.
+* **One lock rule:** account row → hack row → version rows, and version rows in ascending id order. Draft RPCs and the freeze take `FOR UPDATE` on the version row;
+  every child trigger takes `FOR NO KEY UPDATE` on each parent it touches (ascending), and reads `frozen_at` and — for tags, requirements and assets — the
+  current row count **after** holding the lock. `FOR NO KEY UPDATE` conflicts with itself and with the freeze, not with foreign-key checks, so writers to one
+  version queue: a child write and a freeze serialize (either the write commits first and the freeze hashes it, or the freeze commits first and the write is
+  rejected), and two writers racing for the last slot of a capped list cannot both succeed. **One lock mode** is used for insert, update, move and delete on
+  every child table, so no transaction upgrades a shared lock. The freeze computes its hash only after the lock, from committed rows.
+* **Deadlock analysis.** Moves lock old and new parent together in ascending order, so opposite moves queue (check C5, C12). RPCs touch one version per
+  transaction. The one residual: a single transaction that writes children of two *different* versions in opposite orders in separate statements, against
+  another doing the reverse, can deadlock; PostgreSQL aborts one with 40P01 and nothing is corrupted. No RPC does this; direct operational writes should not.
+* **Delete:** `delete_draft` locks account → hack → version and **re-reads under the locks**; a draft removed by a concurrent transaction is `not_found`, never a
+  false success (the same re-check is in `save_draft`; `submit_version` already had it).
 * Ownership is checked before locking (so a stranger cannot make an owner's row wait), then re-established under the lock.
 
 ## Decisions made in this slice that the CTO should confirm

@@ -171,7 +171,8 @@ begin
 end
 $$;
 
--- ---- the exposed RPC surface --------------------------------------------------------------------------------------------------
+-- ---- the exposed RPC surface
+-- Lock order for every operation: account row -> hack row -> version row (ascending id). Each function re-reads what it locked. --------------------------------------------------------------------------------------------------
 create function api.create_draft(p_hack_id uuid default null) returns jsonb
   language plpgsql security definer set search_path = ''
 as $$
@@ -218,7 +219,9 @@ begin
   v_actor := app_guard.require_member();
   select v.created_by into v_owner from app.hack_versions v where v.id = p_version_id;          -- ownership first, without locking someone else's row
   if v_owner is distinct from v_actor.user_id then raise exception 'not_found' using errcode = 'PT404'; end if;
-  select v.frozen_at into v_frozen from app.hack_versions v where v.id = p_version_id for update;  -- then serialize with submit and child writers
+  select v.frozen_at, v.created_by into v_frozen, v_owner from app.hack_versions v where v.id = p_version_id for update;  -- then serialize with submit and child writers
+  -- the row is re-read UNDER the lock: a concurrent delete may have removed it while this call waited
+  if not found or v_owner is distinct from v_actor.user_id then raise exception 'not_found' using errcode = 'PT404'; end if;
   if v_frozen is not null then raise exception 'version_frozen' using errcode = 'PT409'; end if;
   if p_content is null then raise exception 'invalid_content' using errcode = 'PT422', detail = '(root)'; end if;
   begin
@@ -288,17 +291,22 @@ declare
   v_actor app_guard.actor;
   v_owner uuid;
   v_hack uuid;
+  v_locked_hack uuid;
   v_frozen timestamptz;
 begin
   v_actor := app_guard.require_member();
-  select v.created_by, v.hack_id into v_owner, v_hack from app.hack_versions v where v.id = p_version_id;
+  select v.created_by, v.hack_id into v_owner, v_hack from app.hack_versions v where v.id = p_version_id;   -- unlocked pre-read: ownership without locking a stranger's rows
   if v_owner is distinct from v_actor.user_id then raise exception 'not_found' using errcode = 'PT404'; end if;
-  perform 1 from app.accounts a where a.user_id = v_actor.user_id for no key update;   -- same account-first order as create_draft, so the quota sees committed deletions
-  select v.frozen_at into v_frozen from app.hack_versions v where v.id = p_version_id for update;
+  -- documented lock order: (1) account row, (2) hack row, (3) version row. Everything is re-read under the locks.
+  perform 1 from app.accounts a where a.user_id = v_actor.user_id for no key update;   -- also makes the quota see committed deletions
+  select h.id into v_locked_hack from app.hacks h where h.id = v_hack and h.created_by = v_actor.user_id for update;
+  if v_locked_hack is null then raise exception 'not_found' using errcode = 'PT404'; end if;          -- the hack (and so the draft) was deleted while this call waited
+  select v.frozen_at, v.created_by into v_frozen, v_owner from app.hack_versions v where v.id = p_version_id and v.hack_id = v_locked_hack for update;
+  if not found or v_owner is distinct from v_actor.user_id then raise exception 'not_found' using errcode = 'PT404'; end if;   -- the version was deleted while this call waited
   if v_frozen is not null then raise exception 'version_frozen' using errcode = 'PT409'; end if;
   delete from app.hack_versions where id = p_version_id;
   if not exists (select 1 from app.hack_versions v where v.hack_id = v_hack) then
-    delete from app.hacks where id = v_hack;
+    delete from app.hacks where id = v_hack;                                                       -- already locked in step (2)
   end if;
   return pg_catalog.jsonb_build_object('deleted', true);
 end
