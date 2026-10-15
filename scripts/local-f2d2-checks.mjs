@@ -220,6 +220,27 @@ await check('U1', 'unknown outcomes keep their reservation; nothing releases mon
   return 'unknown reservations on yesterday and today stayed reserved through refused cancels and repeated marks; outstanding() spans days; settling yesterday\'s reservation today charged yesterday (550) and left today untouched; an overrun of 19700 (actual 20000 against a hold of 300) was recorded in full, flagged, and the exhausted budget refuses more; ledger reconciles';
 });
 
+await check('G1', 'scope integrity on the real stack: the name global is refused, counters cannot be deleted by ordinary DML, a missing counter is reported after real concurrent traffic', async () => {
+  const ins = psql(`set role hackass_owner;\ninsert into app.ai_operation_types (op_type, enabled, daily_limit_micros, max_charge_micros) values ('global', true, 1000, 500);`, { tolerate: true });
+  ok(ins.status !== 0 && /ai_operation_types_not_reserved_scope/.test(ins.err), `the operation name global must be refused by the database: ${ins.err.slice(-200)}`);
+  ok(last(owner(`select count(*) from app.ai_operation_types where op_type = 'global';`)) === '0', 'no operation named global exists');
+  const reserve = await runAll([reserveSql(key('g1'), 'global', 10)]);
+  ok(/invalid_content/.test(reserve[0].err) && /op_type/.test(reserve[0].err), `reserve refuses global: ${reserve[0].err.split('\n')[0]}`);
+  const del = await runAll([`delete from app.ai_budget_days where scope = 'global';`]);
+  ok(/record_immutable/.test(del[0].err), `counter deletion must be refused: ${del[0].err.split('\n')[0]}`);
+  ok(Number(last(owner(`select count(*) from app.ai_budget_days where scope = 'global';`))) >= 1, 'the global counters are all still there');
+  // a counter goes missing behind the system's back (guard switched off by an operator with the right to): the report catches it
+  const today = last(owner(`select (clock_timestamp() at time zone 'UTC')::date::text;`));
+  const row = last(owner(`select reserved_micros || '/' || spent_micros || '/' || overrun_micros from app.ai_budget_days where scope = 'global' and budget_day = '${today}';`));
+  owner(`alter table app.ai_budget_days disable trigger ai_budget_days_no_delete;\ndelete from app.ai_budget_days where scope = 'global' and budget_day = '${today}';\nalter table app.ai_budget_days enable trigger ai_budget_days_no_delete;`);
+  const rep = JSON.parse(last(owner(`select app_budget.reconcile_report(null);`)));
+  ok(rep.ok === false && rep.missing_counters.some((m) => m.scope === 'global' && m.budget_day === today), `the missing global counter must be reported: ${JSON.stringify(rep.missing_counters).slice(0, 200)}`);
+  const [r, sp, ov] = row.split('/').map(Number);
+  owner(`insert into app.ai_budget_days (budget_day, scope, reserved_micros, spent_micros, overrun_micros) values ('${today}', 'global', ${r}, ${sp}, ${ov});`);
+  reconciled();
+  return 'an operation named global is refused by the database and by reserve; DELETE on the counters is refused (PT409 record_immutable); with the guard deliberately switched off, a missing global counter is reported by name and day and the report is not ok; restored, it reconciles';
+});
+
 await check('A1', 'no access for members, anon, service_role or the worker login: not through the API, not as tables, not as functions', async () => {
   const m = await confirmedSession(); const t = m.session.access_token;
   const calls = [['reserve', { p_key: 'abcdefgh1', p_op: 'x_y_z', p_submission_id: S1.sid, p_content_hash: S1.hash, p_max: 1 }], ['settle', { p_reservation_id: S1.sid, p_actual: 1 }], ['outstanding', {}]];

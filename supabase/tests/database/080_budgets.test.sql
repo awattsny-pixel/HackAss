@@ -96,6 +96,22 @@ create function pg_temp.res(k text, op text, sub text, mx bigint, p_day text def
 create function pg_temp.rid(k text) returns text language sql as $$ select pg_temp.q(format('select id::text from app.ai_reservations where idempotency_key = %L', k)) $$;
 create function pg_temp.cnt(p_scope text, p_col text, p_day text default null) returns text language sql as $$
   select pg_temp.q(format('select coalesce((select %s::text from app.ai_budget_days where scope = %L and budget_day = coalesce(%L::date, (clock_timestamp() at time zone ''UTC'')::date)), ''0'')', p_col, p_scope, p_day)) $$;
+-- remove counter rows the way a careless or malicious owner session would: the delete guard (if the build has one) is switched off first, so the helper works on
+-- both the original and the corrected build. Restore rebuilds missing counters from the ledger.
+create function pg_temp.rm_counters(p_where text) returns void language plpgsql as $$
+declare has_guard boolean := exists (select 1 from pg_trigger where tgrelid = 'app.ai_budget_days'::regclass and tgname = 'ai_budget_days_no_delete');
+begin
+  if has_guard then perform pg_temp.owner_run('alter table app.ai_budget_days disable trigger ai_budget_days_no_delete'); end if;
+  perform pg_temp.owner_run('delete from app.ai_budget_days where ' || p_where);
+  if has_guard then perform pg_temp.owner_run('alter table app.ai_budget_days enable trigger ai_budget_days_no_delete'); end if;
+end $$;
+create function pg_temp.restore_counters() returns void language sql as $$
+  select pg_temp.owner_run($q$insert into app.ai_budget_days (budget_day, scope, reserved_micros, spent_micros, overrun_micros)
+    select x.budget_day, x.scope, x.r, x.s, x.o from (
+      select budget_day, 'global'::text as scope, sum(reserved_delta) as r, sum(spent_delta) as s, sum(overrun_micros) as o from app.ai_ledger group by budget_day
+      union all select budget_day, op_type, sum(reserved_delta), sum(spent_delta), sum(overrun_micros) from app.ai_ledger group by budget_day, op_type) x
+    on conflict do nothing$q$) $$;
+create function pg_temp.rep(p_key text) returns text language sql as $$ select pg_temp.bv(format('select jsonb_array_length(app_budget.reconcile_report(null) -> %L)::text', p_key)) $$;
 create function pg_temp.recon() returns text language sql as $$ select pg_temp.bv('select (app_budget.reconcile_report(null) ->> ''ok'')') $$;
 
 -- ===================================================================================================================
@@ -137,6 +153,22 @@ select is(pg_temp.bd(format('select app_budget.reserve(%L, %L, %L, %L, 100)', 'k
 select is(pg_temp.bd(pg_temp.res('key-b-0011', 'summarize', 's1', 100, (current_date + 5)::text)), 'PT422|invalid_content|day', 'a budget day more than one day from today is refused');
 select is(pg_temp.q('select count(*)::text from app.ai_reservations'), '0', 'none of the refusals created a reservation');
 select is(pg_temp.q('select count(*)::text from app.ai_ledger'), '0', 'or a ledger entry');
+-- 'global' names the global counter and nothing else
+create temp table t_g1 as select pg_temp.owner_do($$insert into app.ai_operation_types (op_type, enabled, daily_limit_micros, max_charge_micros) values ('global', true, 1000, 500)$$) as r;
+grant all on t_g1 to public;
+select pg_temp.owner_run($$delete from app.ai_operation_types where op_type = 'global'$$);
+select is((select r from t_g1), '23514|new row for relation "ai_operation_types" violates check constraint "ai_operation_types_not_reserved_scope"', 'the database refuses an operation type named global (it is the global counter''s scope)');
+select is(pg_temp.bd(pg_temp.res('key-b-0012', 'global', 's1', 100)), 'PT422|invalid_content|op_type', 'reserve refuses the operation name global explicitly');
+select is(pg_temp.bd('select app_budget.lock_scopes(current_date, ''global'')'), 'PT422|invalid_content|op_type', 'and so does the counter helper (no second row can ever be keyed as the global scope by an operation)');
+select is(pg_temp.q('select count(*)::text from app.ai_operation_types where op_type = ''global'''), '0', 'no such operation exists');
+-- reconciliation with an EMPTY ledger
+select is(pg_temp.q('select count(*)::text from app.ai_ledger'), '0', 'control: the ledger is empty here');
+select is(pg_temp.recon(), 'true', 'empty ledger, only zero counters: reconciles');
+select pg_temp.owner_run($$insert into app.ai_budget_days (budget_day, scope, reserved_micros) values ((clock_timestamp() at time zone 'UTC')::date, 'phantom_op', 5)$$);
+select is(pg_temp.recon() || '/' || pg_temp.rep('counter_mismatches') || '/' || pg_temp.rep('missing_counters'), 'false/1/0', 'empty ledger, a NONZERO counter with no ledger behind it: reported as a mismatch (not as missing)');
+select pg_temp.rm_counters($$scope = 'phantom_op'$$);
+select pg_temp.rm_counters('true');
+select is(pg_temp.recon() || '/' || pg_temp.rep('missing_counters') || '/' || pg_temp.rep('counter_mismatches'), 'true/0/0', 'empty ledger and no counters at all: nothing is missing (there is nothing to account for)');
 
 -- ===================================================================================================================
 -- C. both limits hold: global 1000; summarize limit 600 (cap 300); classify limit 900 (cap 500)
@@ -275,6 +307,61 @@ select pg_temp.owner_run(format($$update app.ai_reservations set actual_micros =
 select pg_temp.owner_run('alter table app.ai_reservations enable trigger ai_reservations_guard');
 select is(pg_temp.recon(), 'true', 'all restored: reconciles');
 select is(pg_temp.q(format($$select kind || ':' || basis from app.ai_ledger where reservation_id = %L and kind = 'unknown'$$, pg_temp.rid('key-c-0002'))), 'unknown:timeout', 'the unknown outcome and its reason are in the ledger');
+-- ===================================================================================================================
+-- J. scope integrity: a missing counter cannot hide, deleting counters is refused, and an overrun does not by itself exhaust a budget
+-- ===================================================================================================================
+select pg_temp.restore_counters();
+select is(pg_temp.recon(), 'true', 'populated ledger: reconciles before the scenarios');
+select is(pg_temp.q($$select count(*)::text from app.ai_budget_days where budget_day = (clock_timestamp() at time zone 'UTC')::date$$) || '/' || (pg_temp.cnt('global', 'spent_micros')::bigint = pg_temp.cnt('summarize', 'spent_micros')::bigint + pg_temp.cnt('classify', 'spent_micros')::bigint)::text, '3/true', 'ordinary operations keep separate rows: today has global + summarize + classify, and the global totals are the sum of the operations');
+select is(pg_temp.owner_do('delete from app.ai_budget_days'), 'PT409|record_immutable', 'ordinary owner DML cannot delete counters (that would silently reset the available budget)');
+select is(pg_temp.owner_do($$delete from app.ai_budget_days where scope = 'global'$$), 'PT409|record_immutable', 'not even one scope');
+select is(pg_temp.owner_do($$delete from app.ai_budget_days where scope = 'summarize'$$), 'PT409|record_immutable', 'and an operation counter cannot be deleted either');
+-- (a) the GLOBAL counter of today goes missing
+select pg_temp.rm_counters($$scope = 'global' and budget_day = (clock_timestamp() at time zone 'UTC')::date$$);
+select is(pg_temp.recon() || '/' || pg_temp.rep('missing_counters') || '/' || pg_temp.rep('counter_mismatches'), 'false/1/0', 'a missing GLOBAL counter is reported explicitly and the report is not ok');
+select is(pg_temp.bv($$select (app_budget.reconcile_report(null) -> 'missing_counters' -> 0 ->> 'scope') || '/' || (app_budget.reconcile_report(null) -> 'missing_counters' -> 0 ->> 'budget_day')$$), 'global/' || (select (clock_timestamp() at time zone 'UTC')::date::text), 'and it names the scope and the day');
+select pg_temp.restore_counters();
+select is(pg_temp.recon(), 'true', 'restored from the ledger: reconciles');
+-- (b) an OPERATION counter goes missing
+select pg_temp.rm_counters($$scope = 'summarize' and budget_day = (clock_timestamp() at time zone 'UTC')::date$$);
+select is(pg_temp.recon() || '/' || pg_temp.rep('missing_counters') || '/' || pg_temp.rep('counter_mismatches'), 'false/1/0', 'a missing OPERATION counter is reported explicitly and the report is not ok');
+select is(pg_temp.bv($$select app_budget.reconcile_report(null) -> 'missing_counters' -> 0 ->> 'scope'$$), 'summarize', 'naming the operation');
+select pg_temp.restore_counters();
+-- (c) a counter of YESTERDAY goes missing (the other day's books)
+select pg_temp.rm_counters($$scope = 'global' and budget_day = (clock_timestamp() at time zone 'UTC')::date - 1$$);
+select is(pg_temp.recon() || '/' || pg_temp.rep('missing_counters'), 'false/1', 'a missing counter of an earlier day is reported too');
+select is(pg_temp.bv($$select (app_budget.reconcile_report((clock_timestamp() at time zone 'UTC')::date) ->> 'ok')$$), 'true', 'and the report for TODAY alone is still ok (the day filter applies to missing counters)');
+select pg_temp.restore_counters();
+-- (d) both of today's counters at once
+select pg_temp.rm_counters($$scope in ('global', 'classify') and budget_day = (clock_timestamp() at time zone 'UTC')::date$$);
+select is(pg_temp.recon() || '/' || pg_temp.rep('missing_counters'), 'false/2', 'two missing counters are both reported');
+select pg_temp.restore_counters();
+select is(pg_temp.recon() || '/' || pg_temp.rep('missing_counters') || '/' || pg_temp.rep('counter_mismatches'), 'true/0/0', 'restored: reconciles with nothing missing');
+-- extra nonzero counters and wrong balances are still detected (alongside the new check)
+select pg_temp.owner_run($$insert into app.ai_budget_days (budget_day, scope, spent_micros) values ((clock_timestamp() at time zone 'UTC')::date, 'phantom_op', 7)$$);
+select is(pg_temp.recon() || '/' || pg_temp.rep('counter_mismatches') || '/' || pg_temp.rep('missing_counters'), 'false/1/0', 'an extra nonzero counter with no ledger behind it is still reported');
+select pg_temp.rm_counters($$scope = 'phantom_op'$$);
+select is(pg_temp.recon(), 'true', 'removed: reconciles');
+-- a scope whose ledger nets to zero still needs its counter: its history exists, so a vanished counter is reported
+select pg_temp.owner_run($$insert into app.ai_operation_types (op_type, enabled, daily_limit_micros, max_charge_micros) values ('zeroer', true, 1000, 500)$$);
+select pg_temp.owner_run($$update app.ai_budget_global set daily_limit_micros = 1000000$$);
+select is(pg_temp.bd(pg_temp.res('key-j-0010', 'zeroer', 's1', 100)), 'ok', 'zeroer: reserved 100');
+select is(pg_temp.bv(format($$select (app_budget.cancel(%L, 'never_dispatched')) ->> 'status'$$, pg_temp.rid('key-j-0010'))), 'cancelled', 'and cancelled: the ledger for the scope nets to zero');
+select is(pg_temp.cnt('zeroer', 'reserved_micros') || '/' || pg_temp.cnt('zeroer', 'spent_micros'), '0/0', 'the counter is zero');
+select pg_temp.rm_counters($$scope = 'zeroer'$$);
+select is(pg_temp.recon() || '/' || pg_temp.rep('missing_counters'), 'false/1', 'a missing counter is reported even when its ledger nets to zero');
+select pg_temp.restore_counters();
+select is(pg_temp.recon(), 'true', 'restored: reconciles');
+-- an overrun does not by itself exhaust a budget: the full cost is recorded and flagged, and reservations are refused only when they would exceed the limit
+select pg_temp.owner_run($$update app.ai_budget_global set daily_limit_micros = 1000000$$);
+select pg_temp.owner_run($$insert into app.ai_operation_types (op_type, enabled, daily_limit_micros, max_charge_micros) values ('embedder', true, 2000, 1000)$$);
+select is(pg_temp.bd(pg_temp.res('key-j-0001', 'embedder', 's1', 500)), 'ok', 'embedder: 500 reserved (limit 2000)');
+select is(pg_temp.bv(format('select (app_budget.settle(%L, 700)) ->> ''overrun_micros''', pg_temp.rid('key-j-0001'))), '200', 'it actually cost 700: overrun 200, recorded in full and flagged');
+select is(pg_temp.bd(pg_temp.res('key-j-0002', 'embedder', 's1', 1000)), 'ok', 'the overrun did not exhaust the budget: 700 used of 2000, a reservation of 1000 is still accepted');
+select is(pg_temp.bd(pg_temp.res('key-j-0003', 'embedder', 's1', 301)), 'PT409|budget_refused|operation_budget_exhausted', 'but one that would take usage past the limit (700 + 1000 + 301 > 2000) is refused');
+select is(pg_temp.bd(pg_temp.res('key-j-0004', 'embedder', 's1', 300)), 'ok', 'and exactly filling it (700 + 1000 + 300 = 2000) is accepted');
+select is(pg_temp.recon(), 'true', 'still reconciles');
+
 select is((select count(*)::int from pg_trigger t where t.tgrelid = 'app.ai_ledger'::regclass and not t.tgisinternal), 3, 'the ledger carries its append-only, truncate and totals triggers');
 
 select * from finish();

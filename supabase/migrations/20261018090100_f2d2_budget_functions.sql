@@ -16,6 +16,16 @@ create trigger ai_ledger_append_only before update or delete on app.ai_ledger fo
 create trigger ai_ledger_no_truncate before truncate on app.ai_ledger for each statement execute function app_content.guard_truncate();
 create trigger ai_reservations_no_truncate before truncate on app.ai_reservations for each statement execute function app_content.guard_truncate();
 create trigger ai_budget_days_no_truncate before truncate on app.ai_budget_days for each statement execute function app_content.guard_truncate();
+-- a counter row is never deleted: deleting one would silently reset the budget that day (the ledger's totals would have no counter, and the next reservation would
+-- start from zero). Rolling the whole feature back drops the tables; it does not delete rows.
+create function app_budget.guard_counter_delete() returns trigger
+  language plpgsql security definer set search_path = ''
+as $$
+begin
+  raise exception 'record_immutable' using errcode = 'PT409', detail = 'a budget counter is never deleted';
+end
+$$;
+create trigger ai_budget_days_no_delete before delete on app.ai_budget_days for each row execute function app_budget.guard_counter_delete();
 create trigger ai_operation_types_no_truncate before truncate on app.ai_operation_types for each statement execute function app_content.guard_truncate();
 create trigger ai_budget_global_no_truncate before truncate on app.ai_budget_global for each statement execute function app_content.guard_truncate();
 
@@ -84,6 +94,7 @@ create function app_budget.lock_scopes(p_day date, p_op text) returns void
   language plpgsql security definer set search_path = ''
 as $$
 begin
+  if p_op is null or p_op = 'global' then raise exception 'invalid_content' using errcode = 'PT422', detail = 'op_type'; end if;     -- global is the global counter's scope, never an operation
   insert into app.ai_budget_days (budget_day, scope) values (p_day, 'global') on conflict do nothing;
   insert into app.ai_budget_days (budget_day, scope) values (p_day, p_op) on conflict do nothing;
   perform 1 from app.ai_budget_days where budget_day = p_day and scope = 'global' for update;
@@ -110,7 +121,7 @@ declare
   d app.ai_budget_days;
 begin
   if p_key is null or p_key !~ '^[A-Za-z0-9._:-]{8,128}$' then raise exception 'invalid_content' using errcode = 'PT422', detail = 'idempotency_key'; end if;
-  if p_op is null or p_op !~ '^[a-z][a-z0-9_]{2,39}$' then raise exception 'invalid_content' using errcode = 'PT422', detail = 'op_type'; end if;
+  if p_op is null or p_op !~ '^[a-z][a-z0-9_]{2,39}$' or p_op = 'global' then raise exception 'invalid_content' using errcode = 'PT422', detail = 'op_type'; end if;
   if p_max is null or p_max < 1 or p_max > 1000000000000 then raise exception 'invalid_amount' using errcode = 'PT422'; end if;
   if p_day is null or p_day < app_budget.today() - 1 or p_day > app_budget.today() + 1 then raise exception 'invalid_content' using errcode = 'PT422', detail = 'day'; end if;
   select * into s from app.submissions x where x.id = p_submission_id;
@@ -230,11 +241,17 @@ as $$
     select l.budget_day, 'global'::text as scope, sum(l.reserved_delta) as r, sum(l.spent_delta) as s, sum(l.overrun_micros) as o from app.ai_ledger l group by l.budget_day
     union all
     select l.budget_day, l.op_type, sum(l.reserved_delta), sum(l.spent_delta), sum(l.overrun_micros) from app.ai_ledger l group by l.budget_day, l.op_type),
+  -- the COMPLETE set of scopes: every counter row and every ledger scope, so a counter that is missing cannot hide (a counter-only scan would never see it)
+  v_scopes as (
+    select coalesce(c.budget_day, x.budget_day) as budget_day, coalesce(c.scope, x.scope) as scope, (c.scope is null) as counter_missing,
+           c.reserved_micros, c.spent_micros, c.overrun_micros, coalesce(x.r, 0) as ledger_reserved, coalesce(x.s, 0) as ledger_spent, coalesce(x.o, 0) as ledger_overrun
+      from app.ai_budget_days c full outer join v_ledger_scope x on x.budget_day = c.budget_day and x.scope = c.scope
+     where (p_day is null or coalesce(c.budget_day, x.budget_day) = p_day)),
+  v_missing as (select s.budget_day, s.scope, s.ledger_reserved, s.ledger_spent, s.ledger_overrun from v_scopes s where s.counter_missing),
   v_counter_bad as (
-    select c.budget_day, c.scope, c.reserved_micros, c.spent_micros, c.overrun_micros, coalesce(x.r, 0) as ledger_reserved, coalesce(x.s, 0) as ledger_spent, coalesce(x.o, 0) as ledger_overrun
-      from app.ai_budget_days c left join v_ledger_scope x on x.budget_day = c.budget_day and x.scope = c.scope
-     where (p_day is null or c.budget_day = p_day)
-       and (c.reserved_micros <> coalesce(x.r, 0) or c.spent_micros <> coalesce(x.s, 0) or c.overrun_micros <> coalesce(x.o, 0))),
+    select s.budget_day, s.scope, s.reserved_micros, s.spent_micros, s.overrun_micros, s.ledger_reserved, s.ledger_spent, s.ledger_overrun
+      from v_scopes s
+     where not s.counter_missing and (s.reserved_micros <> s.ledger_reserved or s.spent_micros <> s.ledger_spent or s.overrun_micros <> s.ledger_overrun)),
   v_res_bad as (
     select r.id, r.status, r.max_charge_micros, r.actual_micros,
            coalesce((select sum(l.reserved_delta) from app.ai_ledger l where l.reservation_id = r.id), 0) as ledger_reserved,
@@ -245,7 +262,8 @@ as $$
          or coalesce((select sum(l.spent_delta) from app.ai_ledger l where l.reservation_id = r.id), 0) <> case when r.status = 'settled' then r.actual_micros else 0 end)),
   v_over as (select r.id, r.overrun_micros from app.ai_reservations r where r.overrun_micros > 0 and (p_day is null or r.budget_day = p_day))
   select pg_catalog.jsonb_build_object(
-    'ok', not exists (select 1 from v_counter_bad) and not exists (select 1 from v_res_bad),
+    'ok', not exists (select 1 from v_missing) and not exists (select 1 from v_counter_bad) and not exists (select 1 from v_res_bad),
+    'missing_counters', coalesce((select pg_catalog.jsonb_agg(pg_catalog.to_jsonb(m) order by m.budget_day, m.scope) from v_missing m), '[]'::jsonb),
     'counter_mismatches', coalesce((select pg_catalog.jsonb_agg(pg_catalog.to_jsonb(c)) from v_counter_bad c), '[]'::jsonb),
     'reservation_mismatches', coalesce((select pg_catalog.jsonb_agg(pg_catalog.to_jsonb(b)) from v_res_bad b), '[]'::jsonb),
     'overruns', coalesce((select pg_catalog.jsonb_agg(pg_catalog.to_jsonb(v)) from v_over v), '[]'::jsonb))
@@ -259,7 +277,7 @@ as $$
     from app.ai_reservations r where r.status in ('reserved', 'unknown')
 $$;
 
-revoke all on function app_budget.guard_append_only(), app_budget.guard_reservation(), app_budget.apply_ledger(), app_budget.today(), app_budget.lock_scopes(date, text),
+revoke all on function app_budget.guard_append_only(), app_budget.guard_counter_delete(), app_budget.guard_reservation(), app_budget.apply_ledger(), app_budget.today(), app_budget.lock_scopes(date, text),
   app_budget.reservation_json(app.ai_reservations, boolean), app_budget.reserve_for_day(text, text, uuid, text, bigint, date),
   app_budget.replay_or_conflict(app.ai_reservations, text, app.submissions, bigint), app_budget.reserve(text, text, uuid, text, bigint),
   app_budget.settle(uuid, bigint), app_budget.mark_unknown(uuid, text), app_budget.cancel(uuid, text), app_budget.reconcile_report(date), app_budget.outstanding() from public;

@@ -401,7 +401,15 @@ test('F2-D2: the budget objects are owner-only (no grant, no capability wiring),
   assert.ok(/'unknown', r\.budget_day, r\.op_type, 0, 0/.test(unk) && !unk.includes('lock_scopes'), 'an unknown mark moves no money and takes no counter lock');
   const trig = fns.match(/create function app_budget\.apply_ledger\(\)[\s\S]*?\n\$\$;/)![0];
   assert.ok(trig.includes('reserved_micros = reserved_micros + new.reserved_delta') && trig.includes("raise exception 'budget_refused'"), 'the ledger trigger applies the deltas and refuses an over-limit reserve');
+  // correction: the name global belongs to the global counter; a counter is never deleted; reconciliation sees the complete set of scopes
+  assert.match(tables, /constraint ai_operation_types_not_reserved_scope check \(op_type <> 'global'\)/);
+  assert.ok(fns.match(/create function app_budget\.reserve_for_day[\s\S]*?\n\$\$;/)![0].includes("or p_op = 'global' then raise exception 'invalid_content'"), 'reserve refuses the operation name global');
+  assert.ok(fns.match(/create function app_budget\.lock_scopes[\s\S]*?\n\$\$;/)![0].includes("p_op = 'global' then raise exception 'invalid_content'"), 'and so does lock_scopes');
+  assert.match(fns, /create trigger ai_budget_days_no_delete before delete on app\.ai_budget_days for each row execute function app_budget\.guard_counter_delete\(\);/);
+  const rr = fns.match(/create function app_budget\.reconcile_report[\s\S]*?\n\$\$;/)![0];
+  assert.ok(/from app\.ai_budget_days c full outer join v_ledger_scope x on/.test(rr) && rr.includes("'missing_counters'") && /'ok', not exists \(select 1 from v_missing\)/.test(rr), 'reconcile_report scans the complete set of scopes and reports missing counters');
   const down = code(readFileSync(join(root, 'supabase/rollbacks/20261018090000_f2d2_down.sql'), 'utf8'));
+  assert.ok(!/delete\s+from\s+app\.ai_budget_days/i.test(down), 'the rollback never deletes counter rows (it drops the tables)');
   assert.ok(down.indexOf('drop schema if exists app_budget cascade') < down.indexOf('drop table if exists app.ai_ledger'), 'functions over the row types go before the tables');
   assert.match(down, /version in \('20261018090000', '20261018090100'\)/);
 });

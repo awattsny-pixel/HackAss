@@ -112,7 +112,7 @@ select is(
 select is(
   (select string_agg(c.relname || ':' || t.tgname, ', ' order by c.relname, t.tgname) from pg_class c join pg_trigger t on t.tgrelid = c.oid and not t.tgisinternal
     where c.oid in ('app.ai_budget_global'::regclass, 'app.ai_operation_types'::regclass, 'app.ai_reservations'::regclass, 'app.ai_ledger'::regclass, 'app.ai_budget_days'::regclass)),
-  'ai_budget_days:ai_budget_days_no_truncate, ai_budget_global:ai_budget_global_no_truncate, ai_ledger:ai_ledger_append_only, ai_ledger:ai_ledger_apply, ai_ledger:ai_ledger_no_truncate, ai_operation_types:ai_operation_types_no_truncate, ai_reservations:ai_reservations_guard, ai_reservations:ai_reservations_no_truncate',
+  'ai_budget_days:ai_budget_days_no_delete, ai_budget_days:ai_budget_days_no_truncate, ai_budget_global:ai_budget_global_no_truncate, ai_ledger:ai_ledger_append_only, ai_ledger:ai_ledger_apply, ai_ledger:ai_ledger_no_truncate, ai_operation_types:ai_operation_types_no_truncate, ai_reservations:ai_reservations_guard, ai_reservations:ai_reservations_no_truncate',
   'the budget tables carry their guards: append-only ledger, totals applied only from the ledger, immutable reservations, TRUNCATE refused on all five');
 select is(
   (select string_agg(t.tgname, ', ' order by t.tgname) from pg_trigger t where t.tgrelid = 'app.jobs'::regclass and not t.tgisinternal),
@@ -152,6 +152,7 @@ app_bridge.session_valid(uuid,uuid) owner=postgres definer=true vol=s search_pat
 app_budget.apply_ledger() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_budget.cancel(uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_budget.guard_append_only() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_budget.guard_counter_delete() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_budget.guard_reservation() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_budget.lock_scopes(date,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_budget.mark_unknown(uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner

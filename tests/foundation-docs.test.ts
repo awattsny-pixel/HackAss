@@ -146,4 +146,8 @@ test('docs/db/f2d2-ai-budgets.md states the accounting contract: units, rules, e
   assert.match(doc, /Reconciliation recovery path/);
   assert.match(doc, /DATA LOSS|destroys every reservation/i);
   assert.match(doc, /written before the implementation/);
+  assert.match(doc, /never `global`/);
+  assert.match(doc, /missing_counters/);
+  assert.match(doc, /a counter row is never deleted/);
+  assert.match(doc, /does \*\*not necessarily exhaust\*\*/);
 });

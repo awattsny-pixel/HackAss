@@ -24,9 +24,11 @@ create table app.ai_operation_types (
   enabled            boolean     not null default false,
   daily_limit_micros bigint      not null check (daily_limit_micros between 0 and 1000000000000),
   max_charge_micros  bigint      not null check (max_charge_micros between 1 and 1000000000000),
-  updated_at         timestamptz not null default pg_catalog.clock_timestamp()
+  updated_at         timestamptz not null default pg_catalog.clock_timestamp(),
+  -- 'global' is the scope of the global counter in ai_budget_days; an operation called 'global' would share (and corrupt) that row
+  constraint ai_operation_types_not_reserved_scope check (op_type <> 'global')
 );
-comment on table app.ai_operation_types is 'The allowlist of AI operation types, each with its own daily limit and per-reservation cap. Missing or disabled = refused.';
+comment on table app.ai_operation_types is 'The allowlist of AI operation types, each with its own daily limit and per-reservation cap. Missing or disabled = refused. The name global is reserved for the global counter.';
 
 -- ---- reservations ---------------------------------------------------------------------------------------------------------------------
 create table app.ai_reservations (
