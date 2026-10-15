@@ -111,9 +111,9 @@ test('H0 validates the API URL, the database login, BOTH pooler endpoints, the w
   assert.match(h1, /\*\*1 on all three\*\* endpoints/);
   assert.match(h1, /migration endpoint, the pooler session endpoint and the pooler transaction endpoint/);
   const h2 = checkBody('H2');
-  assert.match(h2, /hackass\.staging_marker/);
+  assert.match(h2, /comment on role hackass_worker is '<nonce>'/);
   assert.match(h2, /each\*\* of the pooler transaction and session endpoints/);
-  assert.match(checkBody('H13'), /reset hackass\.staging_marker/);
+  assert.match(checkBody('H13'), /comment on role hackass_worker is null/);
 });
 
 test('every hosted check is classified read-only or mutating, and the forbidden-against-staging list names the local destructive tooling', () => {
@@ -277,7 +277,7 @@ test('only S6 is read-only: H1b (a created and deleted Auth user) is inside an e
 test('the permitted direct-SQL exceptions include the narrowly scoped staff-assignment setup and revocation, and every check that uses them points to the list', () => {
   const doc = procedure();
   const rules = section(doc, '## 1. Forbidden against staging', '## 2. Fixture users');
-  for (const needle of [/\*\*The only permitted direct-SQL data changes\*\*/, /the migration run itself \(H2a\)/, /alter role hackass_worker set hackass\.staging_marker/, /\*\*staff-assignment setup\*\*/, /insert into app\.staff_assignments \(user_id, role, granted_by\) values \('<fixture user id>', 'reviewer', 'staging-check'\)/,
+  for (const needle of [/\*\*The only permitted direct-SQL data changes\*\*/, /the migration run itself \(H2a\)/, /comment on role hackass_worker is '<nonce>'/, /\*\*staff-assignment setup\*\*/, /insert into app\.staff_assignments \(user_id, role, granted_by\) values \('<fixture user id>', 'reviewer', 'staging-check'\)/,
     /\*\*staff-assignment revocation\*\*/, /update app\.staff_assignments set revoked_at = now\(\), revoked_by = 'staging-check' where user_id = '<fixture user id>' and revoked_at is null/, /the one scoped job update of H10/, /naming a user id that is not a fixture created in this run, is refused/]) assert.match(rules, needle);
   assert.doesNotMatch(rules, /the two role settings/);
   for (const id of ['H7', 'H8', 'H10']) assert.match(checkBody(id), /permitted (insert|revocation) of section 1/, `${id} does not point to the permitted statements`);

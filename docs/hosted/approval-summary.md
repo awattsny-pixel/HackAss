@@ -38,7 +38,7 @@
 | S4 | Delete the remote branch `mhost1-ci-first-run` after the run | me or owner | authorization | yes |
 | S5 | Owner creates the `hackass-staging` project and applies the settings (O1, O6, O7, O8); tells me only the reference and region | owner | S1 results | owner-side |
 | S6 | Hosted **read-only** checks H0 and H1a only (nothing is created, changed or deleted) | me | S5 and secrets exported by the owner for the session | no |
-| S7 | Hosted **mutating authorization** that **explicitly includes H1b** (creates and deletes one throwaway Auth user), then H2a (migration apply), H2c (one role setting) and H3 (second runner invocation), followed by the read-only checks H4 and H5a. H2b (exposing `api`) is an owner action between H2a and H2c | me and owner | S6 passed; owner confirms the hosted facts (Postgres 17, bridge privileges) | **yes** |
+| S7 | Hosted **mutating authorization** that **explicitly includes H1b** (creates and deletes one throwaway Auth user), then H2a (migration apply), H2c (one role comment) and H3 (second runner invocation), followed by the read-only checks H4 and H5a. H2b (exposing `api`) is an owner action between H2a and H2c | me and owner | S6 passed; owner confirms the hosted facts (Postgres 17, bridge privileges) | **yes** |
 | S8 | Hosted **mutating checks** H5b to H8, H10 and H11 (fixtures, Auth users, staff-assignment inserts and revocation, one scoped job update), the worker password setup (owner) with H9 queries, then the read-only H12 | me and owner | S7 passed; worker password (O4) | yes (synthetic data) |
 | S9 | Cleanup H13 and evidence H14; owner deletes the project | me and owner | all of the above | yes |
 

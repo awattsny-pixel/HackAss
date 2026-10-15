@@ -21,7 +21,7 @@
   | `FORBIDDEN_PROJECT_REFS` | comma-separated project references that must never be targeted |
 
 * **Proposed tooling.** The checks are run by a new script set under `scripts/hosted/` that does **not exist yet**; it is written and reviewed in the execution slice, before any run. It must: refuse to start unless `H0` passes; read only the variables above; never print a secret; pass secrets to HTTP clients through headers set in code (not through `curl -H` arguments); write raw output only to a directory outside the repository; and contain none of the local container, reset or rollback logic. SQL snippets below are inline so they can be reviewed now.
-* **Classification.** *Read-only*: sends only queries or GET requests that change nothing. *Mutating*: creates, changes or deletes hosted state (users, sessions, rows, roles, role settings, migrations). A mutating check is run only after the previous checks passed and only against the staging project.
+* **Classification.** *Read-only*: sends only queries or GET requests that change nothing. *Mutating*: creates, changes or deletes hosted state (users, sessions, rows, roles, role comments, migrations). A mutating check is run only after the previous checks passed and only against the staging project.
 * **Stop rule.** Any failed check stops the run. The output (redacted) is the result; nothing is patched by hand on the hosted database and no check is retried until the cause is understood and reviewed.
 
 ### 0.2 Database connection method: password file, never an argument (verified locally)
@@ -66,12 +66,14 @@ These exist for the **local disposable stack** and must never be pointed at a ho
 * `supabase link` (writes the project reference into the checkout) and `supabase db push --linked`, `supabase db remote commit`, `supabase db pull`, and any `--include-all` or `--include-seed` flag.
 * the pgTAP files under `supabase/tests/database/` (they assume the local role setup and disable triggers).
 
-Hosted scripts must also refuse any SQL containing `drop schema`, `drop role`, `truncate`, `disable trigger` or `schema_migrations` writes. **The only permitted direct-SQL data changes** (everything else goes through the application's own RPCs, the Auth API or the migration run) are these, each scoped to a synthetic fixture and run through the migration login with `set role hackass_owner`:
-* the migration run itself (H2a);
-* the worker-role marker: `alter role hackass_worker set hackass.staging_marker = '<nonce>'` (H2c) and its removal (H13);
-* **staff-assignment setup**, once per staff fixture (`s-rm`, `s-mfa`, `s-rev`): `insert into app.staff_assignments (user_id, role, granted_by) values ('<fixture user id>', 'reviewer', 'staging-check')`, the statement shape the local checks use;
-* **staff-assignment revocation**, for `s-rm` in H7 (and any assignment still active at H13, if the delete trigger has not already revoked it): `update app.staff_assignments set revoked_at = now(), revoked_by = 'staging-check' where user_id = '<fixture user id>' and revoked_at is null`;
-* the one scoped job update of H10 (`available_at` of the single synthetic job, inside a transaction that requires exactly one row);
+Hosted scripts must also refuse any SQL containing `drop schema`, `drop role`, `truncate`, `disable trigger` or `schema_migrations` writes. **The only permitted direct-SQL data changes** (everything else goes through the application's own RPCs, the Auth API or the migration run) are these, each scoped to a synthetic fixture. **Who runs them matters:** role administration runs **as `postgres` itself** (the migration login) and never after `set role`; `set role hackass_owner` is reserved for **application fixture DML** (and owner-side reads of application tables). The guard in `scripts/hosted/lib/sqlguard.mjs` enforces this split.
+* the migration run itself (H2a), as `postgres`;
+* **role administration, as `postgres`:** the worker-role marker, a role comment: `comment on role hackass_worker is '<nonce>'` (H2c) and its removal `comment on role hackass_worker is null` (H13). (A custom setting such as `alter role hackass_worker set hackass.staging_marker` was tried first and is refused for a non-superuser `postgres`, found by running the scripts against the local stack, so a role comment is used; it has no behavioural effect);
+* **application fixture DML, as `hackass_owner` after `set role hackass_owner`:**
+  * the synthetic category (no migration seeds one): `insert into app.categories (slug, name) values ('stg-<run>', 'Staging check') on conflict do nothing`;
+  * **staff-assignment setup**, once per staff fixture (`s-rm`, `s-mfa`, `s-rev`): `insert into app.staff_assignments (user_id, role, granted_by) values ('<fixture user id>', 'reviewer', 'staging-check')`, the statement shape the local checks use;
+  * **staff-assignment revocation**, for `s-rm` in H7 (and any assignment still active at H13, if the delete trigger has not already revoked it): `update app.staff_assignments set revoked_at = now(), revoked_by = 'staging-check' where user_id = '<fixture user id>' and revoked_at is null`;
+  * the one scoped job update of H10 (`available_at` of the single synthetic job, one atomic block that raises unless exactly one row changes);
 * the read-only queries of the checks.
 A statement outside these shapes, or one naming a user id that is not a fixture created in this run, is refused by the script.
 
@@ -129,8 +131,8 @@ The `--dry-run` listing is compared with `staging-plan.md` section 4 before the 
 
 *H2b (owner action, then read-only verification): expose `api` only, after it exists.* The `api` schema is created by migration 1, so the Data API's exposed-schema list can only be set to `api` **now** (not earlier). The owner sets "Exposed schemas" to `api` alone and removes `public` and `graphql_public`; the platform reloads its schema cache. Until this step the project has no application object in any exposed schema (H4 checks that `public` is unchanged), so nothing application-related is reachable over HTTP in the meantime. Verification (read-only): `GET $STAGING_URL/rest/v1/` with the publishable key returns an OpenAPI document whose `/rpc/` paths are `api` functions only (the allowlist in H12); a request with `Accept-Profile: public` is refused (HTTP 406 or an error body naming an invalid schema). No HTTP-based check (H5b onward) runs before H2b passes.
 
-*H2c (mutating, minimal): the worker endpoint is the same project.* Through the migration login set a marker with a fresh nonce: `alter role hackass_worker set hackass.staging_marker = '<nonce>';` Then, as `hackass_worker` through **each** of the pooler transaction and session endpoints, run only `show hackass.staging_marker;`.
-Pass: it equals the nonce on both. Otherwise stop before using the worker for anything else. The marker is removed in H13 (`alter role hackass_worker reset hackass.staging_marker;`).
+*H2c (mutating, minimal): the worker endpoint is the same project.* As `postgres` through the migration login (role administration, no `set role`) set a marker with a fresh nonce: `comment on role hackass_worker is '<nonce>';` Then, as `hackass_worker` through **each** of the pooler transaction and session endpoints, run only `select shobj_description(r.oid, 'pg_authid') from pg_roles r where r.rolname = current_user;`.
+Pass: it equals the nonce on both. Otherwise stop before using the worker for anything else. The marker is removed in H13 (`comment on role hackass_worker is null;`).
 
 ### H3. Migration runner invoked again with nothing pending (read-only dry-run; mutating-capable no-op)
 Proves G-1 as interpreted in the F2-F review: a second invocation applies nothing already recorded.
@@ -138,7 +140,7 @@ Proves G-1 as interpreted in the F2-F review: a second invocation applies nothin
 2. The `--dry-run` command of H2a (read-only): expect a statement that the remote database is up to date and no pending migrations.
 3. The real command of H2a (expected to be a no-op).
 4. After: the same two queries.
-Pass: step 2 lists nothing; ledger count and checksum are unchanged (21); the catalog fingerprint is unchanged; no error. (The role setting of H2c is not part of the fingerprint; it is a role attribute, recorded separately.)
+Pass: step 2 lists nothing; ledger count and checksum are unchanged (21); the catalog fingerprint is unchanged; no error. (The role comment of H2c is not part of the fingerprint; it is a shared-catalog comment, recorded separately.)
 
 ### H4. Catalog inventory against the golden (read-only)
 Runs the function-inventory query from `supabase/tests/database/010_roles_and_grants.test.sql` (the `$golden$` block and the query above it) on staging and diffs it with the golden text. Also: role attributes of `hackass_owner` and `hackass_worker`; no table, column or sequence privilege for `anon`, `authenticated` or `hackass_worker` in the application schemas; `hackass_owner` holds no privilege on `auth`; `select count(*) from pg_class where relnamespace = 'public'::regnamespace` equals `public_objects_before` from H1a.
@@ -223,7 +225,7 @@ Pass: phase 1 passed for every credential, phase 2 had no 2xx, phase 3 holds. Lo
 
 ### H13. Cleanup (mutating)
 * Delete the synthetic Auth users (`b1`, `s-sess`, `s-rm`, `s-mfa`, `s-rev`) through the admin API (the delete trigger marks accounts `deleted` and revokes staff assignments); confirm no staff assignment remains active.
-* Remove the role setting: `alter role hackass_worker reset hackass.staging_marker;`.
+* Remove the role comment (as `postgres`): `comment on role hackass_worker is null;`.
 * Revoke or rotate any key or token created for the run; delete the password files; unset every exported secret in the operator's shell.
 * The synthetic content (hacks, versions, publications, decisions, ledgers) **cannot be deleted by design** (append-only, immutable). It is removed by deleting the project (owner action O9). Until then the project stays private, with sign-ups closed and no application pointed at it.
 Pass: no synthetic user remains active; no active staff assignment remains; the marker is gone; the owner confirms the deletion date.
@@ -243,7 +245,7 @@ Pass: no synthetic user remains active; no active staff assignment remains; the 
 | H1b live identity proof | mutating (one throwaway Auth user, deleted at once) |
 | H2a apply migrations | mutating |
 | H2b exposure of `api` | owner mutation, then read-only verification |
-| H2c worker endpoint proof | mutating (one role setting) |
+| H2c worker endpoint proof | mutating (one role comment) |
 | H3 second runner invocation | read-only dry-run; the real command is a mutating-capable no-op |
 | H4 catalog inventory | read-only |
 | H5a trigger and bridge presence | read-only |
