@@ -66,7 +66,14 @@ These exist for the **local disposable stack** and must never be pointed at a ho
 * `supabase link` (writes the project reference into the checkout) and `supabase db push --linked`, `supabase db remote commit`, `supabase db pull`, and any `--include-all` or `--include-seed` flag.
 * the pgTAP files under `supabase/tests/database/` (they assume the local role setup and disable triggers).
 
-Hosted scripts must also refuse any SQL containing `drop schema`, `drop role`, `truncate`, `disable trigger` or `schema_migrations` writes. The only hosted data changes outside the application's own RPCs are the ones named in this document: the migration run (H2), the two role settings and one scoped job update named in H2c and H10, and the cleanup of H13.
+Hosted scripts must also refuse any SQL containing `drop schema`, `drop role`, `truncate`, `disable trigger` or `schema_migrations` writes. **The only permitted direct-SQL data changes** (everything else goes through the application's own RPCs, the Auth API or the migration run) are these, each scoped to a synthetic fixture and run through the migration login with `set role hackass_owner`:
+* the migration run itself (H2a);
+* the worker-role marker: `alter role hackass_worker set hackass.staging_marker = '<nonce>'` (H2c) and its removal (H13);
+* **staff-assignment setup**, once per staff fixture (`s-rm`, `s-mfa`, `s-rev`): `insert into app.staff_assignments (user_id, role, granted_by) values ('<fixture user id>', 'reviewer', 'staging-check')`, the statement shape the local checks use;
+* **staff-assignment revocation**, for `s-rm` in H7 (and any assignment still active at H13, if the delete trigger has not already revoked it): `update app.staff_assignments set revoked_at = now(), revoked_by = 'staging-check' where user_id = '<fixture user id>' and revoked_at is null`;
+* the one scoped job update of H10 (`available_at` of the single synthetic job, inside a transaction that requires exactly one row);
+* the read-only queries of the checks.
+A statement outside these shapes, or one naming a user id that is not a fixture created in this run, is refused by the script.
 
 ## 2. Fixture users and the sequence they allow
 
@@ -146,11 +153,11 @@ Create `s-sess`. Sign in (`/auth/v1/token?grant_type=password`), record `expires
 Pass: before sign-out 200; after sign-out the call is refused inside the database (`session_invalid`, HTTP 403), while the token still decodes with an unexpired `exp` and a valid signature (so the refusal is the database's `auth.sessions` check, not signature or expiry). Also call `/auth/v1/user` with the revoked token: expect the Auth server to refuse it. This session ends here by design: **no later check uses `s-sess`**, and every later check signs in its own users afresh. Local analogue: L3, L4; `local-f2a-checks.mjs`.
 
 ### H7. Staff removal takes effect at once (mutating, dedicated user)
-Create `s-rm`, enroll and verify TOTP to obtain an `aal2` token, insert a staff assignment with a `postgres` session (`set role hackass_owner`; `insert into app.staff_assignments ...`, the same statement the local scripts use). Call `api.staff_probe` with that token: expect success. Revoke the assignment (`update app.staff_assignments set revoked_at = now(), revoked_by = 'staging-check' ...`). Call `api.staff_probe` again with the **same token**.
+Create `s-rm`, enroll and verify TOTP to obtain an `aal2` token, insert a staff assignment with the permitted insert of section 1 (a `postgres` session with `set role hackass_owner`; the same statement the local scripts use). Call `api.staff_probe` with that token: expect success. Revoke the assignment with the permitted revocation of section 1. Call `api.staff_probe` again with the **same token**.
 Pass: success before, `not_staff` immediately after. `s-rm` is not used again. Local analogue: `020`, `local-f2c-checks.mjs`.
 
 ### H8. Real-token MFA expiry (mutating, time-dependent, dedicated user)
-Create `s-mfa` with an active staff assignment (it is **not** the user of H7, so H7's revocation cannot affect this check).
+Create `s-mfa` and give it an active staff assignment with the permitted insert of section 1 (it is **not** the user of H7, so H7's revocation cannot affect this check).
 1. Enroll a TOTP factor (`/auth/v1/factors`), verify with a computed code (`/auth/v1/factors/{id}/challenge` then `/verify`): the new token has `aal2` and an `amr` entry for `totp` with a timestamp.
 2. *Fast path (about 2 minutes):* call `api.staff_probe(p_max_mfa_age_seconds => 60)` immediately: success. Wait 70 seconds (the access token, valid for 600 s, is still unexpired) and call it again with the same token: expect `mfa_stale`.
 3. *Default window (about 16 minutes, run once; it may overlap H6, H7 and H9 because it uses its own user):* refresh the session around minute 9 (expected: a refreshed token keeps the original `amr` timestamp; whether the hosted platform does so is itself a fact to record), then at about minute 16 call `api.staff_probe()` with default arguments: expect `mfa_stale` (default window 15 minutes) while the token is still within its own `exp`.
@@ -168,7 +175,7 @@ Pass: all as stated in both modes. Local analogue: `local-f2a-checks.mjs` (worke
 
 ### H10. Worker job functions through transaction mode (mutating, explicit synthetic fixture)
 A recheck job exists only when a publication's rights review carries an **expiry date**, and it becomes due the day **after** that expiry (`available_at` is `expires_on + 1 day`, 00:00 UTC). It is therefore neither present nor claimable just because a publication was made. The fixture is built and made due in one narrowly scoped way:
-1. *Fixture.* With `b1` as author and `s-rev` as reviewer (created here, TOTP, active assignment), submit and review one synthetic hack `J` through the real API, recording its rights review with `p_expires_on` = **tomorrow (UTC)**, then publish it. Exactly one `app.jobs` row for `J`'s publication now exists, `queued`, with `available_at` in the future.
+1. *Fixture.* With `b1` as author and `s-rev` as reviewer (created here, TOTP, active assignment through the permitted insert of section 1), submit and review one synthetic hack `J` through the real API, recording its rights review with `p_expires_on` = **tomorrow (UTC)**, then publish it. Exactly one `app.jobs` row for `J`'s publication now exists, `queued`, with `available_at` in the future.
 2. *Preconditions (read-only, `postgres` session with `set role hackass_owner`):* `select id, status, available_at from app.jobs where target_publication_id = '<J publication id>'` returns exactly one `queued` row with `available_at > now()`; `select count(*) from app.jobs where status = 'queued' and available_at <= now()` is **0** (no other job is due). If either fails, stop; do not continue.
 3. *The one scoped mutation* (the same statement the local checks use to make a job due; no trigger is disabled, the job guard allows it):
 ```sql

@@ -2,8 +2,12 @@ name: CI
 
 # Verification only: no deployment, no secrets, no live-service credentials. All configuration used by the
 # build and the smoke run is dummy or generated locally by the test harness.
+# Triggers: pushes to `main` and to the one verification branch `mhost1-ci-first-run` (exact names, no wildcards; tag pushes and every other branch do not run),
+# and every pull request. Third-party actions are pinned to full commit SHAs (resolved and verified 2026-10-15 from the public repositories: the commit was fetched
+# by SHA and matched the tag or branch head); the comment after each SHA names the release. The runner image is pinned to ubuntu-24.04.
 on:
   push:
+    branches: [main, mhost1-ci-first-run]
   pull_request:
 
 permissions:
@@ -15,17 +19,22 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    name: verify (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false # a failure on one supported Node version must not hide the result on the other
+      matrix:
+        node-version: ['22.23.3', '24.21.0'] # 22.23.3 is .nvmrc (a test keeps them equal); 24.21.0 is the second supported version
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           fetch-depth: 0 # the Gitleaks history scan needs every commit
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version-file: .nvmrc
+          node-version: ${{ matrix.node-version }}
           cache: npm
 
       - name: Install (lockfile only, no lifecycle scripts)
@@ -68,14 +77,14 @@ jobs:
   # Auth/session/MFA checks. The same commands passed locally on an Intel Mac with Docker Desktop; this job's first GitHub
   # run is still its own first verification.
   database:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -84,7 +93,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       # The version must equal scripts/supabase-cli-pin.json (a test enforces it).
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3, the head of the v1 branch on 2026-10-15
         with:
           version: 2.120.0
 
@@ -125,14 +134,14 @@ jobs:
   # Real `next build` proofs of the server/client boundary: a server route importing the server-only platform surface
   # must build; a Client Component importing it must fail with the server-only error. Runs in a throwaway copy.
   server-boundary:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: npm

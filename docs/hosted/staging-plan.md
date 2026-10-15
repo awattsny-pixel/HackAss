@@ -134,7 +134,7 @@ These are the points where hosted Supabase may differ from the local stack. A fa
 ## 9. Cost and cleanup (estimates; CONFIRM against the owner's plan and current pricing)
 
 * **Supabase:** a free-plan project costs nothing but the plan limits the number of active free projects per organization and pauses inactive projects. If a paid plan is needed, expect a monthly base fee plus compute; a few days of use is a small fraction of one month but billing granularity and minimums are the owner's to check. I have not verified current prices.
-* **GitHub Actions:** the first push triggers the workflow reviewed in `ci-review.md` (three jobs, about 25 to 35 minutes of Linux runner time in total, estimated from local timings); free for public repositories, within the monthly free minutes for private ones on typical plans (CONFIRM).
+* **GitHub Actions:** the first push triggers the workflow reviewed in `ci-review.md` (four Linux job runs: the application job on Node 22.23.3 and on Node 24.21.0, the database job, the server-boundary probe; about 30 to 40 minutes of runner time in total, estimated from local timings); free for public repositories, within the monthly free minutes for private ones on typical plans (CONFIRM).
 * **Cleanup responsibilities:**
   * Owner: delete (or pause then delete) the `hackass-staging` project; revoke any key or token created for the run; delete the temporary remote branch; remove any repository secret that was set (none is planned); clear shell sessions holding exported secrets.
   * Operator machine (me, under authorization): delete the raw run output, the password files created for the run and any local environment files after the redacted evidence is reviewed; never commit them. The redacted evidence is **not** deleted.

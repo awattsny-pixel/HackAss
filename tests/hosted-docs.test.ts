@@ -42,7 +42,8 @@ test('no hosted preparation document contains a secret, a connection string with
     assert.doesNotMatch(t, /postgres(?:ql)?:\/\/[^\s:@/]+:[^\s@]+@/, `${f}: connection string with a password`);
     assert.doesNotMatch(t, /sb_(?:secret|publishable)_[A-Za-z0-9_-]{16,}/, `${f}: Supabase key`);
     assert.doesNotMatch(t, /[a-z]{20}\.supabase\.co/, `${f}: a concrete project host`);
-    assert.doesNotMatch(t.replaceAll('266ec02e4e55b91420d51dc8cf907c7b8ac4540e', ''), /\b[0-9a-f]{40}\b/, `${f}: a full commit-hash-sized hex string other than the accepted base commit (use the 7-character form for history references)`);
+    const allowed = ['266ec02e4e55b91420d51dc8cf907c7b8ac4540e', '11d5960a326750d5838078e36cf38b85af677262', '49933ea5288caeca8642d1e84afbd3f7d6820020', '1dedf2c611547ede7232d26866dd3c56ab903bbb']; // the accepted base commit and the three reviewed action pins
+    assert.doesNotMatch(allowed.reduce((acc, a) => acc.replaceAll(a, ''), t), /\b[0-9a-f]{40}\b/, `${f}: a full commit-hash-sized hex string other than the accepted base commit and the reviewed action pins (use the 7-character form for history references)`);
   }
 });
 
@@ -150,7 +151,7 @@ test('the fixture sequence is executable: dedicated users for sign-out, staff re
   assert.match(checkBody('H6'), /every later check signs in its own users afresh/);
   assert.match(checkBody('H7'), /Create `s-rm`/);
   assert.match(checkBody('H7'), /`s-rm` is not used again/);
-  assert.match(checkBody('H8'), /Create `s-mfa` with an active staff assignment \(it is \*\*not\*\* the user of H7/);
+  assert.match(checkBody('H8'), /Create `s-mfa` and give it an active staff assignment with the permitted insert of section 1 \(it is \*\*not\*\* the user of H7/);
   assert.doesNotMatch(checkBody('H7'), /s-mfa/);
   assert.doesNotMatch(checkBody('H8'), /s-rm/);
   assert.match(checkBody('H8'), /overlap H6, H7 and H9/);
@@ -204,32 +205,84 @@ test('raw output is disposable and redacted evidence is retained: the three docu
   assert.match(read('docs/hosted/README.md'), /Raw run output is disposable and never kept; only redacted evidence is retained/);
 });
 
-test('the CI review matches the workflow: triggers, permissions, action references, runtime versions and the absence of secrets and deployment steps', () => {
+test('the CI review matches the hardened workflow: triggers, permissions, pinned actions, pinned runner, Node legs, and the absence of secrets and deployment steps', () => {
   const review = read('docs/hosted/ci-review.md');
   assert.deepEqual(Object.keys(workflow.on).sort(), ['pull_request', 'push']);
   assert.deepEqual(workflow.permissions, { contents: 'read' });
   const uses = [...new Set(Object.values(workflow.jobs).flatMap((j) => j.steps.map((s) => s.uses).filter(Boolean)))] as string[];
-  assert.ok(uses.length >= 3);
-  for (const u of uses) assert.ok(review.includes(u.split('@')[0]) && review.includes(`@${u.split('@')[1]}`), `the review does not mention ${u}`);
-  for (const u of uses) assert.match(u, /@v\d+$/, `${u} is unexpectedly pinned differently from the reviewed tag form (update ci-review.md)`);
-  assert.ok(Object.values(workflow.jobs).every((j) => j['runs-on'] === 'ubuntu-latest'));
-  assert.match(review, /ubuntu-latest/);
+  assert.equal(uses.length, 3);
+  for (const u of uses) {
+    const [name, sha] = u.split('@');
+    assert.match(sha, /^[0-9a-f]{40}$/, `${u} is not pinned to a full commit SHA`);
+    assert.ok(review.includes(name) && review.includes(sha), `the review does not record ${u}`);
+  }
+  assert.ok(Object.values(workflow.jobs).every((j) => j['runs-on'] === 'ubuntu-24.04'));
+  assert.doesNotMatch(workflowText, /-latest/);
+  assert.match(review, /ubuntu-24\.04/);
   assert.match(review, /22\.23\.3/);
+  assert.match(review, /24\.21\.0/);
   assert.equal(read('.nvmrc').trim(), '22.23.3');
   assert.match(review, /2\.120\.0/);
   assert.doesNotMatch(workflowText.replace(/^\s*#.*$/gm, ''), /secrets\.|vars\.|environment:|deploy|id-token|contents: write|packages: write|upload-artifact|gh release|git push/i);
-  assert.match(review, /every branch and every tag/);
+  assert.match(review, /Before this change `push:` had no filter and fired for every branch and every tag/);
+  assert.match(review, /Pushes to any other branch and \*\*all tag pushes do not run the workflow\*\*/);
   for (const q of ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8']) assert.ok(review.includes(`| ${q} |`), q);
   assert.match(review, /plausible and must be treated as likely/);
+  assert.match(review, /does not limit a Git integration of a hosting provider/);
+});
+
+test('the pin-verification record in the CI review names what each old reference was, including that supabase/setup-cli@v1 is a branch', () => {
+  const review = read('docs/hosted/ci-review.md');
+  for (const needle of [/`actions\/checkout@v4`.*tag `v4`/, /`actions\/setup-node@v4`.*tag `v4`/, /`supabase\/setup-cli@v1`.*\*\*a branch\*\* \(`refs\/heads\/v1`\), not a tag/, /fetched \*\*by SHA\*\*/, /git ls-remote/, /A tag can be moved by its owner; the SHA in the workflow cannot/, /newer major versions/]) assert.match(review, needle);
+  assert.doesNotMatch(review, /authorize that lookup|authorization to contact GitHub for the commit SHAs/);
+});
+
+test('Node 24 is run in CI although package.json engines excludes it: the discrepancy is documented, not hidden', () => {
+  const pkg = JSON.parse(read('package.json'));
+  const review = read('docs/hosted/ci-review.md');
+  const ceiling = Number(String(pkg.engines.node).match(/<(\d+)$/)![1]);
+  if (ceiling <= 24) {
+    assert.match(review, /EBADENGINE/);
+    assert.match(review, /`engines` was deliberately not changed here/);
+  } else {
+    assert.doesNotMatch(review, /`engines` was deliberately not changed here/, 'engines now admits Node 24: remove the discrepancy note');
+  }
 });
 
 test('looking up the commit behind a public action tag needs no special permission, in the CI review and the approval summary', () => {
   const review = read('docs/hosted/ci-review.md');
   const approval = read('docs/hosted/approval-summary.md');
-  assert.match(review, /read-only lookup against the \*\*public\*\* action repositories/);
-  assert.match(review, /needs no credentials, no access to this repository and no special permission/);
-  assert.match(approval, /read-only lookup of public action repositories and needs no special permission/);
+  assert.match(review, /read-only lookups of the public repositories; no credentials, no access to this repository/);
+  assert.match(approval, /The lookup of a public action's commit is read-only and needed no special permission/);
   for (const f of hostedFiles) assert.doesNotMatch(read(`docs/hosted/${f}`), /authorize that lookup|authorization to contact GitHub for the commit SHAs|after authorization\./, `${f}: still requires permission for the public lookup`);
+});
+
+test('only S6 is read-only: H1b (a created and deleted Auth user) is inside an explicitly mutating authorization', () => {
+  const approval = read('docs/hosted/approval-summary.md');
+  const row = (id: string) => approval.split('\n').find((l) => l.startsWith(`| ${id} `))!;
+  const s6 = row('S6'), s7 = row('S7'), s8 = row('S8');
+  assert.match(s6, /\*\*read-only\*\* checks H0 and H1a only/);
+  assert.doesNotMatch(s6, /H1b|H2|H4|H5|H9|H12/);
+  assert.match(s6, /\| no \|$/);
+  assert.match(s7, /mutating authorization\*\* that \*\*explicitly includes H1b\*\*/);
+  assert.match(s7, /\*\*yes\*\* \|$/);
+  assert.match(s8, /yes \(synthetic data\)/);
+  assert.match(approval, /\*\*Only S6 is read-only; S7, S8 and S9 are mutating authorizations and each must say so\.\*\*/);
+  const proc = procedure();
+  assert.match(proc, /\| H1b live identity proof \| mutating/);
+  assert.match(proc, /\| H1a platform and configuration facts \| read-only \|/);
+  assert.match(checkBody('H1'), /\*H1b \(mutating, minimal\)/);
+});
+
+test('the permitted direct-SQL exceptions include the narrowly scoped staff-assignment setup and revocation, and every check that uses them points to the list', () => {
+  const doc = procedure();
+  const rules = section(doc, '## 1. Forbidden against staging', '## 2. Fixture users');
+  for (const needle of [/\*\*The only permitted direct-SQL data changes\*\*/, /the migration run itself \(H2a\)/, /alter role hackass_worker set hackass\.staging_marker/, /\*\*staff-assignment setup\*\*/, /insert into app\.staff_assignments \(user_id, role, granted_by\) values \('<fixture user id>', 'reviewer', 'staging-check'\)/,
+    /\*\*staff-assignment revocation\*\*/, /update app\.staff_assignments set revoked_at = now\(\), revoked_by = 'staging-check' where user_id = '<fixture user id>' and revoked_at is null/, /the one scoped job update of H10/, /naming a user id that is not a fixture created in this run, is refused/]) assert.match(rules, needle);
+  assert.doesNotMatch(rules, /the two role settings/);
+  for (const id of ['H7', 'H8', 'H10']) assert.match(checkBody(id), /permitted (insert|revocation) of section 1/, `${id} does not point to the permitted statements`);
+  // the statement shape exists in the local checks the hosted procedure mirrors
+  assert.match(read('scripts/local-f2c-checks.mjs') + read('scripts/local-f2a-checks.mjs'), /insert into app\.staff_assignments \(user_id, role, granted_by\)/);
 });
 
 test('the same three push prerequisites (deployment controls, credential-retirement evidence, final workflow commit reviewed) appear in every document that gates a push', () => {
