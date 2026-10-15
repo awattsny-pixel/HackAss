@@ -1,9 +1,9 @@
 // Constants and target validation for the hosted verification scripts (docs/hosted/verification-procedure.md, H0).
 // Everything here is pure: no network, no child process, no secret is read except to inspect a key's `ref` claim, and nothing is printed.
-import { statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parsePassfileEntries } from './passfile.mjs';
+import { privateFileProblems } from './secretfile.mjs';
 
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -87,24 +87,18 @@ export function validateTargets(env, { profile = 'staging', repoRoot = REPO_ROOT
     }
     if (t.workerUser !== `hackass_worker.${ref}`) bad(`worker login must be hackass_worker.${ref}`);
   }
-  // password file: exists, 0600, owned by the caller, absolute, outside the repository; logins carry the reference; every login actually used has an entry
-  if (!t.passfile) bad('STAGING_PGPASSFILE is not set');
-  else if (!path.isAbsolute(t.passfile)) bad('STAGING_PGPASSFILE must be an absolute path');
-  else {
-    const rel = path.relative(repoRoot, t.passfile);
-    if (!rel.startsWith('..') && !path.isAbsolute(rel)) bad('STAGING_PGPASSFILE is inside the repository working tree');
+  // password file: absolute, a regular non-symlink file, 0600, owned by the caller, outside the repository; logins carry the reference; every login actually used has an entry
+  const fileProblems = privateFileProblems(t.passfile, { repoRoot, uid, label: 'STAGING_PGPASSFILE' });
+  for (const m of fileProblems) bad(m);
+  if (!fileProblems.some((m) => /does not exist|cannot be inspected|not set|absolute|symbolic link|not a regular file/.test(m))) {
     try {
-      const st = statSync(t.passfile);
-      if (!st.isFile()) bad('STAGING_PGPASSFILE is not a regular file');
-      if ((st.mode & 0o777) !== 0o600) bad(`STAGING_PGPASSFILE mode must be 0600 (is ${(st.mode & 0o777).toString(8)})`);
-      if (uid !== undefined && st.uid !== uid) bad('STAGING_PGPASSFILE is not owned by the current user');
       const entries = parsePassfileEntries(t.passfile); // host, port, database, login only: the password field is never read
       const need = [[t.migrate.host, t.migrate.port, t.migrate.user], [t.txn.host, t.txn.port, t.workerUser], [t.session.host, t.session.port, t.workerUser], [t.txn.host, t.txn.port, t.migrate.user], [t.session.host, t.session.port, t.migrate.user]];
       const match = (e, h, p, u) => (e.host === '*' || e.host === h) && (e.port === '*' || e.port === String(p)) && (e.database === '*' || e.database === 'postgres') && (e.login === '*' || e.login === u);
       for (const [h, p, u] of need) if (!entries.some((e) => match(e, h, p, u))) bad(`the password file has no entry for ${u}@${h}:${p}`);
       if (!selftest) for (const e of entries) if (e.login !== 'postgres' && !e.login.endsWith(`.${ref}`) && e.login !== '*') bad(`a password file entry has a login without the .${ref} suffix`);
       for (const e of entries) for (const f of forbidden) if (f && (e.login.includes(f) || e.host.includes(f))) bad('a password file entry names a forbidden project reference');
-    } catch (e) { if (e && e.code === 'ENOENT') bad('STAGING_PGPASSFILE does not exist'); else if (!(e instanceof Error && /password file/.test(e.message))) bad(`STAGING_PGPASSFILE cannot be inspected (${e?.code ?? 'error'})`); else bad(e.message); }
+    } catch (e) { bad(e instanceof Error && /password file/.test(e.message) ? e.message : 'STAGING_PGPASSFILE cannot be read'); }
   }
   // keys: required; JWT-shaped keys must carry this project's ref
   for (const k of ['STAGING_PUBLISHABLE_KEY', 'STAGING_SECRET_KEY']) {
@@ -118,8 +112,9 @@ export function validateTargets(env, { profile = 'staging', repoRoot = REPO_ROOT
 }
 
 /** libpq connection string (no password, no secret). sslmode is fixed by the profile, never taken from the environment. */
-export function conninfo({ host, port, user, profile }) {
-  return `host=${host} port=${port} dbname=postgres user=${user} sslmode=${profile === 'selftest' ? 'disable' : 'require'} connect_timeout=15`;
+export function conninfo({ host, port, user, profile, appName }) {
+  if (appName !== undefined && !/^hackass-[a-z0-9-]{3,48}$/.test(appName)) throw new Error('unexpected application name');
+  return `host=${host} port=${port} dbname=postgres user=${user} sslmode=${profile === 'selftest' ? 'disable' : 'require'} connect_timeout=15${appName ? ` application_name=${appName}` : ''}`;
 }
 /** Password-free `postgresql://` URL for the Supabase CLI (host path of the password file is passed through PGPASSFILE by the caller). */
 export function cliUrl({ host, port, user, profile }) {

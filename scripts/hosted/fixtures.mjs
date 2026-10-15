@@ -16,7 +16,10 @@ const code = await runStage('fixtures', process.argv.slice(2), async ({ ctx, run
   const ids = () => new Set(Object.values(state.fixtures.users).map((u) => u.id.toLowerCase()));
   const fresh = async (name) => {
     const password = newPassword();
-    const u = await adminCreateUser(ctx, { email: fixtureEmail(run.runId, name), password });
+    const email = fixtureEmail(run.runId, name);
+    run.addIntent({ kind: 'fixture', name, email }); // recorded BEFORE the request: cleanup finds an interrupted creation again by this exact address
+    const u = await adminCreateUser(ctx, { email, password });
+    run.completeIntent(email, u.id);
     state.fixtures.users[name] = { id: u.id, email: u.email };
     secrets.users[name] = { password };
     saveAll();

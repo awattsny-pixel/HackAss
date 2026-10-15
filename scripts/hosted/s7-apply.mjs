@@ -7,9 +7,11 @@ import path from 'node:path';
 import { runStage, checker, ok } from './lib/cli.mjs';
 import { queryJson, queryText, runSql } from './lib/pg.mjs';
 import { adminCreateUser, adminDeleteUser } from './lib/flows.mjs';
+import { registerSecret } from './lib/redact.mjs';
 import { LEDGER_EXISTS_SQL, LEDGER_SQL, FINGERPRINT_SQL } from './lib/sql.mjs';
 import { MARKER_SET_SQL, MARKER_READ_SQL } from './lib/sqlguard.mjs';
 import { runBounded, childEnv } from './lib/exec.mjs';
+import { parsePushResult } from './lib/push.mjs';
 import { cliUrl, REPO_ROOT, STAGING } from './lib/config.mjs';
 
 const stage = process.argv[2];
@@ -21,15 +23,14 @@ const repoVersions = () => readdirSync(path.join(REPO_ROOT, 'supabase/migrations
 async function push(ctx, dryRun) {
   const m = ctx.targets.migrate;
   const args = ['--output-format', 'stream-json', 'db', 'push', '--db-url', cliUrl({ host: m.host, port: m.port, user: m.user, profile: ctx.profile }), ...(dryRun ? ['--dry-run'] : [])];
+  // stdin is closed (nothing can be answered at a prompt) and the password comes only from the private password file; the whole process group is killed at the deadline
   const r = await runBounded(cli(), args, { cwd: REPO_ROOT, timeoutMs: dryRun ? 120_000 : 600_000, env: childEnv({ PGPASSFILE: ctx.targets.passfile }) });
-  if (r.timedOut) throw new Error(`supabase db push${dryRun ? ' --dry-run' : ''} exceeded its deadline`);
-  const lines = (r.stdout + '\n' + r.stderr).split('\n').filter((l) => l.trim().startsWith('{'));
-  const doc = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-  const result = doc.find((d) => d.type === 'result')?.data;
-  const error = doc.find((d) => d.type === 'error' || d._tag === 'Error');
-  if (r.code !== 0) throw new Error(`supabase db push${dryRun ? ' --dry-run' : ''} failed (exit ${r.code}): ${JSON.stringify(error ?? r.stderr.slice(-300)).slice(0, 400)}`);
-  if (!result) throw new Error(`supabase db push printed no result document (exit ${r.code}, ${doc.length} JSON lines, stderr tail: ${r.stderr.slice(-200)})`);
-  return result;
+  if (r.timedOut) {
+    let active = 'unknown';
+    try { active = await queryText(ctx, 'migrate', "select count(*) from pg_stat_activity where usename = current_user and pid <> pg_backend_pid() and state = 'active'", { timeoutMs: 30_000 }); } catch { /* reported as unknown */ }
+    throw new Error(`supabase db push${dryRun ? ' --dry-run' : ''} exceeded its deadline and its process group was killed; active sessions of the migration login still running: ${active} (do not retry until this is 0)`);
+  }
+  return parsePushResult(r, { dryRun });
 }
 const ledger = async (ctx, ep = 'migrate') => ((await queryText(ctx, ep, LEDGER_EXISTS_SQL)) === 'true' ? queryJson(ctx, ep, LEDGER_SQL) : { count: 0, versions: [], md5: '' });
 
@@ -42,7 +43,10 @@ const code = await runStage(stage, argv, async ({ ctx, run, profile, say }) => {
       const nonce = randomBytes(6).toString('hex');
       const email = `staging-${nonce}-ident@example.test`;
       ok(/^staging-[0-9a-f]{12}-ident@example\.test$/.test(email), 'unexpected identity email');
-      const user = await adminCreateUser(ctx, { email, password: `Pw-${randomBytes(16).toString('base64url')}` });
+      run.addIntent({ kind: 'identity', name: 'ident', email }); // recorded BEFORE the request: an interrupted or uncertain creation is found again by this exact address
+      const password = `Pw-${randomBytes(16).toString('base64url')}`; registerSecret(password);
+      const user = await adminCreateUser(ctx, { email, password });
+      run.completeIntent(email, user.id);
       const counts = {};
       try {
         for (const ep of ['migrate', 'session', 'txn']) counts[ep] = Number(await queryText(ctx, ep, `select count(*) from auth.users where email = '${email}'`));

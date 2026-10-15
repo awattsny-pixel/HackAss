@@ -16,9 +16,21 @@ export async function adminCreateUser(ctx, { email, password }) {
   return { id: r.body.id, email };
 }
 export async function adminDeleteUser(ctx, id) { return must(await request(ctx, { method: 'DELETE', path: `/auth/v1/admin/users/${id}`, ...admin(ctx) }), 'admin delete user', [200, 204]); }
-export async function adminFindUserByEmail(ctx, email) {
-  const r = must(await request(ctx, { path: `/auth/v1/admin/users?per_page=200`, ...admin(ctx) }), 'admin list users');
-  return (r.body?.users ?? []).find((u) => u.email === email) ?? null;
+/**
+ * Find users by EXACT e-mail address among the recorded fixture identities, walking the admin user list page by page until it returns an empty page (the platform may cap the page
+ * size, so a short page is not the end). Returns a Map(email -> user). Never matches by pattern and never returns a user whose e-mail was not asked for.
+ */
+export async function adminFindUsersByEmails(ctx, emails, { perPage = 100, maxPages = 500, req = request } = {}) {
+  const want = new Set(emails.map((e) => String(e).toLowerCase()));
+  const found = new Map();
+  if (want.size === 0) return found;
+  for (let page = 1; page <= maxPages; page++) {
+    const r = must(await req(ctx, { path: `/auth/v1/admin/users?page=${page}&per_page=${perPage}`, ...admin(ctx) }), 'admin list users');
+    const users = r.body?.users ?? [];
+    if (users.length === 0) return found;
+    for (const u of users) if (u?.email && want.has(String(u.email).toLowerCase())) found.set(String(u.email).toLowerCase(), u);
+  }
+  throw new Error(`the admin user list exceeded ${maxPages} pages: the absence of the fixture users cannot be proved`);
 }
 export async function signIn(ctx, email, password) {
   const r = must(await request(ctx, { method: 'POST', path: '/auth/v1/token?grant_type=password', body: { email, password } }), 'sign in');

@@ -1,9 +1,11 @@
-// The allowlist for SQL the hosted scripts may send (docs/hosted/verification-procedure.md section 1). Three kinds:
-//   read   - queries only (select/show/with ... select); no data-changing keyword anywhere outside string literals;
+// The allowlist for SQL the hosted scripts may send (docs/hosted/verification-procedure.md section 1). Kinds:
+//   read   - queries only (select/show/with ... select, plus SET ROLE hackass_owner for owner-side reads); no data-changing keyword anywhere outside string literals. The
+//            executor (pg.mjs) additionally runs every read inside BEGIN READ ONLY ... ROLLBACK, so the DATABASE refuses a write even if this check were wrong;
+//   worker - the fixed worker-function calls of the job flow (H10), the only reads-that-write; run on the worker endpoints only, in their own transaction;
 //   admin  - role administration, run as `postgres` and NEVER after SET ROLE: only the worker marker (a role comment) and its removal;
 //   probe  - statements that are EXPECTED to be refused by the database (worker privilege probes): only the fixed list PROBES below;
 //   fixture - application DML run as hackass_owner (SET ROLE is reserved for this kind): the staff-assignment insert/revocation for fixture users created in
-//            this run and the one scoped job update.
+//            this run, the category insert and the one scoped job update. There is NO general select fallback in this kind.
 // Anything else, and anything on the forbidden list, is refused before it leaves the process.
 export class SqlRefused extends Error {}
 
@@ -28,12 +30,14 @@ export function splitStatements(sql) {
   return out;
 }
 
+/** Worker calls that name no job (the claim takes the single due fixture job, which H10 has proved is the only due job). */
+const WORKER_FIXED = Object.freeze(["select worker.claim_job('publication_recheck')::text", 'select worker.healthcheck()']);
+const WORKER_SHAPE = /^select worker\.(get_job_subject|heartbeat_job|complete_job)\('([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', (\d{1,9})\)(::text)?$/i;
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const NONCE = '[0-9a-f]{16,64}';
 const SHAPES = {
   setRole: /^set\s+role\s+hackass_owner$/i,
   resetRole: /^reset\s+role$/i,
-  txn: /^(begin|commit|rollback)$/i,
   staffInsert: new RegExp(`^insert\\s+into\\s+app\\.staff_assignments\\s*\\(user_id,\\s*role,\\s*granted_by\\)\\s+values\\s*\\('(${UUID})',\\s*'reviewer',\\s*'staging-check'\\)$`, 'i'),
   staffRevoke: new RegExp(`^update\\s+app\\.staff_assignments\\s+set\\s+revoked_at\\s*=\\s*now\\(\\),\\s*revoked_by\\s*=\\s*'staging-check'\\s+where\\s+user_id\\s*=\\s*'(${UUID})'\\s+and\\s+revoked_at\\s+is\\s+null$`, 'i'),
   categoryInsert: /^insert into app\.categories \(slug, name\) values \('(stg-[a-z0-9-]{3,40})', 'Staging [A-Za-z0-9 -]{1,60}'\) on conflict do nothing$/i,
@@ -53,9 +57,19 @@ export const MARKER_READ_SQL = "select shobj_description(r.oid, 'pg_authid') fro
  * Check a script. `fixtureIds` is the set of user ids created in this run (a staff statement naming any other id is refused); `jobIds` likewise for the job update.
  * Returns the statements on success; throws SqlRefused otherwise.
  */
-export function checkSql(sql, kind, { fixtureIds = new Set(), allowedJobTargets = new Set() } = {}) {
-  if (!['read', 'admin', 'fixture', 'probe'].includes(kind)) throw new SqlRefused(`unknown SQL kind ${kind}`);
+export function checkSql(sql, kind, { fixtureIds = new Set(), allowedJobTargets = new Set(), allowedJobIds = new Set() } = {}) {
+  if (!['read', 'admin', 'fixture', 'probe', 'worker'].includes(kind)) throw new SqlRefused(`unknown SQL kind ${kind}`);
   if (kind === 'probe') { const one = sql.replace(/;\s*$/, '').replace(/\s+/g, ' ').trim(); if (!PROBES.includes(one)) throw new SqlRefused('not one of the fixed worker privilege probes'); return [one]; }
+  if (kind === 'worker') {
+    const stmts = splitStatements(sql);
+    if (stmts.length !== 1) throw new SqlRefused('a worker call is exactly one statement');
+    const one = stmts[0].replace(/\s+/g, ' ').trim();
+    if (WORKER_FIXED.includes(one)) return [one];
+    const m = WORKER_SHAPE.exec(one);
+    if (!m) throw new SqlRefused(`not one of the reviewed worker calls: ${one.slice(0, 60)}`);
+    if (!allowedJobIds.has(m[2].toLowerCase())) throw new SqlRefused('the worker call names a job that was not registered as the synthetic fixture');
+    return [one];
+  }
   const bare = stripLiterals(sql);
   for (const re of FORBIDDEN) if (re.test(bare)) throw new SqlRefused(`forbidden SQL (${re})`);
   if (kind !== 'read' && /\bschema_migrations\b/i.test(bare)) throw new SqlRefused('the migration ledger may be read, never written');
@@ -66,11 +80,10 @@ export function checkSql(sql, kind, { fixtureIds = new Set(), allowedJobTargets 
     const one = s.replace(/\s+/g, ' ').trim();
     if (SHAPES.setRole.test(one)) { if (kind !== 'fixture' && kind !== 'read') throw new SqlRefused('SET ROLE is reserved for fixture DML and owner-side reads'); inOwner = true; continue; }
     if (SHAPES.resetRole.test(one)) { inOwner = false; continue; }
-    if (SHAPES.txn.test(one)) continue;
     if (kind === 'read') {
       const b = stripLiterals(one);
       if (!/^(select|show|with)\b/i.test(b)) throw new SqlRefused(`not a read statement: ${one.slice(0, 50)}`);
-      if (/\b(insert|update|delete|alter|create|drop|truncate|merge|call|do|execute|perform|set_config|nextval|setval|pg_sleep_for)\b/i.test(b.replace(/\bupdated_at\b|\bcreated_at\b|\bdeleted\b/gi, ''))) throw new SqlRefused(`data-changing keyword in a read: ${one.slice(0, 50)}`);
+      if (/\b(insert|update|delete|alter|create|drop|truncate|merge|call|do|execute|perform|set_config|nextval|setval|pg_sleep_for|into)\b/i.test(b.replace(/\bupdated_at\b|\bcreated_at\b|\bdeleted\b/gi, ''))) throw new SqlRefused(`data-changing keyword in a read: ${one.slice(0, 50)}`);
       continue;
     }
     if (kind === 'admin') {
@@ -84,7 +97,6 @@ export function checkSql(sql, kind, { fixtureIds = new Set(), allowedJobTargets 
     if ((m = SHAPES.staffInsert.exec(one)) || (m = SHAPES.staffRevoke.exec(one))) { if (!fixtureIds.has(m[1].toLowerCase())) throw new SqlRefused('staff statement names a user that is not a fixture created in this run'); continue; }
     if ((m = SHAPES.categoryInsert.exec(one))) continue;
     if ((m = SHAPES.jobDue.exec(s.trim()))) { if (!allowedJobTargets.has(`${m[1]}:${m[2]}`.toLowerCase())) throw new SqlRefused('job update names a job that was not registered as the synthetic fixture'); continue; }
-    if (/^(select|show|with)\b/i.test(stripLiterals(one))) continue; // owner-side verification reads
     throw new SqlRefused(`fixture statement not on the allowlist: ${one.slice(0, 60)}`);
   }
   return stmts;

@@ -36,8 +36,13 @@ export function goldenInventory(root = REPO_ROOT) {
   return t.slice(a + '$golden$'.length, b).trim();
 }
 
+/** Table, COLUMN and SEQUENCE privileges (effective, as has_*_privilege reports them) of the three roles that must hold none, and row-level security on every application table. */
 export const PRIVS_SQL = `select json_build_object(
   'table_privileges', (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace cross join (values ('anon'),('authenticated'),('hackass_worker')) r(rn) cross join (values ('select'),('insert'),('update'),('delete'),('truncate'),('references'),('trigger')) p(priv) where n.nspname in (${list}) and c.relkind in ('r','v','m','p') and has_table_privilege(r.rn, c.oid, p.priv)),
+  'column_privileges', (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace join pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped cross join (values ('anon'),('authenticated'),('hackass_worker')) r(rn) cross join (values ('select'),('insert'),('update'),('references')) p(priv) where n.nspname in (${list}) and c.relkind in ('r','v','m','p') and has_column_privilege(r.rn, c.oid, a.attnum, p.priv)),
+  'sequence_privileges', (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace cross join (values ('anon'),('authenticated'),('hackass_worker')) r(rn) cross join (values ('usage'),('select'),('update')) p(priv) where n.nspname in (${list}) and c.relkind = 'S' and has_sequence_privilege(r.rn, c.oid, p.priv)),
+  'tables_total', (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname in (${list}) and c.relkind in ('r','p')),
+  'tables_without_rls', (select coalesce(json_agg(n.nspname || '.' || c.relname order by n.nspname, c.relname), '[]'::json) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname in (${list}) and c.relkind in ('r','p') and not c.relrowsecurity),
   'owner_auth_privileges', (has_schema_privilege('hackass_owner','auth','usage') or has_any_column_privilege('hackass_owner','auth.users','select') or has_any_column_privilege('hackass_owner','auth.sessions','select')),
   'owner_role', (select json_build_object('login', rolcanlogin, 'inherit', rolinherit, 'connlimit', rolconnlimit, 'super', rolsuper, 'createrole', rolcreaterole) from pg_roles where rolname = 'hackass_owner'),
   'worker_role', (select json_build_object('login', rolcanlogin, 'inherit', rolinherit, 'connlimit', rolconnlimit, 'super', rolsuper, 'createrole', rolcreaterole) from pg_roles where rolname = 'hackass_worker'),

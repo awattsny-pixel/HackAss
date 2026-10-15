@@ -1,20 +1,25 @@
 #!/usr/bin/env node
-// Authorization S8, READ-ONLY at the data level: `isolation` = H12. Phase 1 proves each credential works on something it may do, phase 2 that the same credential is refused every private
-// table and function, phase 3 that the OpenAPI description lists only the documented api functions. Sign-in and the step-up create Auth sessions for the existing fixture users only.
-// Usage: node scripts/hosted/isolation.mjs --run-id=... --authorized=S8@<sha> [--profile=...]
+// Authorization S8 (MUTATING class): `isolation` = H12. It creates Auth sessions for the fixture users and POSTs to private functions that WOULD RUN if isolation were broken, so it is
+// confirmed like any mutating stage. Phase 1 proves each credential works on something it may do; phase 2 that the same credential is refused every private table and function FOR THE
+// EXPECTED REASON (the schema is not exposed: HTTP 406 PGRST106, with the exposed list naming no private schema; a rate limit, a malformed request or a missing function proves nothing);
+// phase 3 that the OpenAPI description lists only the documented api functions, and that public and graphql_public are not exposed.
+// Usage: node scripts/hosted/isolation.mjs --run-id=... --authorized=S8@<sha> --confirm-mutating=isolation [--profile=...]
 import { runStage, checker, ok } from './lib/cli.mjs';
 import { request, rpc } from './lib/http.mjs';
 import { signIn, steppedUp } from './lib/flows.mjs';
 import { API_FUNCTIONS } from './lib/config.mjs';
 import { openApiSurface } from './lib/openapi.mjs';
+import { requireSchemaExcluded } from './lib/refusal.mjs';
 
 const TABLES = ['hacks', 'publications', 'jobs', 'ai_ledger', 'accounts', 'staff_assignments'];
 const PRIVATE_FUNCTIONS = [['app_review', 'public_blockers', { p_publication_id: '00000000-0000-0000-0000-000000000000' }], ['app_budget', 'reserve', {}], ['worker', 'claim_job', { p_job_type: 'publication_recheck' }], ['app_guard', 'require_member', {}]];
 const NON_API_SCHEMAS = ['app_review', 'app_budget', 'app_guard', 'app_content', 'app_bridge', 'worker'];
 const LEAKS = ['content_hash', 'user_id', 'staff_assignments', 'version_id', 'lease_epoch'];
+const NOT_EXPOSED = ['public', 'graphql_public'];
 
-const code = await runStage('isolation', process.argv.slice(2), async ({ ctx, run, say }) => {
+const code = await runStage('isolation', process.argv.slice(2), async ({ ctx, run, profile, say }) => {
   const c = checker(run, say);
+  const exact = profile === 'staging' ? ['api'] : null; // hosted: the exposed list must be exactly api; the local stack exposes more by design
   const state = run.state(); const sec = run.secrets();
   let creds;
   await c.check('H12a', 'phase 1: each credential works on an endpoint it is allowed to use (without this, its refusals prove nothing)', async () => {
@@ -39,18 +44,21 @@ const code = await runStage('isolation', process.argv.slice(2), async ({ ctx, ru
     for (const cr of creds) {
       for (const t of TABLES) {
         const r = await request(ctx, { path: `/rest/v1/${t}`, token: cr.token, apikey: cr.apikey, headers: { 'accept-profile': 'app' } });
-        ok(r.status >= 400 && r.status < 500, `${cr.name}: GET app.${t} answered HTTP ${r.status}`);
+        requireSchemaExcluded(r, `${cr.name}: GET app.${t}`, { expectExact: exact });
         ok(!(Array.isArray(r.body) && r.body.length) && !LEAKS.some((w) => (r.text ?? JSON.stringify(r.body ?? '')).includes(w)), `${cr.name}: GET app.${t} body holds application data`);
-        statuses.add(r.status); n++;
+        statuses.add(`${r.status}/${r.body?.code}`); n++;
       }
       for (const [schema, fn, body] of PRIVATE_FUNCTIONS) {
         const r = await rpc(ctx, fn, cr.token, body, { schema, apikey: cr.apikey });
-        ok(r.status >= 400 && r.status < 500, `${cr.name}: POST ${schema}.${fn} answered HTTP ${r.status}`);
+        requireSchemaExcluded(r, `${cr.name}: POST ${schema}.${fn}`, { expectExact: exact });
         ok(!LEAKS.some((w) => JSON.stringify(r.body ?? r.text ?? '').includes(w)), `${cr.name}: POST ${schema}.${fn} body holds application data`);
-        statuses.add(r.status); n++;
+        statuses.add(`${r.status}/${r.body?.code}`); n++;
+      }
+      if (profile === 'staging') {
+        for (const other of NOT_EXPOSED) { requireSchemaExcluded(await request(ctx, { path: '/rest/v1/', token: cr.token, apikey: cr.apikey, headers: { 'accept-profile': other } }), `${cr.name}: Accept-Profile ${other}`, { expectExact: exact }); n++; }
       }
     }
-    return `${n} direct requests across ${creds.length} credentials, all non-2xx (${[...statuses].sort().join('/')}), no application data in any body`;
+    return `${n} direct requests across ${creds.length} credentials, every one refused for the expected reason, schema not exposed (${[...statuses].sort().join(' ')}), no application data in any body`;
   });
 
   await c.check('H12c', 'phase 3: the OpenAPI description lists only api functions, no tables and no private schema; GraphQL is off or shows no application type', async () => {

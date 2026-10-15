@@ -6,6 +6,7 @@ import { queryJson, runSql } from './lib/pg.mjs';
 import { request } from './lib/http.mjs';
 import { API_FUNCTIONS } from './lib/config.mjs';
 import { openApiSurface } from './lib/openapi.mjs';
+import { requireSchemaExcluded } from './lib/refusal.mjs';
 import { INVENTORY_SQL, PRIVS_SQL, TRIGGERS_BRIDGE_SQL, goldenInventory } from './lib/sql.mjs';
 
 const stage = process.argv[2];
@@ -22,17 +23,21 @@ const code = await runStage(stage, process.argv.slice(3), async ({ ctx, run, pro
       ok(extra.length === 0, `functions outside the api allowlist are listed: ${extra.join(',')}`);
       ok(s.other.length === 0, `non-function paths are listed (tables or views): ${s.other.slice(0, 5).join(',')}`);
       ok(s.rpc.includes('list_public_hacks') && s.rpc.includes('get_public_hack'), 'the two public catalog reads are not listed (is api exposed?)');
-      let note = '';
-      if (profile === 'staging') {
-        const pub = await request(ctx, { path: '/rest/v1/', headers: { 'accept-profile': 'public' } });
-        ok(pub.status === 406 || (pub.status >= 400 && pub.status < 500), `the public schema profile is still served (HTTP ${pub.status}): remove public and graphql_public from the exposed schemas`);
-        note = `; Accept-Profile public refused (HTTP ${pub.status})`;
-      } else note = '; the local stack exposes public by design, that sub-check is staging-only';
+      const priv = requireSchemaExcluded(await request(ctx, { path: '/rest/v1/', headers: { 'accept-profile': 'app' } }), 'Accept-Profile app');
+      let note = `; private schema app refused (exposed: ${priv.schemas.join(',')})`;
+      if (profile === 'staging') { // the disposable local stack deliberately exposes public and graphql_public; the staging project must expose api only
+        const parts = [];
+        for (const other of ['public', 'graphql_public']) {
+          const c = requireSchemaExcluded(await request(ctx, { path: '/rest/v1/', headers: { 'accept-profile': other } }), `Accept-Profile ${other}`, { expectExact: ['api'] });
+          parts.push(`${other}: refused (exposed: ${c.schemas.join(',')})`);
+        }
+        note += `; ${parts.join('; ')}`;
+      } else note += '; the local stack exposes public and graphql_public by design, that sub-check is staging-only';
       return `${s.rpc.length} functions listed, no table paths${note}`;
     });
   }
   if (stage === 'inventory') {
-    await c.check('H4', 'the function inventory equals the golden exactly; no table privileges; role attributes; public schema unchanged', async () => {
+    await c.check('H4', 'the function inventory equals the golden exactly; no table, column or sequence privileges; row-level security on every table; role attributes; public schema unchanged', async () => {
       const inv = await runSql(ctx, 'migrate', INVENTORY_SQL, { kind: 'read', timeoutMs: 90_000 });
       ok(inv.ok, `the inventory query failed: ${inv.stderr.split('\n')[0]}`);
       const got = inv.stdout.trim();
@@ -44,12 +49,15 @@ const code = await runStage(stage, process.argv.slice(3), async ({ ctx, run, pro
       }
       const p = await queryJson(ctx, 'migrate', PRIVS_SQL);
       ok(p.table_privileges === 0, `anon, authenticated or the worker hold ${p.table_privileges} table privileges in the application schemas`);
+      ok(p.column_privileges === 0, `anon, authenticated or the worker hold ${p.column_privileges} effective column privileges in the application schemas`);
+      ok(p.sequence_privileges === 0, `anon, authenticated or the worker hold ${p.sequence_privileges} effective sequence privileges in the application schemas`);
+      ok(p.tables_total > 0 && p.tables_without_rls.length === 0, `tables without row-level security: ${p.tables_without_rls.join(',') || '(none found: no application tables?)'}`);
       ok(p.owner_auth_privileges === false, 'hackass_owner holds a privilege on the auth schema');
       ok(p.owner_role?.login === false && p.owner_role?.connlimit === 0 && p.owner_role?.inherit === false, `hackass_owner attributes: ${JSON.stringify(p.owner_role)}`);
       ok(p.worker_role?.login === true && p.worker_role?.connlimit === 10 && p.worker_role?.inherit === false && p.worker_role?.super === false && p.worker_role?.createrole === false, `hackass_worker attributes: ${JSON.stringify(p.worker_role)}`);
       const before = run.state().facts.public_objects_before;
       ok(before === undefined || p.public_objects === before, `the public schema changed (${before} -> ${p.public_objects})`);
-      return `${gold.split('\n').length} functions equal the golden; 0 table privileges; roles as required; public objects ${p.public_objects}`;
+      return `${gold.split('\n').length} functions equal the golden; 0 table, column and sequence privileges for anon, authenticated and the worker; row-level security on all ${p.tables_total} application tables; roles as required; public objects ${p.public_objects}`;
     });
     await c.check('H5a', 'the Auth triggers and the session bridge exist with the required owner, definer mode, search_path and grants', async () => {
       const t = await queryJson(ctx, 'migrate', TRIGGERS_BRIDGE_SQL);

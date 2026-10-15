@@ -2,10 +2,8 @@
 // Authorization S8 (MUTATING): `worker-checks` = H9 (worker authentication and privileges through the pooler; read-only queries and expected refusals) and H10 (the worker job
 // functions with an explicit, narrowly scoped synthetic job fixture). Needs the `fixtures` and `worker-marker` stages and the owner's worker password in the password file.
 // Usage: node scripts/hosted/checks-worker.mjs --run-id=... --authorized=S8@<sha> --confirm-mutating=worker-checks [--profile=...]
-import { writeFileSync, chmodSync, rmSync } from 'node:fs';
-import path from 'node:path';
 import { runStage, checker, ok } from './lib/cli.mjs';
-import { runSql, queryJson, queryText } from './lib/pg.mjs';
+import { runSql, queryJson, queryText, wrongPasswordProbe } from './lib/pg.mjs';
 import { signIn, steppedUp, doc, submit, approve, publish, api, errMsg } from './lib/flows.mjs';
 import { PROBES, JOB_DUE_SQL } from './lib/sqlguard.mjs';
 
@@ -33,21 +31,13 @@ const code = await runStage('worker-checks', process.argv.slice(2), async ({ ctx
       }
       notes.push(`${ep}: defaults ${st}/${idle}/empty search_path, healthcheck ok, ${PROBES.length} probes refused`);
     }
-    // a wrong password is refused, with the same error for an existing and a nonexistent role (no existence oracle)
-    const bad = path.join(run.dir, 'wrong-pgpass');
-    const t = ctx.targets;
-    const suffix = t.workerUser.includes('.') ? t.workerUser.slice(t.workerUser.indexOf('.')) : '';
-    const fake = `hackass_nonexistent${suffix}`;
-    writeFileSync(bad, `${t.txn.host}:${t.txn.port}:postgres:${t.workerUser}:deliberately-wrong-1\n${t.txn.host}:${t.txn.port}:postgres:${fake}:deliberately-wrong-1\n`, { mode: 0o600 });
-    chmodSync(bad, 0o600);
-    try {
-      const a = await runSql(ctx, 'worker-txn', 'select 1', { kind: 'read', passfile: bad });
-      const b = await runSql(ctx, 'worker-txn', 'select 1', { kind: 'read', passfile: bad, login: fake });
-      const norm = (e) => e.replace(/user "[^"]*"/g, 'user "X"').split('\n').find((l) => /failed|FATAL|error/i.test(l)) ?? '';
-      ok(!a.ok && !b.ok, 'a wrong password was accepted');
-      ok(/authentication failed|password/i.test(a.stderr), `unexpected refusal text for the wrong password: ${a.stderr.split('\n')[0]}`);
-      ok(norm(a.stderr).replace(/\(.*?\)/g, '') === norm(b.stderr).replace(/\(.*?\)/g, ''), 'the refusal for a nonexistent role differs from the one for the real role (existence oracle)');
-    } finally { rmSync(bad, { force: true }); }
+    // a wrong password is refused, with the same error for the worker login and for a nonexistent login (no existence oracle). The probe has its own purpose-built function:
+    // it writes its own placeholder password file and can name only exactly those two logins.
+    const probe = await wrongPasswordProbe(ctx, run.dir);
+    const norm = (e) => e.replace(/user "[^"]*"/g, 'user "X"').split('\n').find((l) => /failed|FATAL|error/i.test(l)) ?? '';
+    ok(!probe.real.ok && !probe.fake.ok, 'a wrong password was accepted');
+    ok(/authentication failed|password/i.test(probe.real.stderr), `unexpected refusal text for the wrong password: ${probe.real.stderr.split('\n')[0]}`);
+    ok(norm(probe.real.stderr).replace(/\(.*?\)/g, '') === norm(probe.fake.stderr).replace(/\(.*?\)/g, ''), 'the refusal for a nonexistent role differs from the one for the real role (existence oracle)');
     return notes.join(' | ') + ' | wrong password refused identically for an existing and a nonexistent role';
   });
 
@@ -69,18 +59,19 @@ const code = await runStage('worker-checks', process.argv.slice(2), async ({ ctx
     ok(upd.ok, `the scoped job update failed: ${upd.stderr.split('\n')[0]}`);
     const due1 = await queryJson(ctx, 'migrate', owner(`select json_build_object('n', count(*), 'id', min(id::text))::text from app.jobs where status = 'queued' and available_at <= now()`));
     ok(due1.n === 1 && due1.id === jobs.id, `the fixture job is not the only due job (${JSON.stringify(due1)})`);
-    const claim = await queryJson(ctx, 'worker-txn', "select worker.claim_job('publication_recheck')::text");
+    const jobIds = new Set([jobs.id.toLowerCase()]);
+    const claim = await queryJson(ctx, 'worker-txn', "select worker.claim_job('publication_recheck')::text", { kind: 'worker', allowedJobIds: jobIds });
     ok(claim.job_id === jobs.id && Number.isInteger(claim.lease_epoch), `the claim returned a different job: ${JSON.stringify(claim)}`);
     const e = claim.lease_epoch;
-    const subject = await queryJson(ctx, 'worker-txn', `select worker.get_job_subject('${jobs.id}', ${e})::text`);
+    const subject = await queryJson(ctx, 'worker-txn', `select worker.get_job_subject('${jobs.id}', ${e})::text`, { kind: 'worker', allowedJobIds: jobIds });
     ok(JSON.stringify(Object.keys(subject).sort()) === JSON.stringify(SUBJECT_KEYS), `the job subject has the keys ${Object.keys(subject).sort().join(',')}`);
     ok(subject.publication_id === pub.publication_id, 'the subject names another publication');
-    const hb = await runSql(ctx, 'worker-txn', `select worker.heartbeat_job('${jobs.id}', ${e})`, { kind: 'read' });
+    const hb = await runSql(ctx, 'worker-txn', `select worker.heartbeat_job('${jobs.id}', ${e})`, { kind: 'worker', allowedJobIds: jobIds });
     ok(hb.ok, `heartbeat failed: ${hb.stderr.split('\n')[0]}`);
-    const done = await queryJson(ctx, 'worker-txn', `select worker.complete_job('${jobs.id}', ${e})::text`);
+    const done = await queryJson(ctx, 'worker-txn', `select worker.complete_job('${jobs.id}', ${e})::text`, { kind: 'worker', allowedJobIds: jobIds });
     ok(JSON.stringify(done).includes('still_eligible'), `the recheck outcome was not still_eligible: ${JSON.stringify(done)}`);
     for (const [label, epoch] of [['same epoch again', e], ['wrong epoch', e + 5]]) {
-      const r = await runSql(ctx, 'worker-txn', `select worker.complete_job('${jobs.id}', ${epoch})`, { kind: 'read' });
+      const r = await runSql(ctx, 'worker-txn', `select worker.complete_job('${jobs.id}', ${epoch})`, { kind: 'worker', allowedJobIds: jobIds });
       ok(!r.ok && /lease_lost/.test(r.stderr), `complete with ${label} was not refused with lease_lost (${r.ok ? 'it succeeded' : r.stderr.split('\n')[0]})`);
     }
     const listed = await api(ctx, 'get_public_hack', undefined, { p_slug: slug });

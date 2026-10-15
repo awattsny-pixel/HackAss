@@ -134,33 +134,33 @@ test('SQL guard: the worker probes are a fixed list', () => {
 const SHA = 'a'.repeat(40); const git = { head: SHA, clean: true };
 const flagsFor = (stage: string, extra: Record<string, string> = {}) => ({ authorized: `${require_group(stage)}@${SHA}`, ...extra });
 function require_group(stage: string) { return stage === 'cleanup' ? 'S9' : ['preflight'].includes(stage) ? 'S6' : ['identity', 'migrate', 'exposure', 'worker-marker', 'rerun', 'inventory'].includes(stage) ? 'S7' : 'S8'; }
-const done = (...s: string[]) => ({ stages: Object.fromEntries(s.map((x) => [x, { status: 'done' }])) });
+const done = (...s: string[]) => ({ binding: { commit: SHA, profile: 'staging', targets: 'T' }, stages: Object.fromEntries(s.map((x) => [x, { status: 'done', commit: SHA }])) });
 test('gates: authorization names the group and the exact HEAD; the tree must be clean for staging', () => {
-  const ok = () => gates.checkGates('preflight', flagsFor('preflight'), done(), git, { profile: 'staging' });
+  const ok = () => gates.checkGates('preflight', flagsFor('preflight'), done(), git, { profile: 'staging', targetsHash: 'T' });
   assert.doesNotThrow(ok);
-  assert.throws(() => gates.checkGates('preflight', {}, done(), git, { profile: 'staging' }), /authorized/);
-  assert.throws(() => gates.checkGates('preflight', { authorized: `S7@${SHA}` }, done(), git, { profile: 'staging' }), /belongs to authorization S6/);
-  assert.throws(() => gates.checkGates('preflight', { authorized: `S6@${'b'.repeat(40)}` }, done(), git, { profile: 'staging' }), /not the checked-out HEAD/);
-  assert.throws(() => gates.checkGates('preflight', { authorized: `S6@${'a'.repeat(7)}` }, done(), git, { profile: 'staging' }), /authorized/);
-  assert.throws(() => gates.checkGates('preflight', flagsFor('preflight'), done(), { head: SHA, clean: false }, { profile: 'staging' }), /not clean/);
+  assert.throws(() => gates.checkGates('preflight', {}, done(), git, { profile: 'staging', targetsHash: 'T' }), /authorized/);
+  assert.throws(() => gates.checkGates('preflight', { authorized: `S7@${SHA}` }, done(), git, { profile: 'staging', targetsHash: 'T' }), /belongs to authorization S6/);
+  assert.throws(() => gates.checkGates('preflight', { authorized: `S6@${'b'.repeat(40)}` }, done(), git, { profile: 'staging', targetsHash: 'T' }), /not the checked-out HEAD/);
+  assert.throws(() => gates.checkGates('preflight', { authorized: `S6@${'a'.repeat(7)}` }, done(), git, { profile: 'staging', targetsHash: 'T' }), /authorized/);
+  assert.throws(() => gates.checkGates('preflight', flagsFor('preflight'), done(), { head: SHA, clean: false }, { profile: 'staging', targetsHash: 'T' }), /not clean/);
 });
 test('gates: mutating stages need their own confirmation, their prerequisites, the owner confirmations, and run once', () => {
-  assert.throws(() => gates.checkGates('identity', flagsFor('identity'), done('preflight'), git, { profile: 'staging' }), /confirm-mutating=identity/);
-  assert.doesNotThrow(() => gates.checkGates('identity', flagsFor('identity', { 'confirm-mutating': 'identity' }), done('preflight'), git, { profile: 'staging' }));
-  assert.throws(() => gates.checkGates('migrate', flagsFor('migrate', { 'confirm-mutating': 'migrate' }), done('preflight'), git, { profile: 'staging' }), /identity must be completed/);
-  assert.throws(() => gates.checkGates('exposure', flagsFor('exposure'), done('preflight', 'identity', 'migrate'), git, { profile: 'staging' }), /owner action "exposure"/);
-  assert.doesNotThrow(() => gates.checkGates('exposure', flagsFor('exposure', { 'owner-confirmed': 'exposure' }), done('preflight', 'identity', 'migrate'), git, { profile: 'staging' }));
-  assert.throws(() => gates.checkGates('worker-marker', flagsFor('worker-marker', { 'confirm-mutating': 'worker-marker', 'owner-confirmed': 'exposure' }), done('preflight', 'identity', 'migrate', 'exposure'), git, { profile: 'staging' }), /worker-password/);
-  assert.throws(() => gates.checkGates('migrate', flagsFor('migrate', { 'confirm-mutating': 'migrate' }), done('preflight', 'identity', 'migrate'), git, { profile: 'staging' }), /not repeatable/);
-  assert.doesNotThrow(() => gates.checkGates('preflight', flagsFor('preflight'), done('preflight'), git, { profile: 'staging' }), 'read-only stages may be repeated');
+  assert.throws(() => gates.checkGates('identity', flagsFor('identity'), done('preflight'), git, { profile: 'staging', targetsHash: 'T' }), /confirm-mutating=identity/);
+  assert.doesNotThrow(() => gates.checkGates('identity', flagsFor('identity', { 'confirm-mutating': 'identity' }), done('preflight'), git, { profile: 'staging', targetsHash: 'T' }));
+  assert.throws(() => gates.checkGates('migrate', flagsFor('migrate', { 'confirm-mutating': 'migrate' }), done('preflight'), git, { profile: 'staging', targetsHash: 'T' }), /identity must be completed/);
+  assert.throws(() => gates.checkGates('exposure', flagsFor('exposure'), done('preflight', 'identity', 'migrate'), git, { profile: 'staging', targetsHash: 'T' }), /owner action "exposure"/);
+  assert.doesNotThrow(() => gates.checkGates('exposure', flagsFor('exposure', { 'owner-confirmed': 'exposure' }), done('preflight', 'identity', 'migrate'), git, { profile: 'staging', targetsHash: 'T' }));
+  assert.throws(() => gates.checkGates('worker-marker', flagsFor('worker-marker', { 'confirm-mutating': 'worker-marker', 'owner-confirmed': 'exposure' }), done('preflight', 'identity', 'migrate', 'exposure'), git, { profile: 'staging', targetsHash: 'T' }), /worker-password/);
+  assert.throws(() => gates.checkGates('migrate', flagsFor('migrate', { 'confirm-mutating': 'migrate' }), done('preflight', 'identity', 'migrate'), git, { profile: 'staging', targetsHash: 'T' }), /not repeatable/);
+  assert.doesNotThrow(() => gates.checkGates('preflight', flagsFor('preflight'), done('preflight'), git, { profile: 'staging', targetsHash: 'T' }), 'read-only stages may be repeated');
 });
 test('gates: a failed stage blocks the run, except that cleanup may always be repeated; cleanup needs only preflight', () => {
-  const failed = { stages: { preflight: { status: 'done' }, identity: { status: 'failed' } } };
-  assert.throws(() => gates.checkGates('identity', flagsFor('identity', { 'confirm-mutating': 'identity' }), failed, git, { profile: 'staging' }), /failed earlier/);
-  const cf = { stages: { preflight: { status: 'done' }, cleanup: { status: 'failed' } } };
-  assert.doesNotThrow(() => gates.checkGates('cleanup', flagsFor('cleanup', { 'confirm-mutating': 'cleanup' }), cf, git, { profile: 'staging' }));
-  assert.doesNotThrow(() => gates.checkGates('cleanup', flagsFor('cleanup', { 'confirm-mutating': 'cleanup' }), done('preflight'), git, { profile: 'staging' }));
-  assert.throws(() => gates.checkGates('evidence', {}, done('preflight'), git, { profile: 'staging' }), /cleanup must be completed/);
+  const failed = { ...done('preflight'), stages: { preflight: { status: 'done', commit: SHA }, identity: { status: 'failed', commit: SHA } } };
+  assert.throws(() => gates.checkGates('identity', flagsFor('identity', { 'confirm-mutating': 'identity' }), failed, git, { profile: 'staging', targetsHash: 'T' }), /not healthy/);
+  const cf = { ...done('preflight'), stages: { preflight: { status: 'done', commit: SHA }, cleanup: { status: 'failed', commit: SHA } } };
+  assert.doesNotThrow(() => gates.checkGates('cleanup', flagsFor('cleanup', { 'confirm-mutating': 'cleanup' }), cf, git, { profile: 'staging', targetsHash: 'T' }));
+  assert.doesNotThrow(() => gates.checkGates('cleanup', flagsFor('cleanup', { 'confirm-mutating': 'cleanup' }), done('preflight'), git, { profile: 'staging', targetsHash: 'T' }));
+  assert.doesNotThrow(() => gates.checkGates('evidence', {}, failed, git, { profile: 'staging', targetsHash: 'T' }), 'evidence is available for a failed run');
 });
 test('flags: unknown shapes are refused', () => {
   assert.deepEqual(cli.parseFlags(['--run-id=abc', '--delete-raw']), { 'run-id': 'abc', 'delete-raw': true });

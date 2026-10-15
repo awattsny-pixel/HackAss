@@ -39,7 +39,7 @@
 | S5 | Owner creates the `hackass-staging` project and applies the settings (O1, O6, O7, O8); tells me only the reference and region | owner | S1 results | owner-side |
 | S6 | Hosted **read-only** checks H0 and H1a only (nothing is created, changed or deleted) | me | S5 and secrets exported by the owner for the session | no |
 | S7 | Hosted **mutating authorization** that **explicitly includes H1b** (creates and deletes one throwaway Auth user), then H2a (migration apply), H2c (one role comment) and H3 (second runner invocation), followed by the read-only checks H4 and H5a. H2b (exposing `api`) is an owner action between H2a and H2c | me and owner | S6 passed; owner confirms the hosted facts (Postgres 17, bridge privileges) | **yes** |
-| S8 | Hosted **mutating checks** H5b to H8, H10 and H11 (fixtures, Auth users, staff-assignment inserts and revocation, one scoped job update), the worker password setup (owner) with H9 queries, then the read-only H12 | me and owner | S7 passed; worker password (O4) | yes (synthetic data) |
+| S8 | Hosted **mutating checks** H5b to H8, H10 and H11 (fixtures, Auth users, staff-assignment inserts and revocation, one scoped job update), the worker password setup (owner) with H9 queries, then H12 (isolation; mutating class, because it creates Auth sessions and its probes would run if isolation were broken), including the hosted 15-minute MFA test (H8-default), which is required for full acceptance | me and owner | S7 passed; worker password (O4) | yes (synthetic data) |
 | S9 | Cleanup H13 and evidence H14; owner deletes the project | me and owner | all of the above | yes |
 
 S3 is the only step that reaches GitHub; S5 to S9 are the only steps that reach Supabase. **Only S6 is read-only; S7, S8 and S9 are mutating authorizations and each must say so.** S3 and S6 to S9 are independent of each other once their own prerequisites are met (the CI run does not need staging, and staging does not need CI).
@@ -59,7 +59,7 @@ S3 is the only step that reaches GitHub; S5 to S9 are the only steps that reach 
 | Delete or pause, then delete, the `hackass-staging` project (the only way to remove synthetic content, which is append-only) | **owner** | after H14 evidence is accepted |
 | Revoke every key, token and password created for the run; unset exported variables | owner (keys), me (shell session) | immediately after S9 |
 | Delete the **raw, unredacted** run output and the password files created for the run (disposable; never committed) | me | after the redacted evidence is reviewed |
-| **Keep** the redacted verification evidence (`docs/hosted/evidence/<date>-staging.md`, committed in a separate reviewed commit, and the owner's own copy); it outlives the staging project | me and owner | retained |
+| **Keep** the redacted verification evidence (`docs/hosted/evidence/<date>-staging-<run id>.md`, committed in a separate reviewed commit, and the owner's own copy); it outlives the staging project | me and owner | retained |
 | Disconnect/limit any hosting integration changed for U1, and restore it deliberately (not automatically) | owner | when the owner is ready for deployments |
 | Credential retirement evidence kept with the project records, not in the repository | owner | before S3 |
 
