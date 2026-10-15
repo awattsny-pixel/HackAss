@@ -186,3 +186,26 @@ test('F2-E migrations: the reads are STABLE and write nothing, the allowlist is 
   for (const f of ['api.list_public_hacks', 'api.get_public_hack', 'app_review.public_blockers', 'app_review.public_hack_json']) assert.ok(down.includes(f), f);
   assert.match(down, /version in \('20261019090000', '20261019090100'\)/);
 });
+
+test('docs/db/f2e-public-catalog.md does not promise duplicate-free traversal: it states the start-time key, skips, repeats and the exact guarantees', () => {
+  const doc = read('docs/db/f2e-public-catalog.md');
+  assert.doesNotMatch(doc, /never returns the same hack twice/i);
+  for (const needle of [/start time/, /backward/, /Delayed transactions/, /may \*\*skip\*\*/, /may \*\*repeat\*\*/, /within one response/, /de-duplicate by `slug`/]) assert.match(doc, needle);
+});
+
+test('docs/foundation/f2-closeout.md reconciles every F2 acceptance row and names the milestone for what remains', () => {
+  const acceptance = read('docs/foundation/f2-acceptance.md');
+  const closeout = read('docs/foundation/f2-closeout.md');
+  const ids = [...acceptance.matchAll(/^\| ([GISHPR]-\d[ab-c]?) \|/gm)].map((m) => m[1]);
+  assert.ok(ids.length >= 20, `found ${ids.length} requirement rows`);
+  for (const id of ids) assert.ok(closeout.includes(`| ${id} |`), `the closeout does not reconcile ${id}`);
+  for (const topic of ['AI job / budget integration', 'Automated-decision restrictions', 'Profile and asset references', 'Worker execution', 'Monitoring and recovery', 'Contributor pagination', 'Catalog performance', 'Hosted verification', 'GitHub CI', 'Legacy credential retirement']) assert.ok(closeout.includes(`| ${topic} |`), topic);
+  for (const status of ['satisfied locally', 'hosted verification pending', 'implementation missing', 'explicitly deferred']) assert.ok(closeout.includes(status), status);
+  assert.match(closeout, /F2 acceptance as written remains \*\*open\*\*/);
+  assert.match(acceptance, /f2-closeout\.md/);
+});
+
+test('docs/foundation/f2-closeout.md records the harness diagnosis: the original failure, the established cause, and what was not established', () => {
+  const closeout = read('docs/foundation/f2-closeout.md');
+  for (const needle of [/kill EPERM/, /8 !== 4/, /zombie/, /What was not established/, /never counted as success|never counted as a successful/]) assert.match(closeout, needle);
+});

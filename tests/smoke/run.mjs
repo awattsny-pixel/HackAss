@@ -2,7 +2,7 @@
 //
 //   node tests/smoke/run.mjs [--build-timeout-ms=N] [--startup-timeout-ms=N] [--request-timeout-ms=N]
 //                            [--total-timeout-ms=N] [--state-file=PATH]
-//                            [--terminate-grace-ms=N] [--terminate-wait-ms=N] [--test-unkillable]   (test hooks)
+//                            [--terminate-grace-ms=N] [--terminate-wait-ms=N] [--test-unkillable] [--test-kill-eperm=transient|persistent]   (test hooks)
 //                            [--build-script=PATH --app-script=PATH]   (test hooks: replace next build / next start)
 //
 // Isolation: every child process gets an environment built from scratch (harness.mjs buildTestEnv) and a
@@ -18,7 +18,7 @@ import { mkdtemp, mkdir, rm, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { startFake, IDS, CANARY } from './fake-postgrest.mjs';
 import { runChecks } from './checks.mjs';
-import { EXIT, HarnessFailure, Managed, buildTestEnv, parseArgs } from './harness.mjs';
+import { EXIT, HarnessFailure, Managed, buildTestEnv, epermKill, parseArgs } from './harness.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const netGuardPath = fileURLToPath(new URL('./net-guard.cjs', import.meta.url));
@@ -62,7 +62,7 @@ process.on('unhandledRejection', (e) => { console.error('FAIL  unhandled rejecti
 process.on('uncaughtException', (e) => { console.error('FAIL  uncaught exception:', e?.message || e); die(EXIT.TIMEOUT_OR_ERROR); });
 
 function track(label, file, args, env) {
-  const m = new Managed(label, file, args, { cwd: root, env, ignoreSignals: opts.testUnkillable });
+  const m = new Managed(label, file, args, { cwd: root, env, ignoreSignals: opts.testUnkillable, ...(opts.testKillEperm ? { killFn: epermKill(opts.testKillEperm) } : {}) });
   children.push(m);
   state.children.push({ label, pid: m.pid });
   return m;

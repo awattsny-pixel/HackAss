@@ -25,6 +25,8 @@ shim) in CI, plus the generic requirements. "Real stack" rows need the Auth serv
 | P-1 | Public surface | the anonymous-readable object list equals the documented contract (published projection, categories, counts view, public profiles projection, public collections, search functions); no grant on `profiles` | no |
 | R-1 | Rights | multiple claims per version; publication stores the rights snapshot (claim hashes, review ids, evidence hashes) and it survives later review changes | no |
 
+> **Reconciled status.** The per-slice tables below are history. The current, row-by-row status of every requirement above (satisfied locally / partly / hosted pending / missing / deferred, with implementation, evidence and the responsible milestone) is in `docs/foundation/f2-closeout.md`. F2 acceptance as a whole is **not** closed.
+
 Generic: containment, privacy and smoke suites stay green; no application schema is applied outside migrations; no secret in
 the repository (`npm run scan:secrets`).
 
