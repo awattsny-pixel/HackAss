@@ -56,9 +56,11 @@ export async function runStage(stage, argv, fn, { env = process.env, git = gitSt
     const def = STAGES[stage];
     if (flags['owner-deletion-date'] !== undefined) { try { validateOwnerDate(flags['owner-deletion-date']); } catch (e) { if (e instanceof DateRefused) throw new GateRefused(e.message); throw e; } }
     run = openRun({ runId: flags['run-id'], profile, repoRoot });
+    // The lock comes FIRST: a process that is refused it changes nothing in the run, not even its redaction state. Redaction is initialised under the lock, before any secret is registered.
+    try { run.acquireLock({ takeoverDead: RECOVERY.has(stage) }); } catch (err) { if (err instanceof LockRefused) throw new GateRefused(err.message); throw err; }
+    run.initRedaction();
     const e = readEnv(env, { repoRoot });
     if (!def.local) ctx = createContext(e, { profile, repoRoot }); // H0: throws TargetRefused before anything is contacted
-    try { run.acquireLock({ takeoverDead: RECOVERY.has(stage) }); } catch (err) { if (err instanceof LockRefused) throw new GateRefused(err.message); throw err; }
     let state = run.state();
     for (const [k, s] of Object.entries(state.stages)) if (s.status === 'running') state.stages[k] = { ...s, status: 'interrupted', error: 'the process running this stage died or was killed' }; // an unfinished stage never restarts
     const targetsHash = ctx ? hashTargets(ctx.targets) : null;

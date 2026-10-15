@@ -3,16 +3,34 @@
 //            executor (pg.mjs) additionally runs every read inside BEGIN READ ONLY ... ROLLBACK, so the DATABASE refuses a write even if this check were wrong;
 //   worker - the fixed worker-function calls of the job flow (H10), the only reads-that-write; run on the worker endpoints only, in their own transaction;
 //   admin  - role administration, run as `postgres` and NEVER after SET ROLE: only the worker marker (a role comment) and its removal;
+//   migration - the fixed statements that observe, cancel and terminate the Supabase CLI's own database session (identified by login, the CLI's session name and its start time);
 //   probe  - statements that are EXPECTED to be refused by the database (worker privilege probes): only the fixed list PROBES below;
 //   fixture - application DML run as hackass_owner (SET ROLE is reserved for this kind): the staff-assignment insert/revocation for fixture users created in
 //            this run, the category insert and the one scoped job update. There is NO general select fallback in this kind.
 // Anything else, and anything on the forbidden list, is refused before it leaves the process.
 export class SqlRefused extends Error {}
 
+/** The Supabase CLI's database sessions are named by the CLI itself (it ignores a name given in the URL). Observed for the pinned CLI 2.120.0 and asserted by the selftest. */
+export const CLI_SESSION_NAME = '@effect/sql-pg';
+const MARK = '\\d{10}\\.\\d{6}';
+const ident = (mark) => `usename = current_user and application_name = '${CLI_SESSION_NAME}' and backend_start >= to_timestamp(${mark}) and pid <> pg_backend_pid()`;
+/** The migration-session statements. `mark` is the SERVER clock (epoch seconds, 6 decimals) read just before the CLI was started: only sessions of the migration login, named like the CLI's, that started after it are touched. */
+export const MIGRATION_SQL = Object.freeze({
+  mark: "select extract(epoch from clock_timestamp())::numeric(16,6)::text",
+  count: (mark) => `select count(*) from pg_stat_activity where ${ident(mark)}`,
+  locks: (mark) => `select count(*) from pg_locks l join pg_stat_activity a on a.pid = l.pid where a.usename = current_user and a.application_name = '${CLI_SESSION_NAME}' and a.backend_start >= to_timestamp(${mark}) and a.pid <> pg_backend_pid()`,
+  stuck: "select count(*) from pg_stat_activity where usename = current_user and pid <> pg_backend_pid() and application_name not like 'hackass-psql-%' and (wait_event_type = 'Lock' or state like 'idle in transaction%')",
+  cancel: (mark) => `select count(pg_cancel_backend(pid)) from pg_stat_activity where ${ident(mark)}`,
+  terminate: (mark) => `select count(pg_terminate_backend(pid)) from pg_stat_activity where ${ident(mark)}`,
+});
+const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const MIGRATION_SHAPES = [MIGRATION_SQL.mark, MIGRATION_SQL.stuck].map((t) => new RegExp(`^${esc(t)}$`))
+  .concat(['count', 'locks', 'cancel', 'terminate'].map((k) => new RegExp(`^${esc(MIGRATION_SQL[k]('@@')).replace('@@', MARK)}$`)));
+
 /** Statements the worker login is expected to be refused (H9). Exact strings only. */
 export const PROBES = Object.freeze(['select 1 from app.accounts limit 1', 'select 1 from app.jobs limit 1', 'select api.whoami()', 'select app_budget.today()', 'select app_review.utc_today()', 'set role hackass_owner', 'select 1 from auth.users limit 1', 'create table public.x (i int)']);
 
-const FORBIDDEN = [/\bdrop\s+(schema|role|table|database|function)\b/i, /\btruncate\b/i, /\bdisable\s+trigger\b/i, /\bcreate\s+(table|role|schema|extension|function)\b/i, /\bgrant\b/i, /\brevoke\b/i, /\bcopy\b/i, /\bpg_terminate_backend\b/i, /\bset_config\b/i, /\b(pg_read_file|pg_read_binary_file|pg_ls_dir|lo_import|lo_export)\b/i];
+const FORBIDDEN = [/\bdrop\s+(schema|role|table|database|function)\b/i, /\btruncate\b/i, /\bdisable\s+trigger\b/i, /\bcreate\s+(table|role|schema|extension|function)\b/i, /\bgrant\b/i, /\brevoke\b/i, /\bcopy\b/i, /\bpg_terminate_backend\b/i, /\bpg_cancel_backend\b/i, /\bset_config\b/i, /\b(pg_read_file|pg_read_binary_file|pg_ls_dir|lo_import|lo_export)\b/i];
 const stripLiterals = (sql) => sql.replace(/'(?:[^']|'')*'/g, "''").replace(/\$\$[\s\S]*?\$\$/g, '$$$$').replace(/--[^\n]*/g, '');
 
 /** Split a script into statements on semicolons outside string literals and $$ bodies. */
@@ -58,8 +76,13 @@ export const MARKER_READ_SQL = "select shobj_description(r.oid, 'pg_authid') fro
  * Returns the statements on success; throws SqlRefused otherwise.
  */
 export function checkSql(sql, kind, { fixtureIds = new Set(), allowedJobTargets = new Set(), allowedJobIds = new Set() } = {}) {
-  if (!['read', 'admin', 'fixture', 'probe', 'worker'].includes(kind)) throw new SqlRefused(`unknown SQL kind ${kind}`);
+  if (!['read', 'admin', 'fixture', 'probe', 'worker', 'migration'].includes(kind)) throw new SqlRefused(`unknown SQL kind ${kind}`);
   if (kind === 'probe') { const one = sql.replace(/;\s*$/, '').replace(/\s+/g, ' ').trim(); if (!PROBES.includes(one)) throw new SqlRefused('not one of the fixed worker privilege probes'); return [one]; }
+  if (kind === 'migration') {
+    const one = sql.replace(/;\s*$/, '').replace(/\s+/g, ' ').trim();
+    if (!MIGRATION_SHAPES.some((re) => re.test(one))) throw new SqlRefused('not one of the fixed migration-session statements');
+    return [one];
+  }
   if (kind === 'worker') {
     const stmts = splitStatements(sql);
     if (stmts.length !== 1) throw new SqlRefused('a worker call is exactly one statement');

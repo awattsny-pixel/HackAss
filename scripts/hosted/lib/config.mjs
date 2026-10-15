@@ -116,8 +116,18 @@ export function conninfo({ host, port, user, profile, appName }) {
   if (appName !== undefined && !/^hackass-[a-z0-9-]{3,48}$/.test(appName)) throw new Error('unexpected application name');
   return `host=${host} port=${port} dbname=postgres user=${user} sslmode=${profile === 'selftest' ? 'disable' : 'require'} connect_timeout=15${appName ? ` application_name=${appName}` : ''}`;
 }
-/** Password-free `postgresql://` URL for the Supabase CLI (host path of the password file is passed through PGPASSFILE by the caller). */
-export function cliUrl({ host, port, user, profile }) {
+/**
+ * Password-free `postgresql://` URL for the Supabase CLI (the password file path is passed through PGPASSFILE by the caller). `limits` become STARTUP OPTIONS of the CLI's database session
+ * (`options=-c name=value ...`), so the SERVER enforces them whatever happens to the client process: lock wait, statement time, idle-in-transaction time and a connection check that
+ * ends a session whose client has died. (The CLI ignores an application_name given in the URL, so the session cannot be named; see lib/migrate.mjs.)
+ */
+export function cliUrl({ host, port, user, profile, limits }) {
   const h = profile === 'selftest' && host === SELFTEST_HOST ? '127.0.0.1' : host; // the CLI runs on the host, the container-side name does not resolve there
-  return `postgresql://${encodeURIComponent(user)}@${h}:${port}/postgres?sslmode=${profile === 'selftest' ? 'disable' : 'require'}`;
+  const q = [`sslmode=${profile === 'selftest' ? 'disable' : 'require'}`];
+  if (limits) {
+    const opts = [['lock_timeout', limits.lockTimeoutMs], ['statement_timeout', limits.statementTimeoutMs], ['idle_in_transaction_session_timeout', limits.idleInTxnMs], ['client_connection_check_interval', limits.connectionCheckMs]];
+    for (const [k, v] of opts) if (!Number.isInteger(v) || v < 0 || v > 86_400_000) throw new Error(`invalid server-side limit ${k}`);
+    q.push(`options=${encodeURIComponent(opts.map(([k, v]) => `-c ${k}=${v}`).join(' '))}`);
+  }
+  return `postgresql://${encodeURIComponent(user)}@${h}:${port}/postgres?${q.join('&')}`;
 }

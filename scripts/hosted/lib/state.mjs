@@ -15,6 +15,13 @@ export class LockRefused extends Error {}
 export function runBase(profile) {
   return profile === 'selftest' ? path.join(os.tmpdir(), 'hackass-hosted-selftest') : path.join(os.homedir(), '.hackass-staging-runs');
 }
+/** The run's redaction salt, created EXCLUSIVELY (never overwritten) and read back; a missing or damaged salt is an error, never silently replaced. */
+export function ensureSalt(file) {
+  try { writeFileSync(file, randomBytes(16).toString('hex'), { mode: 0o600, flag: 'wx' }); } catch (e) { if (e?.code !== 'EEXIST') throw e; }
+  const salt = readFileSync(file, 'utf8').trim();
+  if (!/^[0-9a-f]{32}$/.test(salt)) throw new Error('the redaction salt is missing or damaged');
+  return salt;
+}
 export const hashTargets = (targets) => createHash('sha256').update(JSON.stringify(targets)).digest('hex');
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e?.code === 'EPERM'; } };
 
@@ -62,19 +69,21 @@ export function openRun({ runId, profile, repoRoot = REPO_ROOT, base = runBase(p
       held = token;
       return token;
     },
+    /** Create/load the redaction store and start recording registered secrets as salted hashes. Only the holder of the run lock may do this. */
+    initRedaction() {
+      if (!held) throw new Error('redaction state may be initialized only while holding the run lock');
+      const salt = ensureSalt(f('redaction.salt')); const hashFile = f('redaction.hashes');
+      setRegisterSink((v) => { const lines = hashableParts(v).map((p) => hashSecret(salt, p)).join('\n'); try { appendFileSync(hashFile, `${lines}\n`, { mode: 0o600 }); } catch { /* the run directory may already be gone */ } });
+      loadHashedSecrets({ salt, hashes: existsSync(hashFile) ? readFileSync(hashFile, 'utf8').split('\n').filter(Boolean) : [] });
+      for (const v of flatten(run.secrets())) registerSecret(v);
+    },
     releaseLock() {
       if (!held) return;
       try { const o = JSON.parse(readFileSync(path.join(lockDir, 'owner.json'), 'utf8')); if (o.token === held) rmSync(lockDir, { recursive: true, force: true }); } catch { /* the run directory may already be gone */ }
       held = null;
     },
   };
-  // Redaction that survives the secrets file: every secret registered by any process of this run is stored only as a salted hash.
-  const saltFile = f('redaction.salt'); const hashFile = f('redaction.hashes');
-  if (!existsSync(saltFile)) writeFileSync(saltFile, randomBytes(16).toString('hex'), { mode: 0o600 });
-  const salt = readFileSync(saltFile, 'utf8').trim();
-  setRegisterSink((v) => { const lines = hashableParts(v).map((p) => hashSecret(salt, p)).join('\n'); try { appendFileSync(hashFile, `${lines}\n`, { mode: 0o600 }); } catch { /* the run directory may already be gone */ } });
-  loadHashedSecrets({ salt, hashes: existsSync(hashFile) ? readFileSync(hashFile, 'utf8').split('\n').filter(Boolean) : [] });
-  for (const v of flatten(run.secrets())) registerSecret(v);
+  // Redaction state (salt, hashes) is created and changed ONLY by run.initRedaction(), which requires the run lock: a process that is refused the lock never touches it.
   return run;
 }
 function flatten(o) { return Object.values(o ?? {}).flatMap((v) => (v && typeof v === 'object' ? flatten(v) : typeof v === 'string' ? [v] : [])); }

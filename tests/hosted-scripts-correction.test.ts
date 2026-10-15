@@ -308,7 +308,7 @@ esac
 test('a database call past its deadline: the client is killed, the NAMED container is removed and its absence verified', async () => {
   const d = stubDocker(); process.env.DOCKER_BIN = d.bin;
   try {
-    await assert.rejects(() => pg.runSql(selfCtx(), 'migrate', 'select pg_sleep(30)', { kind: 'read', timeoutMs: 500 }), (e: { containerRemoved?: boolean; message: string }) => e.containerRemoved === true && /container was removed/.test(e.message));
+    await assert.rejects(() => pg.runSql(selfCtx(), 'migrate', 'select pg_sleep(30)', { kind: 'read', timeoutMs: 2500 }), (e: { containerRemoved?: boolean; message: string }) => e.containerRemoved === true && /container was removed/.test(e.message));
     const calls = d.calls();
     assert.ok(calls.some((c) => /^rm -f hackass-psql-/.test(c)), 'docker rm -f <name> was run');
     assert.ok(calls.some((c) => /^ps -a -q --filter name=\^hackass-psql-/.test(c)), 'absence was verified with docker ps');
@@ -320,7 +320,7 @@ test('a database call past its deadline: the client is killed, the NAMED contain
 });
 test('if the container cannot be proved gone the failure says so', async () => {
   const d = stubDocker({ rmWorks: false }); process.env.DOCKER_BIN = d.bin;
-  try { await assert.rejects(() => pg.runSql(selfCtx(), 'migrate', 'select 1', { kind: 'read', timeoutMs: 400 }), (e: { containerRemoved?: boolean; message: string }) => e.containerRemoved === false && /may survive/.test(e.message)); } finally { delete process.env.DOCKER_BIN; }
+  try { await assert.rejects(() => pg.runSql(selfCtx(), 'migrate', 'select 1', { kind: 'read', timeoutMs: 2500 }), (e: { containerRemoved?: boolean; message: string }) => e.containerRemoved === false && /may survive/.test(e.message)); } finally { delete process.env.DOCKER_BIN; }
 });
 test('truncated or timed-out migration output is rejected, never trusted', () => {
   assert.ok(push, 'lib/push.mjs exists');
@@ -388,7 +388,9 @@ function evidenceProcess(id: string, extra: string[] = []) {
 }
 test('evidence is produced for a failed run, in a separate process, and still removes secrets after the secrets file is deleted', () => {
   const id = freshRunId(); const run = state.openRun({ runId: id, profile: 'selftest' });
+  run.acquireLock(); run.initRedaction(); // redaction state exists only under the run lock
   const secret = `Pw-${'z9'.repeat(12)}`; redact.registerSecret(secret); // this process registers it; only its salted hash is stored
+  run.releaseLock();
   const st2 = run.state(); st2.stages = { preflight: { status: 'done', commit: SHA }, identity: { status: 'failed', commit: SHA, error: 'boom' } }; st2.closed = true; run.save(st2);
   appendFileSync(join(run.dir, 'results.jsonl'), JSON.stringify({ id: 'H1b', status: 'FAIL', error: `leaked ${secret} in a message`, ms: 3 }) + '\n'); // a leak that slipped past write-time redaction
   assert.ok(!existsSync(join(run.dir, 'secrets.json')), 'no secrets file exists');
@@ -457,9 +459,12 @@ test('the common entry validates the deletion date before touching the run', asy
 });
 test('hash-based redaction survives the secrets file', () => {
   const id = freshRunId(); const run = state.openRun({ runId: id, profile: 'selftest' });
+  run.acquireLock(); run.initRedaction();
   const s = `Tk-${'q7'.repeat(10)}`; redact.registerSecret(s);
+  run.releaseLock();
   redact.clearRegisteredSecrets();
-  state.openRun({ runId: id, profile: 'selftest' }); // a new process would do exactly this: reload the stored salt and hashes
+  const again = state.openRun({ runId: id, profile: 'selftest' }); // a new process would do exactly this: take the lock, then reload the stored salt and hashes
+  again.acquireLock(); again.initRedaction(); again.releaseLock();
   assert.ok(!redact.redact(`value ${s} end`).includes(s)); assert.equal(redact.looksSecret(`value ${s}`), true);
   assert.ok(readFileSync(join(run.dir, 'redaction.hashes'), 'utf8').length > 0);
 });

@@ -10,9 +10,8 @@ import { adminCreateUser, adminDeleteUser } from './lib/flows.mjs';
 import { registerSecret } from './lib/redact.mjs';
 import { LEDGER_EXISTS_SQL, LEDGER_SQL, FINGERPRINT_SQL } from './lib/sql.mjs';
 import { MARKER_SET_SQL, MARKER_READ_SQL } from './lib/sqlguard.mjs';
-import { runBounded, childEnv } from './lib/exec.mjs';
-import { parsePushResult } from './lib/push.mjs';
-import { cliUrl, REPO_ROOT, STAGING } from './lib/config.mjs';
+import { pushMigrations } from './lib/migrate.mjs';
+import { REPO_ROOT, STAGING } from './lib/config.mjs';
 
 const stage = process.argv[2];
 const argv = process.argv.slice(3);
@@ -20,18 +19,9 @@ if (!['identity', 'migrate', 'worker-marker', 'rerun'].includes(stage)) { consol
 
 const cli = () => process.env.SUPABASE_BIN || path.join(REPO_ROOT, '.tools/supabase/2.120.0/supabase');
 const repoVersions = () => readdirSync(path.join(REPO_ROOT, 'supabase/migrations')).filter((f) => /^\d{14}_.*\.sql$/.test(f)).map((f) => f.split('_')[0]).sort();
-async function push(ctx, dryRun) {
-  const m = ctx.targets.migrate;
-  const args = ['--output-format', 'stream-json', 'db', 'push', '--db-url', cliUrl({ host: m.host, port: m.port, user: m.user, profile: ctx.profile }), ...(dryRun ? ['--dry-run'] : [])];
-  // stdin is closed (nothing can be answered at a prompt) and the password comes only from the private password file; the whole process group is killed at the deadline
-  const r = await runBounded(cli(), args, { cwd: REPO_ROOT, timeoutMs: dryRun ? 120_000 : 600_000, env: childEnv({ PGPASSFILE: ctx.targets.passfile }) });
-  if (r.timedOut) {
-    let active = 'unknown';
-    try { active = await queryText(ctx, 'migrate', "select count(*) from pg_stat_activity where usename = current_user and pid <> pg_backend_pid() and state = 'active'", { timeoutMs: 30_000 }); } catch { /* reported as unknown */ }
-    throw new Error(`supabase db push${dryRun ? ' --dry-run' : ''} exceeded its deadline and its process group was killed; active sessions of the migration login still running: ${active} (do not retry until this is 0)`);
-  }
-  return parsePushResult(r, { dryRun });
-}
+// The CLI is run through lib/migrate.mjs, which bounds the DATABASE work (server-side limits, identified cancellation, verified end), not only the CLI process.
+// HOSTED_PUSH_TIMEOUT_MS shortens the real push's deadline; it is read only for the selftest profile (a hosted run always gets the documented deadline).
+const push = (ctx, dryRun) => pushMigrations(ctx, { dryRun, cli: cli(), timeoutMs: !dryRun && ctx.profile === 'selftest' && /^\d+$/.test(process.env.HOSTED_PUSH_TIMEOUT_MS ?? '') ? Number(process.env.HOSTED_PUSH_TIMEOUT_MS) : undefined });
 const ledger = async (ctx, ep = 'migrate') => ((await queryText(ctx, ep, LEDGER_EXISTS_SQL)) === 'true' ? queryJson(ctx, ep, LEDGER_SQL) : { count: 0, versions: [], md5: '' });
 
 const code = await runStage(stage, argv, async ({ ctx, run, profile, say }) => {

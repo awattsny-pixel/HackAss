@@ -29,7 +29,7 @@ export function endpointInfo(ctx, endpoint) {
 }
 const isWorkerEndpoint = (ep) => ep === 'worker-txn' || ep === 'worker-session';
 /** Which kinds may run where: role administration and fixture DML only through the migration login; worker calls and probes only as the worker. Reads anywhere. */
-const KIND_ENDPOINTS = { read: () => true, admin: (ep) => ep === 'migrate', fixture: (ep) => ep === 'migrate', worker: isWorkerEndpoint, probe: isWorkerEndpoint };
+const KIND_ENDPOINTS = { read: () => true, admin: (ep) => ep === 'migrate', fixture: (ep) => ep === 'migrate', worker: isWorkerEndpoint, probe: isWorkerEndpoint, migration: (ep) => ep === 'migrate' };
 const OPTIONS = new Set(['kind', 'fixtureIds', 'allowedJobTargets', 'allowedJobIds', 'timeoutMs']);
 
 const inflight = new Set();
@@ -56,7 +56,7 @@ export function wrapScript(kind, sql, timeoutMs) {
   const backstop = Math.max(5_000, timeoutMs) + 5_000;
   const locals = `set local statement_timeout = '${backstop}ms';\nset local idle_in_transaction_session_timeout = '${backstop}ms';\nset local client_connection_check_interval = '1s';\n`;
   switch (kind) {
-    case 'read': return onlyShow(sql) ? `begin read only;\n${body};\nrollback;\n` : `begin read only;\n${locals}${body};\nrollback;\n`;
+    case 'read': case 'migration': return onlyShow(sql) ? `begin read only;\n${body};\nrollback;\n` : `begin read only;\n${locals}${body};\nrollback;\n`;
     case 'probe': return `begin;\n${locals}${body};\nrollback;\n`;
     case 'worker': return `begin;\n${body};\ncommit;\n`; // the worker role's own 30 s statement timeout is the bound; a local override could only loosen it
     case 'admin': case 'fixture': return `begin;\n${locals}${body};\ncommit;\n`;
@@ -91,7 +91,7 @@ async function execPsql(ctx, endpoint, script, { passfile, user, timeoutMs }) {
 }
 
 /**
- * Run a SQL script. kind: read | admin | fixture | probe | worker (see sqlguard). No other option is accepted: in particular there is no password-file or login override here.
+ * Run a SQL script. kind: read | admin | fixture | probe | worker | migration (see sqlguard). No other option is accepted: in particular there is no password-file or login override here.
  * Resolves { ok, stdout, stderr (redacted), code }; throws PgFailure on timeout or truncation. A nonzero psql exit is returned (ok=false), because the probes EXPECT refusals.
  */
 export async function runSql(ctx, endpoint, sql, opts = {}) {

@@ -1,5 +1,5 @@
 // The outcome of a run, computed from its state and its results log. Pure. "No check failed" is never enough: a run is COMPLETE only when EVERY required check ran and passed (including
-// the hosted 15-minute MFA test, H8-default), no stage failed, was interrupted or raised an unexpected error, script cleanup is done, and the owner's deletion date is recorded.
+// the hosted 15-minute MFA test, H8-default), no stage failed, was interrupted (in its current state or in any earlier attempt) or raised an unexpected error, script cleanup is done, and the owner's deletion date is recorded.
 // A check that did not run is NOT RUN, never silently absent.
 import { REQUIRED_CHECKS } from './stages.mjs';
 import { isCalendarDate } from './dates.mjs';
@@ -33,9 +33,12 @@ export function evaluateRun(state, results) {
   const date = state.facts?.owner_deletion_date ?? null;
   const dateOk = date !== null && isCalendarDate(date);
   const scriptCleanupDone = stages.cleanup?.status === 'done' && ['H13a', 'H13b', 'H13c'].every((id) => last.get(id)?.status === 'PASS');
+  // Earlier attempts that failed or were interrupted stay in the outcome even if an approved retry later succeeded.
+  const earlier = (state.history ?? []).filter((h) => h?.stage && h.stage !== 'evidence' && ['failed', 'interrupted', 'running'].includes(h.status));
   const failedReasons = [];
   if (fails.length) failedReasons.push(`failed checks: ${fails.join(', ')}`);
   if (unhealthy.length) failedReasons.push(`unhealthy stages: ${unhealthy.join(', ')}`);
+  if (earlier.length) failedReasons.push(`earlier attempts that failed or were interrupted (kept although a retry followed): ${earlier.map((h) => `${h.stage} (${h.status})`).join(', ')}`);
   if (stageErrors.length) failedReasons.push(`${stageErrors.length} unexpected stage error(s): ${[...new Set(stageErrors.map((e) => e.stage))].join(', ')}`);
   const incompleteReasons = [];
   if (notRun.length) incompleteReasons.push(`not run: ${notRun.join(', ')}`);
@@ -43,5 +46,5 @@ export function evaluateRun(state, results) {
   if (!scriptCleanupDone) incompleteReasons.push('script cleanup (H13a to H13c) is not done');
   if (!dateOk) incompleteReasons.push(date === null ? 'the owner-confirmed deletion date is not recorded' : 'the recorded deletion date is not a valid calendar date');
   const outcome = failedReasons.length ? 'FAILED' : incompleteReasons.length ? 'INCOMPLETE' : 'COMPLETE';
-  return { outcome, reasons: [...failedReasons, ...incompleteReasons], rows, notRun, fails, unhealthy, stageErrors, scriptCleanupDone, ownerDate: dateOk ? date : null, ownerActions: OWNER_ACTIONS };
+  return { outcome, reasons: [...failedReasons, ...incompleteReasons], rows, notRun, fails, unhealthy, earlier, stageErrors, scriptCleanupDone, ownerDate: dateOk ? date : null, ownerActions: OWNER_ACTIONS };
 }

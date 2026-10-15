@@ -13,8 +13,14 @@ const dockerPsql = (sql, dockerBin = process.env.DOCKER_BIN || 'docker') =>
 export function resetLocalApplication() {
   const r = dockerPsql(`
     drop schema if exists api, app, app_bridge, app_budget, app_content, app_guard, app_review, worker, supabase_migrations cascade;
-    drop owned by hackass_owner, hackass_worker cascade;
-    drop role if exists hackass_worker; drop role if exists hackass_owner;`);
+    do $$ declare r text; begin
+      foreach r in array array['hackass_owner', 'hackass_worker'] loop
+        if exists (select 1 from pg_roles where rolname = r) then execute format('drop owned by %I cascade', r); end if;
+      end loop;
+      foreach r in array array['hackass_worker', 'hackass_owner'] loop
+        if exists (select 1 from pg_roles where rolname = r) then execute format('drop role %I', r); end if;
+      end loop;
+    end $$;`);
   if (r.status !== 0) throw new Error(`could not reset the local application state: ${r.stderr.split('\n')[0]}`);
 }
 /** The owner action "set the worker password", on the disposable database only. */

@@ -3,13 +3,17 @@
 //   1. refusals that must happen before anything is contacted (wrong target, missing gates, out-of-order stage, a repeated mutating stage, wrong authorization group);
 //   2. a CONCURRENCY scenario (two processes, one run), an INTERRUPTION scenario (SIGTERM, then the explicit read-only retry) and a CRASH scenario (SIGKILL in the middle of the
 //      identity stage, then cleanup of the uncertain creation by its exact recorded e-mail, before any application table or worker role exists);
-//   3. real-Docker DEADLINE checks: a statement that outlives its client deadline leaves no container and no running statement;
+//   3. real-Docker DEADLINE checks: a statement that outlives its client deadline leaves no container and no running statement; and the REAL Supabase CLI against a genuinely blocked
+//      migration: the server's own lock timeout ends it, the identified cancellation ends it, the server's connection check ends it after the CLI was killed, and in each case the
+//      migration's session and locks are gone within the documented bound; the actual `migrate` stage with a deadline too short to finish ends failed and cannot be retried;
 //   4. every stage in order, in one fresh run, from an empty database, with every stage a separate process (as on staging);
 //   5. evidence generated in a separate process after the secrets file was deleted, and proof that no secret reached any output, file or the evidence.
 // Needs: the local stack running (`supabase start`), Docker, SUPABASE_BIN. HOSTED_SELFTEST=1 is set here.  Usage: node scripts/hosted/selftest.mjs [--default-window]
 // With --default-window the hosted 15-minute MFA test (H8-default, about 17 minutes) also runs and the evidence outcome must be COMPLETE; without it the outcome must be INCOMPLETE
 // with exactly H8-default reported as NOT RUN.
 import { spawn, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
@@ -21,6 +25,7 @@ import { runBase } from './lib/state.mjs';
 import { createContext } from './lib/context.mjs';
 import { runSql, PgFailure } from './lib/pg.mjs';
 import { adminFindUsersByEmails } from './lib/flows.mjs';
+import { pushMigrations } from './lib/migrate.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FULL = process.argv.includes('--default-window');
@@ -136,6 +141,68 @@ console.log(`selftest run ${runId} at ${head.slice(0, 12)}${FULL ? ' (with the 1
   let active = '?';
   for (let i = 0; i < 40; i++) { active = psqlAdmin("select count(*) from pg_stat_activity where application_name like 'hackass-psql-%' and state = 'active'"); if (active === '0') break; await sleep(500); }
   expect('no statement of the abandoned client keeps running in the database', active === '0', `active statements: ${active}`);
+}
+
+// ---- 2d. SIGKILL, recovery, approved retry: the retry may succeed but the interrupted attempt stays in the evidence outcome
+{
+  const id = `${runId}-hist`;
+  const p = spawnStage(id, 'preflight.mjs', 'S6');
+  for (let i = 0; i < 200 && !(existsSync(path.join(runDir(id), 'state.json')) && stateOf(id).stages?.preflight?.status === 'running'); i++) await sleep(25);
+  p.child.kill('SIGKILL'); await p.done;
+  expect('SIGKILL of a read-only stage: a normal stage is refused (stale lock)', stageOn(id, 'preflight.mjs', 'S6', { flags: ['--retry-after-review'] }).code === 2);
+  expect('a recovery stage (evidence) takes the stale lock and records the interruption', stageOn(id, 'evidence.mjs', 'S9').code === 0 && stateOf(id).stages.preflight.status === 'interrupted');
+  expect('without the explicit flag the interrupted stage does not restart', stageOn(id, 'preflight.mjs', 'S6').code === 2);
+  expect('the approved retry (--retry-after-review) runs and succeeds', stageOn(id, 'preflight.mjs', 'S6', { flags: ['--retry-after-review'] }).code === 0 && stateOf(id).stages.preflight.status === 'done');
+  const ev2 = stageOn(id, 'evidence.mjs', 'S9'); const mds = readdirSync(runDir(id)).filter((f) => f.endsWith('.md'));
+  const finalMd = mds.find((f) => f.endsWith('-2.md')); // the second record of the run (the first was written during recovery and must not be overwritten)
+  const text2 = finalMd ? readFileSync(path.join(runDir(id), finalMd), 'utf8') : '';
+  expect('the evidence after the retry is FAILED and names the earlier interrupted attempt; the first record was not overwritten', ev2.code === 0 && mds.length === 2 && /\*\*Outcome: FAILED\*\*/.test(text2) && /preflight: interrupted/.test(text2) && !/unhealthy stages/.test(text2), `${mds.length} files; ${text2.slice(0, 300)}`);
+}
+
+// ---- 3b. the REAL CLI against a genuinely blocked migration: the database work is bounded, not only the CLI process
+{
+  const ctx = createContext(base, { profile: 'selftest' });
+  const cliBin = process.env.SUPABASE_BIN || 'supabase';
+  const pgq = (sql) => spawnSync(container, ['exec', 'supabase_db_hackass-local', 'psql', '-U', 'postgres', '-d', 'postgres', '-Atc', sql], { encoding: 'utf8', timeout: 30_000 }).stdout.trim();
+  const wd = mkdtempSync(path.join(os.tmpdir(), 'hackass-blocked-mig-')); mkdirSync(path.join(wd, 'supabase/migrations'), { recursive: true });
+  writeFileSync(path.join(wd, 'supabase/migrations/20990101000000_blocked.sql'), 'alter table hackass_blocktest.t add column c int;\n');
+  const stopHolder = () => pgq("select pg_terminate_backend(pid) from pg_stat_activity where query like '%pg_sleep(900)%' and pid <> pg_backend_pid()");
+  const holder = async () => {
+    stopHolder(); pgq('drop schema if exists hackass_blocktest cascade; create schema hackass_blocktest; create table hackass_blocktest.t(i int); drop schema if exists supabase_migrations cascade');
+    spawn(container, ['exec', '-i', 'supabase_db_hackass-local', 'psql', '-U', 'postgres', '-d', 'postgres', '-c', 'begin; lock table hackass_blocktest.t in access exclusive mode; select pg_sleep(900);'], { detached: true, stdio: 'ignore' }).unref();
+    for (let i = 0; i < 40; i++) { if (pgq("select count(*) from pg_locks l join pg_class c on c.oid = l.relation where c.relname = 't' and l.mode = 'AccessExclusiveLock' and l.granted") === '1') return true; await sleep(250); }
+    return false;
+  };
+  const state3 = () => ({ sessions: pgq("select count(*) from pg_stat_activity where application_name = '@effect/sql-pg'"), waiting: pgq("select count(*) from pg_locks l join pg_class c on c.oid = l.relation where c.relname = 't' and not l.granted"), holder: pgq("select count(*) from pg_locks l join pg_class c on c.oid = l.relation where c.relname = 't' and l.granted") });
+  // `attempt` also WATCHES the CLI's session while it runs, so "the session was already gone" can be told apart from "it never existed"
+  const attempt = async (limits, timeoutMs) => {
+    const t0 = Date.now(); let seen = 0; let watching = true;
+    const watcher = (async () => { while (watching) { seen = Math.max(seen, Number(pgq("select count(*) from pg_stat_activity where application_name = '@effect/sql-pg'")) || 0); await sleep(400); } })();
+    try { await pushMigrations(ctx, { cli: cliBin, workdir: wd, limits, timeoutMs }); return { err: null, ms: Date.now() - t0, seen }; } catch (e) { return { err: e, ms: Date.now() - t0, seen }; } finally { watching = false; await watcher; }
+  };
+  expect('the lock holder is in place (a migration really is blocked)', await holder());
+  const c1 = await attempt({ lockTimeoutMs: 3000 }, 60_000); const s1 = state3();
+  expect('server-side lock timeout: the SERVER ends the blocked migration before the client deadline, and nothing is left', c1.seen >= 1 && !!c1.err && /lock timeout/.test(c1.err.message) && !c1.err.timedOut && c1.ms < 25_000 && c1.err.ended?.proven === true && s1.sessions === '0' && s1.waiting === '0', `${c1.ms} ms; ${c1.err?.message?.slice(0, 200)}; ${JSON.stringify(s1)}`);
+  await holder();
+  const c2 = await attempt({ lockTimeoutMs: 0, statementTimeoutMs: 0, idleInTxnMs: 0, connectionCheckMs: 0 }, 5_000); const s2 = state3();
+  expect('identified cancellation: with no server limit at all, the killed CLI\'s session is found, cancelled, and its end proven within the bound', c2.seen >= 1 && !!c2.err && c2.err.timedOut === true && c2.err.ended?.before >= 1 && c2.err.ended?.endedBy === 'cancel' && c2.err.ended?.proven === true && c2.ms < 40_000 && s2.sessions === '0' && s2.waiting === '0', `${c2.ms} ms; ${JSON.stringify(c2.err?.ended)}; ${JSON.stringify(s2)}`);
+  expect('the CLI error says the stage is failed and cannot be retried', /cannot be retried/.test(c2.err?.message ?? ''));
+  await holder();
+  const c3 = await attempt({ lockTimeoutMs: 0, statementTimeoutMs: 0, idleInTxnMs: 0, connectionCheckMs: 1000 }, 5_000); const s3 = state3();
+  expect('server-side connection check: the CLI\'s session existed while blocked and the SERVER ended it after the CLI was killed, with no cancel or terminate from us', c3.seen >= 1 && !!c3.err && c3.err.timedOut === true && ['the server (connection check)', 'already gone'].includes(c3.err.ended?.endedBy) && c3.err.ended?.cancelled === 0 && c3.err.ended?.terminated === 0 && c3.err.ended?.proven === true && s3.sessions === '0', `${JSON.stringify(c3.err?.ended)}; ${JSON.stringify(s3)}`);
+  expect('the lock holder was never touched (only the CLI\'s own session was ended)', state3().holder === '1');
+  stopHolder(); pgq('drop schema if exists hackass_blocktest cascade'); rmSync(wd, { recursive: true, force: true });
+  resetLocalApplication(); // the CLI created the migration ledger: start the stage scenarios from an empty project again
+
+  // the ACTUAL migrate stage, with a deadline too short to finish: failed, nothing left running, never retryable
+  const id = `${runId}-migtimeout`;
+  expect('migration-timeout scenario: preflight and identity', stageOn(id, 'preflight.mjs', 'S6').code === 0 && stageOn(id, 's7-apply.mjs', 'S7', { pre: ['identity'], flags: ['--confirm-mutating=identity'] }).code === 0);
+  const mt = sh('s7-apply.mjs', ['migrate', '--profile=selftest', `--run-id=${id}`, `--authorized=S7@${head}`, '--confirm-mutating=migrate'], { HOSTED_PUSH_TIMEOUT_MS: '700' });
+  const sm = state3();
+  expect('the migrate stage with a too-short deadline fails, reports that the migration has ended, and leaves no session', mt.code === 1 && stateOf(id).stages.migrate.status === 'failed' && /exceeded its deadline/.test(mt.out) && /cannot be retried/.test(mt.out) && sm.sessions === '0', `${mt.code}; ${mt.out.slice(-500)}; ${JSON.stringify(sm)}`);
+  expect('the failed migrate stage is not retryable, with or without --retry-after-review', stageOn(id, 's7-apply.mjs', 'S7', { pre: ['migrate'], flags: ['--confirm-mutating=migrate'] }).code === 2 && stageOn(id, 's7-apply.mjs', 'S7', { pre: ['migrate'], flags: ['--confirm-mutating=migrate', '--retry-after-review'] }).code === 2);
+  expect('cleanup closes it', stageOn(id, 'cleanup.mjs', 'S9', { flags: ['--confirm-mutating=cleanup', `--owner-deletion-date=${deletionDate}`] }).code === 0);
+  resetLocalApplication(); // part of the migrations may have been applied before the kill
 }
 
 // ---- 4. the full chain

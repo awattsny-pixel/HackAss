@@ -17,8 +17,11 @@ const code = await runStage('evidence', process.argv.slice(2), async ({ run, fla
   const ev = evaluateRun(state, results);
   const date = new Date().toISOString().slice(0, 10);
   const name = `${date}-${profile === 'staging' ? 'staging' : 'selftest'}-${run.runId}.md`;
-  const out = flags.out ? path.resolve(flags.out) : profile === 'selftest' ? path.join(run.dir, name) : path.join(REPO_ROOT, 'docs', 'hosted', 'evidence', name);
-  if (profile === 'staging' && !path.resolve(out).startsWith(path.join(REPO_ROOT, 'docs', 'hosted', 'evidence') + path.sep)) throw new Error('staging evidence is written under docs/hosted/evidence/ only');
+  const base = flags.out ? path.resolve(flags.out) : profile === 'selftest' ? path.join(run.dir, name) : path.join(REPO_ROOT, 'docs', 'hosted', 'evidence', name);
+  if (profile === 'staging' && !path.resolve(base).startsWith(path.join(REPO_ROOT, 'docs', 'hosted', 'evidence') + path.sep)) throw new Error('staging evidence is written under docs/hosted/evidence/ only');
+  // evidence is never overwritten: an explicit --out that exists is refused; the default name gets a numeric suffix (-2, -3 ...) when an earlier record of the same run exists
+  let out = base;
+  if (!flags.out) for (let n = 2; existsSync(out) && n < 100; n++) out = base.replace(/\.md$/, `-${n}.md`);
   if (existsSync(out)) throw new Error(`${out} already exists; evidence is never overwritten`);
   const commits = [...new Set(Object.values(state.stages).map((s) => s.commit).filter(Boolean))];
   const f = state.facts ?? {};
@@ -36,6 +39,7 @@ const code = await runStage('evidence', process.argv.slice(2), async ({ run, fla
     '## Checks', '', '| Check | Status | ms | Detail |', '|---|---|---|---|',
     ...ev.rows.map((r) => `| ${r.id} | ${r.status} | ${r.record?.ms ?? ''} | ${cell(r.status === 'FAIL' ? (results.filter((x) => x.id === r.id && x.status === 'FAIL').at(-1)?.error) : r.status === 'NOT RUN' ? (r.id === 'H8-default' ? 'the hosted 15-minute MFA test was not run (stage session-checks needs --default-window); required for full acceptance' : 'not run') : (r.record?.facts ?? ''))} |`),
     ...results.filter((r) => !byId.has(r.id) && r.id !== 'STAGE-ERROR').map((r) => `| ${r.id} | ${r.status} | ${r.ms ?? ''} | ${cell(r.status === 'FAIL' ? r.error : (r.facts ?? r.reason))} |`), '',
+    ev.earlier.length ? `## Earlier attempts that failed or were interrupted\n\n${ev.earlier.map((h) => `- ${h.stage}: ${h.status} at ${h.at ?? 'unknown time'}${h.error ? ` (${h.error})` : ''}`).join('\n')}\n` : '',
     ev.stageErrors.length ? `## Unexpected stage errors\n\n${ev.stageErrors.map((e) => `- ${e.stage}: ${e.error}`).join('\n')}\n` : '',
     ev.fails.length ? `## Failed checks\n\n${ev.fails.map((id) => `- ${id}: ${results.filter((x) => x.id === id && x.status === 'FAIL').at(-1)?.error}`).join('\n')}\n` : '',
   ];
