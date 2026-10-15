@@ -34,7 +34,7 @@ on:
 | Timeouts | `verify` 20 min, `database` 25 min, `server-boundary` 20 min | set |
 
 * **Node coverage gap.** CI runs Node 22.23.3 only; Node 24.21.0 (also supported, and used for the second local verification) is not in CI.
-* **Action pinning recommendation (not applied here):** replace the three mutable tags with full commit SHAs, keeping the tag in a comment. Resolving the SHAs requires contacting GitHub, so it is deliberately left for the execution slice, after authorization.
+* **Action pinning recommendation (not applied here):** replace the three mutable tags with full commit SHAs, keeping the tag in a comment. Resolving the SHA behind a tag is a read-only lookup against the **public** action repositories (for example `git ls-remote --tags https://github.com/actions/checkout`): it needs no credentials, no access to this repository and no special permission. It is not done in this preparation commit (which contacts nothing); it is part of the S2 commit in the execution slice, and the resulting SHAs are reviewed as part of the final workflow commit (push prerequisite P3).
 * **Floating runner recommendation:** pin `ubuntu-24.04` (or the current LTS) to avoid image drift; also left for review.
 
 ## 4. What the workflow does and does not touch
@@ -62,7 +62,9 @@ Other places that can react to a push, all external to the repository and all un
 * The remote is `https://github.com/awattsny-pixel/HackAss.git`; local `origin/main` is `a3a2ee3`. `mhost0-preflight` is 27 commits ahead of it at `266ec02` (plus the commit adding this package). Only the pushed branch's new commits are uploaded.
 * The two commits that contain exposed credentials (`1307cd0`, `c25e780`) are **already ancestors of `origin/main`**, so as far as the last fetched state shows they are already on GitHub. Pushing does not newly expose them; it also does not remove them (see `credential-retirement.md`). Repository visibility (public or private) is not recorded locally: **OWNER confirms**.
 
-**Owner checks required before any push** (each takes a minute in a settings page; record the answer):
+**Push prerequisites (all three, for every push to any shared remote):** **P1 deployment controls**: the owner has answered D1 to D8 in `ci-review.md` and any deployment integration is disconnected or limited (or a separate private repository is used), confirmed in writing; **P2 credential-retirement evidence**: R1 to R8 in `credential-retirement.md` are each retired or recorded not applicable, with the redacted evidence accepted by the CTO; **P3 final workflow commit reviewed**: the exact commit to be pushed, including any workflow hardening from step S2, has been reviewed and accepted by the CTO and is named by its SHA in the authorization.
+
+**Owner checks required before any push** (these are P1; each takes a minute in a settings page; record the answer):
 
 | # | Where | Question |
 |---|---|---|

@@ -12,15 +12,17 @@
 | `1307cd0…:SETUP_COMPLETE.md:jwt:104` | anon-role key in a planning doc | an `anon`-role JWT | public-by-design key, but project-identifying |
 | `c25e780…:API_SPECIFICATION.md:generic-api-key:71`, `:102` | `"token"` in a sample response | 39 characters, JWT-shaped | documentation example; too short to be a signed token |
 
+**A signed JWT is not the same as an exposed signing secret.** Holding a token (even a `service_role` token) does not give anyone the secret that signed it; the token's own exposure is retired by disabling that key or rotating the secret (R1, R2). **R3 applies only when the signing secret itself appears in committed files (for example a `JWT_SECRET` or `SUPABASE_JWT_SECRET` entry in a committed `.env`), or when compromise is otherwise established** (tokens the owner did not issue, evidence of a weak or guessable secret, a leak of the project's settings). If neither holds, R3 is recorded "not applicable" with that reason; rotating the secret anyway is permitted as a way to carry out R1 and R2 and is not an admission that the secret was exposed.
+
 I have deliberately **not** decoded the committed tokens to learn their role or project. The classes below are therefore what the owner must establish by looking at their own provider consoles and at the committed `.env` file from the owner's side; each class that does not apply is recorded as "not applicable" with the reason.
 
 ## 2. Credential classes the owner must retire (or show are not applicable)
 
 | # | Class | Why it matters | How the owner retires it |
 |---|---|---|---|
-| R1 | the Supabase **`service_role`** JWT (legacy secret key) of the project in the history, if one was in `.env` | bypasses row-level security and is full access to that project's data | rotate the project's JWT secret (which invalidates every legacy JWT key at once), or disable the legacy keys and switch to the new secret key; then confirm the old key is dead |
-| R2 | the Supabase **`anon`** JWT (legacy publishable key) of the same project | public by design, but with the project URL it addresses that project; abuse is limited by RLS and rate limits | invalidated by the same JWT-secret rotation; or accepted as public with the reason recorded |
-| R3 | the Supabase **JWT signing secret** itself (if the committed JWTs were signed with it and it is the legacy shared secret) | anyone holding it can mint any token for that project | rotation of the secret, or migration to asymmetric signing keys and revocation of the shared secret |
+| R1 | the Supabase **`service_role`** JWT (legacy secret key) of the project in the history, if one was in `.env` | bypasses row-level security and is full access to that project's data | disable that legacy key, or rotate the project's JWT secret (the platform's means of invalidating every legacy JWT key at once), and switch to the new secret key; then confirm the old key is dead |
+| R2 | the Supabase **`anon`** JWT (legacy publishable key) of the same project | public by design, but with the project URL it addresses that project; abuse is limited by RLS and rate limits | invalidated together with R1 when the legacy keys are disabled or the secret rotated; or accepted as public with the reason recorded |
+| R3 | the Supabase **JWT signing secret** itself, **only if the secret itself was exposed or its compromise is otherwise established** | anyone holding the secret can mint any token for that project | rotation of the secret, or migration to asymmetric signing keys and revocation of the shared secret |
 | R4 | the Postgres **database password** of that project, if present in any committed file | direct database login | reset the database password in the dashboard |
 | R5 | the **third-party key** behind the `generic-api-key` finding (provider unknown from the finding) | whatever that provider key permits | identify it from the file as the owner sees it, then revoke it at the provider and create a new one if still needed |
 | R6 | any **other value in the committed `.env`** at those two commits (for example OAuth client secrets, SMTP passwords, webhook secrets) | same | enumerate the keys of that file from the owner's own copy and retire each one |
@@ -35,7 +37,8 @@ Provider-side records are preferred over replaying an old key, because replaying
 
 | Credential class | Evidence the owner provides (redacted) |
 |---|---|
-| R1 to R3 | screenshot or text of the dashboard section showing the legacy API keys **disabled** or the JWT secret **rotation timestamp**, plus the key "created at" or key ID of the **new** keys, with the old key itself never visible |
+| R1, R2 | screenshot or text of the dashboard section showing the legacy API keys **disabled** (or the JWT secret **rotation timestamp**, if rotation was the means used), plus the key "created at" or key ID of the **new** keys, with the old key itself never visible |
+| R3 | either the rotation/migration record, or the owner's written "not applicable" with the reason (secret itself not exposed, no compromise established) |
 | R4 | the dashboard's password-reset timestamp (or audit-log entry) |
 | R5, R6 | the provider's key list showing the old key revoked or deleted (key name/ID and date only) |
 | R7 | the owner's statement that it was reviewed and what class of content it holds (no values) |
@@ -51,6 +54,6 @@ Provider-side records are preferred over replaying an old key, because replaying
 
 ## 5. Gate
 
-* Retirement (R1 to R8, each retired or recorded "not applicable" with a reason) should be **evidenced before the first push to a shared remote and in any case before public release**. Because the values are already on the remote, the practical order is: owner retires, owner supplies the redacted evidence, then the first hosted action is authorized.
+* Retirement (R1 to R8, each retired or recorded "not applicable" with a reason) is **push prerequisite P2** and in any case a condition of public release. Because the values are already on the remote, the practical order is: owner retires, owner supplies the redacted evidence, the CTO accepts it, then the first hosted action is authorized. **Push prerequisites (all three, for every push to any shared remote):** **P1 deployment controls**: the owner has answered D1 to D8 in `ci-review.md` and any deployment integration is disconnected or limited (or a separate private repository is used), confirmed in writing; **P2 credential-retirement evidence**: R1 to R8 in `credential-retirement.md` are each retired or recorded not applicable, with the redacted evidence accepted by the CTO; **P3 final workflow commit reviewed**: the exact commit to be pushed, including any workflow hardening from step S2, has been reviewed and accepted by the CTO and is named by its SHA in the authorization.
 * The staging run uses only **newly created** credentials (O1 to O4 in the staging plan) and a denylist (`FORBIDDEN_PROJECT_REFS`) so a mistake cannot point the verification at the old project.
 * When evidence is accepted, `docs/security/gitleaks.md` and the closeout matrix row "Legacy credential retirement" are updated in a separate commit; until then the status is "implementation missing (owner action)".
