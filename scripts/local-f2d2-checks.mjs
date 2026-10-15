@@ -270,6 +270,8 @@ select 'schema=' || count(*) from pg_namespace where nspname = 'app_budget';
 select 'fns=' || count(*) from pg_proc where pronamespace = 'app_budget'::regnamespace;
 select 'ledger=' || count(*) from supabase_migrations.schema_migrations where version like '20261018%';
 select 'rows=' || coalesce((select count(*) from app.ai_ledger), 0);`).out.replace(/\n/g, ' ');
+  const downE = psql(readFileSync(path.join(root, 'supabase/rollbacks/20261019090000_f2e_down.sql'), 'utf8'));
+  ok(!/ERROR/.test(downE.out), `the F2-E rollback failed: ${downE.out.slice(-300)}`);
   const before = probe();
   ok(/tables=5 schema=1 fns=\d+ ledger=2 rows=[1-9]/.test(before), `before: ${before}`);
   const rolled = psql(down);

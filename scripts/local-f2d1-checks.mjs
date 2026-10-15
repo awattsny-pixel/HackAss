@@ -388,7 +388,7 @@ await check('T1', 'a session time zone cannot move the UTC rights-expiry boundar
 
 await check('R5', 'F2-D1 rollback script: removes the jobs table and the worker functions, restores the F2-C2 definitions, leaves F2-C2 and earlier intact; recheck withdrawal history is kept (rehearsed in a rolled-back transaction)', async () => {
   // F2-D2 sits above F2-D1 (its functions use app_review.verify_binding only), so its rollback needs no ordering here; the chain checks R1-R4 roll it back first
-  const down = readFileSync(path.join(root, 'supabase/rollbacks/20261017090000_f2d1_down.sql'), 'utf8');
+  const down = readFileSync(path.join(root, 'supabase/rollbacks/20261017090000_f2d1_down.sql'), 'utf8').replace(/^begin;\s*$/m, () => `begin;\n${readFileSync(path.join(root, 'supabase/rollbacks/20261019090000_f2e_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '')}`);
   const probe = `
 select 'jobs=' || count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relname = 'jobs';
 select 'workerfns=' || coalesce(string_agg(p.proname, ',' order by p.proname), '') from pg_proc p where p.pronamespace = 'worker'::regnamespace;
@@ -426,6 +426,8 @@ select 'ledger=' || count(*) from supabase_migrations.schema_migrations where ve
   // 1. committed rollback (psql as postgres, begin ... commit)
   // Later slices sit above this one in the ledger (F2-D2 and anything after it), so a committed rollback goes in true reverse order: those first, then F2-D1.
   // (Rolling F2-D1 back alone would leave a gap that `supabase migration up` refuses to fill.) Everything is then re-applied by one `migration up`.
+  const downE = psql(readFileSync(path.join(root, 'supabase/rollbacks/20261019090000_f2e_down.sql'), 'utf8'));
+  ok(!/ERROR/.test(downE.out), `the F2-E rollback failed: ${downE.out.slice(-300)}`);
   const downLater = existsSync(path.join(root, 'supabase/rollbacks/20261018090000_f2d2_down.sql')) ? psql(readFileSync(path.join(root, 'supabase/rollbacks/20261018090000_f2d2_down.sql'), 'utf8')) : { out: '' };
   ok(!/ERROR/.test(downLater.out), `the later slices' rollback failed: ${downLater.out.slice(-300)}`);
   const down = psql(readFileSync(path.join(root, 'supabase/rollbacks/20261017090000_f2d1_down.sql'), 'utf8'));

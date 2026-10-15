@@ -103,7 +103,7 @@ the repository (`npm run scan:secrets`).
 | Races | recheck vs rights revocation, manual withdrawal, superseding publish, both orders (`J4`); mixed stress, no deadlock (`J5`) | done locally |
 | F2-C2 follow-up | evidence-note-hash enforced at commit; zero-hash and wrong-note regressions | done |
 | Rollback | R5 alone and R4..R1 chains rehearsed | done |
-| Read-time expiry for public reads | **gate for the catalog slice** (the recheck is eventual) | not started |
+| Read-time expiry for public reads | closed by F2-E: the catalog reads evaluate the rights and their UTC-day expiry on every request (see the F2-E table below) | done locally |
 | AI/provider calls, budgets, automated publication, public projections, UI, a worker process | | out of scope |
 
 ## F2-D2 progress (AI spending controls: budgets, reservations, usage accounting)
@@ -120,3 +120,20 @@ the repository (`npm run scan:secrets`).
 | Restricted access | owner-only tables (RLS, no grants), owner-only functions in a schema nobody else can use; members, anon, service key, the worker login refused (`A1`, pgTAP §A, golden inventory); no capability wiring | done |
 | Rollback | committed rollback + `supabase migration up` (`R7`), chains R1-R4 rehearsed; spend-history data loss documented | done |
 | AI jobs, provider calls, reconciliation scheduler, alerting, budget-config tooling | not started | out of scope |
+
+## F2-E progress (public catalog database boundary)
+| Row | F2-E evidence | Status |
+|---|---|---|
+| Contract first | `docs/db/f2e-public-catalog.md` (eligibility matrix, response allowlist, ordering and pagination, changes between pages, rollback) written before the implementation | done |
+| One eligibility definition | `app_review.public_blockers` serves the list and the detail; it reuses `publication_blockers` and leaves out the first-publish-only checks (unused decision, expected hash / decision arguments, free slug) (pgTAP §B, §C, §F) | done |
+| Read-time rules | pointer, withdrawal, lifecycle, frozen content, snapshot, rights incl. UTC-day expiry, assessment, decision, unresolved profile / asset references: each hides the hack with no job having run, including when the rows were written with the after-write triggers off (pgTAP §C) | done locally |
+| Reads change nothing | STABLE functions (PostgreSQL rejects writes); 30 mixed reads left jobs, publications, withdrawals, hacks and a content checksum unchanged (`E6`) | done locally |
+| Explicit allowlist | fields built one by one, never whole rows; exact key sets for detail and list item; leak scan for 12 private strings (pgTAP §D, `E1`) | done locally |
+| Same content for everyone | anon = member = staff, byte for byte (pgTAP §E, `E1`) | done locally |
+| Hidden states | draft, submitted, approved-not-published, rejected, withdrawn, superseded, revoked, HOLD, prohibited; missing and ineligible slugs give the identical PT404 `not_found` (pgTAP §B, `E2`, `E3`) | done locally |
+| Replacement | only the current version appears, the superseded version id is nowhere (`E3`) | done locally |
+| Pagination | keyset `(published_at desc, slug desc)`, default 25, cap 100, tied timestamps, invalid cursor / size / filters refused (pgTAP §F, `E5`) | done locally |
+| Coherence | 4 reader sessions x 500 reads while a version replaced another: every response one whole version, no duplicate listings (`E7`); during a withdrawal: whole version or `not_found` (`E8`) | done locally |
+| Restricted access | tables stay private (RLS, no grants); EXECUTE for anon is exactly the two catalog reads; no private function is executable (pgTAP §A, golden inventory, `E4`) | done locally |
+| Rollback | committed rollback + `supabase migration up` (`R8`), chains R1-R5 rehearsed with F2-E first; no data touched | done |
+| UI, search, ranking, caching, profile / asset reference resolution, hosted verification | | out of scope |

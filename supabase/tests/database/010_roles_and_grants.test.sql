@@ -133,10 +133,12 @@ select is(
     where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget')),
   $golden$api.create_draft(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.delete_draft(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+api.get_public_hack(text) owner=hackass_owner definer=true vol=s search_path="" execute=anon,authenticated,hackass_owner
 api.get_publication(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.get_submission_for_review(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.get_version(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.list_my_versions() owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+api.list_public_hacks(integer,text,text,timestamp with time zone,text) owner=hackass_owner definer=true vol=s search_path="" execute=anon,authenticated,hackass_owner
 api.list_submissions_for_review(integer,text[],timestamp with time zone,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.publish_version(uuid,text,uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.record_decision(uuid,text,text,text[],text,uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
@@ -216,6 +218,8 @@ app_review.job_fail(uuid,bigint,text) owner=hackass_owner definer=true vol=v sea
 app_review.job_heartbeat(uuid,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.job_subject(uuid,bigint) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_review.lock_submission(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_review.public_blockers(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_review.public_hack_json(uuid,boolean) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_review.publication_blockers(uuid,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_review.snapshot_text(uuid,uuid,uuid,bytea,smallint,uuid,uuid,uuid,text,uuid[]) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_review.unresolved_references(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
@@ -228,7 +232,7 @@ worker.fail_job(uuid,bigint,text) owner=hackass_owner definer=true vol=v search_
 worker.get_job_subject(uuid,bigint) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner,hackass_worker
 worker.healthcheck() owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner,hackass_worker
 worker.heartbeat_job(uuid,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,hackass_worker$golden$,
-  'function inventory: owner, SECURITY DEFINER, search_path = empty, volatility, explicit EXECUTE grantees (never PUBLIC, anon or service_role). Only the api functions are executable by authenticated; vol: v volatile (writers and triggers), s stable, i immutable');
+  'function inventory: owner, SECURITY DEFINER, search_path = empty, volatility, explicit EXECUTE grantees (never PUBLIC or service_role; anon only on the two public catalog reads). Only the api functions are executable by authenticated; vol: v volatile (writers and triggers), s stable, i immutable');
 
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -243,8 +247,8 @@ select is(
   null, 'no function body names a table or function without a schema (everything is fully qualified)');
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'api' and p.prosrc !~* '^\s*(declare[\s\S]*?)?begin\s+(v_\w+\s*:=\s*)?app_guard\.require_(member|staff)\('),
-  null, 'every api function begins with a guard call (the caller check precedes all protected work)');
+    where n.nspname = 'api' and p.proname not in ('list_public_hacks', 'get_public_hack') and p.prosrc !~* '^\s*(declare[\s\S]*?)?begin\s+(v_\w+\s*:=\s*)?app_guard\.require_(member|staff)\('),
+  null, 'every api function begins with a guard call (the caller check precedes all protected work); the two public catalog reads are the deliberate exception, they take no caller');
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'app_guard' and p.proname in ('require_staff') and p.prosrc !~* '^\s*declare[\s\S]*?begin\s+v_actor := app_guard\.require_member\('),

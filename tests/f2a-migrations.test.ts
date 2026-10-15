@@ -13,8 +13,8 @@ const sql = Object.fromEntries(files.map((f) => [f, readFileSync(join(migDir, f)
 const all = files.map((f) => sql[f]).join('\n');
 const code = (t: string) => t.replace(/--.*$/gm, '');
 
-test('F2-A, F2-B, F2-C1, F2-C2 and F2-D1 and F2-D2 migrations: nineteen timestamped, ordered files, no stray files', () => {
-  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql', 'f2d1_jobs_tables.sql', 'f2d1_jobs_rules.sql', 'f2d1_worker_rpc.sql', 'f2d1_utc_boundary.sql', 'f2d2_budget_tables.sql', 'f2d2_budget_functions.sql']);
+test('F2-A, F2-B, F2-C1, F2-C2 and F2-D1, F2-D2 and F2-E migrations: twenty-one timestamped, ordered files, no stray files', () => {
+  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql', 'f2d1_jobs_tables.sql', 'f2d1_jobs_rules.sql', 'f2d1_worker_rpc.sql', 'f2d1_utc_boundary.sql', 'f2d2_budget_tables.sql', 'f2d2_budget_functions.sql', 'f2e_catalog_rules.sql', 'f2e_catalog_api.sql']);
   assert.deepEqual(readdirSync(migDir).filter((f) => !f.endsWith('.sql')), ['.gitkeep']);
   for (const f of files) assert.match(f, /^\d{14}_[a-z0-9_]+\.sql$/);
 });
@@ -36,12 +36,14 @@ test('every function created by a migration is SECURITY DEFINER with an empty se
   }
 });
 
+const PUBLIC_READS = 'grant execute on function api.list_public_hacks(integer, text, text, timestamptz, text), api.get_public_hack(text) to anon, authenticated;';
+
 test('no grant to PUBLIC, anon or service_role beyond the api schema USAGE, and EXECUTE is never granted broadly', () => {
   const grants = (code(all).match(/\bgrant\b[^;]*;/gi) ?? []).map((g) => g.replace(/\s+/g, ' ').trim());
   for (const g of grants) {
     assert.ok(!/\bto\b[^;]*\bpublic\b/i.test(g), `grant to PUBLIC: ${g}`);
     assert.ok(!/\bservice_role\b/i.test(g), `grant involving service_role: ${g}`);
-    if (/\banon\b/i.test(g)) assert.equal(g, 'grant usage on schema api to anon, authenticated;', `anon may only get USAGE on schema api: ${g}`);
+    if (/\banon\b/i.test(g)) assert.ok(g === 'grant usage on schema api to anon, authenticated;' || g === PUBLIC_READS, `anon may only get USAGE on schema api and EXECUTE on the two public catalog reads: ${g}`);
     assert.ok(!/\ball privileges\b|\bon all (tables|functions|sequences)\b/i.test(g), `blanket grant: ${g}`);
   }
   const executes = grants.filter((g) => /grant execute/i.test(g));
@@ -49,6 +51,7 @@ test('no grant to PUBLIC, anon or service_role beyond the api schema USAGE, and 
     'api.create_draft(uuid), api.save_draft(uuid, jsonb), api.get_version(uuid), api.list_my_versions(), api.submit_version(uuid, text), api.delete_draft(uuid) to authenticated;',
     'api.list_submissions_for_review(integer, text[], timestamptz, uuid), api.get_submission_for_review(uuid), api.start_review(uuid, text), api.record_risk_assessment(uuid, text, text, text), api.record_rights_review(uuid, text, integer, text, text, text, date), api.record_decision(uuid, text, text, text[], text, uuid) to authenticated;',
     'api.publish_version(uuid, text, uuid, text), api.withdraw_publication(uuid, text, text), api.get_publication(uuid) to authenticated;',
+    'api.list_public_hacks(integer, text, text, timestamptz, text), api.get_public_hack(text) to anon, authenticated;',
     'api.whoami(), api.staff_probe(text, integer) to authenticated;',
     'app_bridge.session_valid(uuid, uuid) to hackass_owner;',
     'app_guard.on_auth_user_created(), app_guard.on_auth_user_deleted() to postgres;',
@@ -65,8 +68,10 @@ test('every function has its PUBLIC execute revoked before any grant, and every 
   }
   assert.match(c, /revoke all on function app_bridge\.session_valid\(uuid, uuid\) from public;/);
   assert.match(c, /revoke all on function app_guard\.require_member\(\), app_guard\.require_staff\(text, interval\),\s+api\.whoami\(\), api\.staff_probe\(text, integer\), worker\.healthcheck\(\) from public;/);
+  const PUBLIC = /create function api\.(?:list_public_hacks|get_public_hack)\b/g; // the two anonymous catalog reads take no caller and are the deliberate exception
+  assert.equal((c.match(PUBLIC) ?? []).length, 2);
   for (const m of c.matchAll(/create function (api\.\w+)[\s\S]*?\$\$\s*(?:declare[\s\S]*?)?begin\s+(v_\w+ := |perform )?(app_guard\.require_\w+)\(/gi)) assert.ok(m[1] && m[3], m[0].slice(0, 60));
-  assert.equal((c.match(/create function api\./g) ?? []).length, (c.match(/create function api\.\w+[\s\S]*?\$\$\s*(?:declare[\s\S]*?)?begin\s+(?:v_\w+ := |perform )?app_guard\.require_\w+\(/g) ?? []).length, 'every api function starts with a guard');
+  assert.equal((c.match(/create function api\./g) ?? []).length - 2, (c.match(/create function api\.\w+[\s\S]*?\$\$\s*(?:declare[\s\S]*?)?begin\s+(?:v_\w+ := |perform )?app_guard\.require_\w+\(/g) ?? []).length, 'every api function starts with a guard');
 });
 
 test('the staff guard has no MFA switch, no clock-skew allowance, and validates NULL/out-of-range arguments inside the guard', () => {

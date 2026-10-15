@@ -115,6 +115,9 @@ jobs:
       - name: Local F2-D2 budget checks (fifty-way reservations, settlement races, rollover, access, committed rollback and re-application)
         run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-f2d2-checks.mjs
 
+      - name: Local F2-E catalog checks (anon/member/staff reads, allowlist, replacement and withdrawal races, committed rollback and re-application)
+        run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-f2e-checks.mjs
+
       - name: Stop the stack
         if: always()
         run: supabase stop --no-backup

@@ -51,7 +51,7 @@ test('pgTAP platform test exists and checks the real stack (roles, Auth sessions
   const sql = read('supabase/tests/database/000_platform.test.sql');
   for (const needle of ["has_role('anon'", "has_role('authenticated'", "has_role('service_role'", "has_table('auth', 'sessions'", "'pg_trgm'", "'citext'", 'select plan(9)']) assert.ok(sql.includes(needle), needle);
   assert.equal((sql.match(/^select (has_|ok)/gm) ?? []).length, 9, 'plan count must match the assertions');
-  assert.deepEqual(readdirSync(join(root, 'supabase/migrations')).filter((f) => f !== '.gitkeep').map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql', 'f2d1_jobs_tables.sql', 'f2d1_jobs_rules.sql', 'f2d1_worker_rpc.sql', 'f2d1_utc_boundary.sql', 'f2d2_budget_tables.sql', 'f2d2_budget_functions.sql'], 'only the F2-A, F2-B, F2-C1, F2-C2 F2-D1 and F2-D2 migrations exist (checked in detail by f2a-migrations.test.ts)');
+  assert.deepEqual(readdirSync(join(root, 'supabase/migrations')).filter((f) => f !== '.gitkeep').map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql', 'f2d1_jobs_tables.sql', 'f2d1_jobs_rules.sql', 'f2d1_worker_rpc.sql', 'f2d1_utc_boundary.sql', 'f2d2_budget_tables.sql', 'f2d2_budget_functions.sql', 'f2e_catalog_rules.sql', 'f2e_catalog_api.sql'], 'only the F2-A, F2-B, F2-C1, F2-C2 F2-D1 and F2-D2 migrations exist (checked in detail by f2a-migrations.test.ts)');
 });
 
 test('db:test reports BLOCKED (exit 2) with an actionable message when Docker is unavailable, never a silent pass', () => {
@@ -150,4 +150,39 @@ test('docs/db/f2d2-ai-budgets.md states the accounting contract: units, rules, e
   assert.match(doc, /missing_counters/);
   assert.match(doc, /a counter row is never deleted/);
   assert.match(doc, /does \*\*not necessarily exhaust\*\*/);
+});
+
+test('docs/db/f2e-public-catalog.md states the contract: every blocker code, the response allowlist, the pagination order and limits, and the rollback', () => {
+  const doc = read('docs/db/f2e-public-catalog.md');
+  const rules = read('supabase/migrations/20261019090000_f2e_catalog_rules.sql');
+  const api = read('supabase/migrations/20261019090100_f2e_catalog_api.sql');
+  for (const code of [...rules.matchAll(/'((?:not_current|no_slug|withdrawn|lifecycle_not_approved|content_hash_mismatch|snapshot_mismatch|publication_missing))'/g)].map((m) => m[1])) assert.ok(doc.includes(code), `the contract does not name ${code}`);
+  for (const f of ['list_public_hacks', 'get_public_hack']) assert.ok(doc.includes(f) && api.includes(`create function api.${f}(`), f);
+  for (const k of ['slug', 'version_id', 'published_at', 'category', 'difficulty', 'time_minutes', 'cost', 'ai_requirement', 'attributions', 'sources', 'steps', 'materials', 'requirements', 'tags']) assert.ok(doc.includes(k), `the allowlist does not name ${k}`);
+  assert.match(doc, /published_at desc, slug desc|published_at.*desc.*slug.*desc/s);
+  assert.match(doc, /default 25/i);
+  assert.match(doc, /100/);
+  assert.match(doc, /not_found/);
+  assert.match(doc, /no fixed snapshot|not a snapshot|between pages/i);
+  assert.match(doc, /rollback/i);
+});
+
+test('F2-E migrations: the reads are STABLE and write nothing, the allowlist is built field by field, and only the two catalog functions are granted to anon', () => {
+  const rules = read('supabase/migrations/20261019090000_f2e_catalog_rules.sql').replace(/--.*$/gm, '');
+  const api = read('supabase/migrations/20261019090100_f2e_catalog_api.sql').replace(/--.*$/gm, '');
+  for (const body of [rules, api]) {
+    assert.ok(!/\b(insert\s+into|delete\s+from|perform\s+|for\s+update|alter\s+table|create\s+table)\b/i.test(body), 'a read function must not write or lock');
+    assert.ok(!/\bupdate\s+app\./i.test(body), 'no update statements');
+  }
+  for (const f of ['public_blockers', 'public_hack_json']) assert.match(rules.match(new RegExp(`create function app_review\\.${f}[\\s\\S]*?\\$\\$;`))![0], /\bstable\b/);
+  for (const f of ['list_public_hacks', 'get_public_hack']) assert.match(api.match(new RegExp(`create function api\\.${f}[\\s\\S]*?\\$\\$;`))![0], /\bstable\b/);
+  assert.ok(!/to_jsonb\s*\(|row_to_json|\bjsonb_agg\s*\(\s*\w+\s*\)/i.test(rules), 'the response is never a whole-row serialisation');
+  assert.match(rules, /jsonb_build_object\(/);
+  assert.match(api, /grant execute on function api\.list_public_hacks\(integer, text, text, timestamptz, text\), api\.get_public_hack\(text\) to anon, authenticated;/);
+  assert.equal((api.match(/\bto anon\b/g) ?? []).length, 1);
+  assert.ok(!/grant[^;]*app_review\.public_/i.test(rules + api), 'the internal functions are not granted');
+  const down = read('supabase/rollbacks/20261019090000_f2e_down.sql').replace(/--.*$/gm, '');
+  assert.ok(!/\b(drop\s+table|delete\s+from\s+app\.|truncate)\b/i.test(down), 'the rollback touches no table');
+  for (const f of ['api.list_public_hacks', 'api.get_public_hack', 'app_review.public_blockers', 'app_review.public_hack_json']) assert.ok(down.includes(f), f);
+  assert.match(down, /version in \('20261019090000', '20261019090100'\)/);
 });
