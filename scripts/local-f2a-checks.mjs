@@ -207,27 +207,28 @@ select 'any_priv=' || coalesce(bool_or(has_table_privilege('hackass_worker', c.o
 });
 
 // ---- the rollback rehearsal --------------------------------------------------------------------------------------------------
-await check('R1', 'rollback scripts (F2-D1, then F2-C2, then F2-C1, then F2-B, then F2-A): remove every application object and role (rehearsed in a transaction that is rolled back), leave auth intact', async () => {
-  const downD1 = readFileSync(path.join(root, 'supabase/rollbacks/20261017090000_f2d1_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
+await check('R1', 'rollback scripts (F2-D2, then F2-D1, then F2-C2, then F2-C1, then F2-B, then F2-A): remove every application object and role (rehearsed in a transaction that is rolled back), leave auth intact', async () => {
+  const downD2 = readFileSync(path.join(root, 'supabase/rollbacks/20261018090000_f2d2_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
+  const downD1 = downD2 + readFileSync(path.join(root, 'supabase/rollbacks/20261017090000_f2d1_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
   const downC2 = downD1 + readFileSync(path.join(root, 'supabase/rollbacks/20261016090000_f2c2_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
   const downC1 = downC2 + readFileSync(path.join(root, 'supabase/rollbacks/20261015090000_f2c1_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
   const downB = readFileSync(path.join(root, 'supabase/rollbacks/20261014090000_f2b_down.sql'), 'utf8').replace(/^begin;\s*$/m, () => `begin;\n${downC1}`).replace(/^commit;\s*$/m, '');
   const down = readFileSync(path.join(root, 'supabase/rollbacks/20261013130000_f2a_down.sql'), 'utf8').replace(/^begin;\s*$/m, () => `begin;\n${downB}`);
   const probe = `
-select 'schemas=' || count(*) from pg_namespace where nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review');
+select 'schemas=' || count(*) from pg_namespace where nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget');
 select 'roles=' || count(*) from pg_roles where rolname in ('hackass_owner', 'hackass_worker');
 select 'triggers=' || count(*) from pg_trigger where tgname like 'hackass_%';
-select 'ledger=' || count(*) from supabase_migrations.schema_migrations where version like '2026101313%' or version like '2026101409%' or version like '20261015%' or version like '20261016%' or version like '20261017%';
+select 'ledger=' || count(*) from supabase_migrations.schema_migrations where version like '2026101313%' or version like '2026101409%' or version like '20261015%' or version like '20261016%' or version like '20261017%' or version like '20261018%';
 select 'auth_users_table=' || (to_regclass('auth.users') is not null);
 select 'default_acl=' || count(*) from pg_default_acl d where pg_get_userbyid(d.defaclrole) = 'hackass_owner';
 `;
   const before = psql(probe).out.replace(/\n/g, ' ');
-  ok(/schemas=7 roles=2 triggers=2 ledger=17/.test(before), `before rollback: ${before}`);
+  ok(/schemas=8 roles=2 triggers=2 ledger=19/.test(before), `before rollback: ${before}`);
   const body = down.replace(/^commit;\s*$/m, () => `${probe}\nrollback;`);
   const after = psql(body).out.replace(/\n/g, ' ');
   ok(/schemas=0 roles=0 triggers=0 ledger=0 auth_users_table=true default_acl=0/.test(after), `inside rolled-back rollback: ${after}`);
   const restored = psql(probe).out.replace(/\n/g, ' ');
-  ok(/schemas=7 roles=2 triggers=2 ledger=17/.test(restored), `after the rehearsal the database must be unchanged: ${restored}`);
+  ok(/schemas=8 roles=2 triggers=2 ledger=19/.test(restored), `after the rehearsal the database must be unchanged: ${restored}`);
   return `before: ${before} | after rollback script: ${after} | rehearsal transaction rolled back: state restored`;
 });
 

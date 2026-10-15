@@ -51,7 +51,7 @@ test('pgTAP platform test exists and checks the real stack (roles, Auth sessions
   const sql = read('supabase/tests/database/000_platform.test.sql');
   for (const needle of ["has_role('anon'", "has_role('authenticated'", "has_role('service_role'", "has_table('auth', 'sessions'", "'pg_trgm'", "'citext'", 'select plan(9)']) assert.ok(sql.includes(needle), needle);
   assert.equal((sql.match(/^select (has_|ok)/gm) ?? []).length, 9, 'plan count must match the assertions');
-  assert.deepEqual(readdirSync(join(root, 'supabase/migrations')).filter((f) => f !== '.gitkeep').map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql', 'f2d1_jobs_tables.sql', 'f2d1_jobs_rules.sql', 'f2d1_worker_rpc.sql', 'f2d1_utc_boundary.sql'], 'only the F2-A, F2-B, F2-C1, F2-C2 and F2-D1 migrations exist (checked in detail by f2a-migrations.test.ts)');
+  assert.deepEqual(readdirSync(join(root, 'supabase/migrations')).filter((f) => f !== '.gitkeep').map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql', 'f2d1_jobs_tables.sql', 'f2d1_jobs_rules.sql', 'f2d1_worker_rpc.sql', 'f2d1_utc_boundary.sql', 'f2d2_budget_tables.sql', 'f2d2_budget_functions.sql'], 'only the F2-A, F2-B, F2-C1, F2-C2 F2-D1 and F2-D2 migrations exist (checked in detail by f2a-migrations.test.ts)');
 });
 
 test('db:test reports BLOCKED (exit 2) with an actionable message when Docker is unavailable, never a silent pass', () => {
@@ -133,4 +133,17 @@ test('docs/db/f2d1-jobs.md documents every worker function, the lock order with 
   assert.match(doc, /read time/i);
   assert.match(doc, /deliberately left relaxed/);
   assert.match(doc, /rollback/i);
+});
+
+test('docs/db/f2d2-ai-budgets.md states the accounting contract: units, rules, every refusal reason, every function, the unknown-outcome recovery path, and the data loss of the rollback', () => {
+  const doc = read('docs/db/f2d2-ai-budgets.md');
+  const fns = read('supabase/migrations/20261018090100_f2d2_budget_functions.sql');
+  for (const f of ['reserve', 'reserve_for_day', 'settle', 'mark_unknown', 'cancel', 'reconcile_report', 'outstanding']) { assert.ok(doc.includes('`' + f), f); assert.ok(fns.includes(`create function app_budget.${f}(`), f); }
+  for (const d of [...fns.matchAll(/detail = '([a-z_]+)'/g)].map((m) => m[1]).filter((x) => /budget|unconfigured|disabled|cap|config/.test(x))) assert.ok(doc.includes(d), `the contract does not name the refusal ${d}`);
+  for (const e of ['idempotency_conflict', 'settlement_conflict', 'charge_not_ruled_out', 'invalid_amount', 'provider_confirmed_no_charge', 'never_dispatched']) assert.ok(doc.includes(e), e);
+  assert.match(doc, /micro-USD/);
+  assert.match(doc, /UTC calendar day/);
+  assert.match(doc, /Reconciliation recovery path/);
+  assert.match(doc, /DATA LOSS|destroys every reservation/i);
+  assert.match(doc, /written before the implementation/);
 });

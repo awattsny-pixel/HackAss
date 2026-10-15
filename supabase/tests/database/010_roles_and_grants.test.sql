@@ -35,8 +35,8 @@ select is(
 
 -- ---- schemas --------------------------------------------------------------------------------------------------------
 select is(
-  (select string_agg(nspname || '=' || pg_get_userbyid(nspowner), ',' order by nspname) from pg_namespace where nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review')),
-  'api=hackass_owner,app=hackass_owner,app_bridge=postgres,app_content=hackass_owner,app_guard=hackass_owner,app_review=hackass_owner,worker=hackass_owner',
+  (select string_agg(nspname || '=' || pg_get_userbyid(nspowner), ',' order by nspname) from pg_namespace where nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget')),
+  'api=hackass_owner,app=hackass_owner,app_bridge=postgres,app_budget=hackass_owner,app_content=hackass_owner,app_guard=hackass_owner,app_review=hackass_owner,worker=hackass_owner',
   'schema owners');
 
 select is(
@@ -44,11 +44,11 @@ select is(
      from pg_namespace n
      cross join (select rolname from pg_roles where rolname in ('anon', 'authenticated', 'service_role', 'authenticator', 'supabase_auth_admin', 'hackass_owner', 'hackass_worker', 'postgres')) r
      cross join (values ('USAGE'), ('CREATE')) p(priv)
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review')
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget')
       and has_schema_privilege(r.rolname, n.oid, p.priv)),
   'api:anon:USAGE, api:authenticated:USAGE, api:hackass_owner:CREATE, api:hackass_owner:USAGE, api:postgres:USAGE, '
   'app:hackass_owner:CREATE, app:hackass_owner:USAGE, app:postgres:USAGE, '
-  'app_bridge:hackass_owner:USAGE, app_bridge:postgres:CREATE, app_bridge:postgres:USAGE, '
+  'app_bridge:hackass_owner:USAGE, app_bridge:postgres:CREATE, app_bridge:postgres:USAGE, app_budget:hackass_owner:CREATE, app_budget:hackass_owner:USAGE, app_budget:postgres:USAGE, '
   'app_content:hackass_owner:CREATE, app_content:hackass_owner:USAGE, app_content:postgres:USAGE, '
   'app_guard:hackass_owner:CREATE, app_guard:hackass_owner:USAGE, app_guard:postgres:USAGE, app_guard:supabase_auth_admin:USAGE, '
   'app_review:hackass_owner:CREATE, app_review:hackass_owner:USAGE, app_review:postgres:USAGE, '
@@ -56,7 +56,7 @@ select is(
   'schema privileges: exactly the intended grants. postgres (break-glass) shows USAGE because the platform makes it a member of pg_read_all_data; nothing for service_role, authenticator or hackass_worker on app/app_guard/app_bridge');
 select is(
   (select count(*)::int from pg_namespace n, pg_catalog.aclexplode(n.nspacl) x
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review') and x.grantee = 0),
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget') and x.grantee = 0),
   0, 'PUBLIC has no privilege on any application schema');
 
 -- ---- tables ---------------------------------------------------------------------------------------------------------
@@ -84,8 +84,8 @@ select is(
 select is((select count(*)::int from pg_policy p join pg_class c on c.oid = p.polrelid join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app'), 0, 'no RLS policy exists (default deny)');
 select is(
   (select string_agg(c.relname, ', ' order by c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r'),
-  'accounts, categories, hack_materials, hack_requirements, hack_steps, hack_versions, hacks, jobs, moderation_decisions, publication_rights, publication_withdrawals, publications, rights_reviews, source_claims, staff_assignments, submissions, version_assessments, version_assets, version_attributions, version_lifecycle, version_tags',
-  'app contains exactly these 21 tables (any new table must be added here, with its grants reviewed)');
+  'accounts, ai_budget_days, ai_budget_global, ai_ledger, ai_operation_types, ai_reservations, categories, hack_materials, hack_requirements, hack_steps, hack_versions, hacks, jobs, moderation_decisions, publication_rights, publication_withdrawals, publications, rights_reviews, source_claims, staff_assignments, submissions, version_assessments, version_assets, version_attributions, version_lifecycle, version_tags',
+  'app contains exactly these 26 tables (any new table must be added here, with its grants reviewed)');
 select is(
   (select string_agg(c.relname, ', ' order by c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r'
       and not exists (select 1 from pg_trigger t where t.tgrelid = c.oid and t.tgname like '%\_guard' or t.tgrelid = c.oid and t.tgname like '%\_append\_only') and c.relname in ('hack_versions', 'hack_steps', 'hack_materials', 'hack_requirements', 'version_tags', 'version_attributions', 'source_claims', 'version_assets', 'submissions')),
@@ -110,6 +110,11 @@ select is(
   (select string_agg(t.tgname || ':' || t.tgdeferrable::text || ':' || t.tginitdeferred::text, ', ' order by t.tgname) from pg_trigger t where t.tgconstraint <> 0 and t.tgisinternal = false),
   'publications_children_check:true:true, withdrawals_cleared_check:true:true', 'the two commit-time checks are deferrable constraint triggers, initially deferred');
 select is(
+  (select string_agg(c.relname || ':' || t.tgname, ', ' order by c.relname, t.tgname) from pg_class c join pg_trigger t on t.tgrelid = c.oid and not t.tgisinternal
+    where c.oid in ('app.ai_budget_global'::regclass, 'app.ai_operation_types'::regclass, 'app.ai_reservations'::regclass, 'app.ai_ledger'::regclass, 'app.ai_budget_days'::regclass)),
+  'ai_budget_days:ai_budget_days_no_truncate, ai_budget_global:ai_budget_global_no_truncate, ai_ledger:ai_ledger_append_only, ai_ledger:ai_ledger_apply, ai_ledger:ai_ledger_no_truncate, ai_operation_types:ai_operation_types_no_truncate, ai_reservations:ai_reservations_guard, ai_reservations:ai_reservations_no_truncate',
+  'the budget tables carry their guards: append-only ledger, totals applied only from the ledger, immutable reservations, TRUNCATE refused on all five');
+select is(
   (select string_agg(t.tgname, ', ' order by t.tgname) from pg_trigger t where t.tgrelid = 'app.jobs'::regclass and not t.tgisinternal),
   'jobs_guard, jobs_no_truncate', 'jobs: the guard (identity, monotonic epoch, terminal states, no delete) and the TRUNCATE guard are installed');
 select is(
@@ -125,7 +130,7 @@ select is(
                                      from aclexplode(p.proacl) x where x.privilege_type = 'EXECUTE'), 'NONE'),
      E'\n' order by p.oid::regprocedure::text)
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review')),
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget')),
   $golden$api.create_draft(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.delete_draft(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.get_publication(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
@@ -144,6 +149,20 @@ api.submit_version(uuid,text) owner=hackass_owner definer=true vol=v search_path
 api.whoami() owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.withdraw_publication(uuid,text,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 app_bridge.session_valid(uuid,uuid) owner=postgres definer=true vol=s search_path="" execute=hackass_owner,postgres
+app_budget.apply_ledger() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_budget.cancel(uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_budget.guard_append_only() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_budget.guard_reservation() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_budget.lock_scopes(date,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_budget.mark_unknown(uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_budget.outstanding() owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_budget.reconcile_report(date) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_budget.replay_or_conflict(app.ai_reservations,text,app.submissions,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_budget.reservation_json(app.ai_reservations,boolean) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+app_budget.reserve_for_day(text,text,uuid,text,bigint,date) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_budget.reserve(text,text,uuid,text,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_budget.settle(uuid,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_budget.today() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_content.assert_keys(jsonb,text[],text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
 app_content.assert_limits(jsonb) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
 app_content.assert_submittable(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
@@ -212,12 +231,12 @@ worker.heartbeat_job(uuid,bigint) owner=hackass_owner definer=true vol=v search_
 
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review') and p.proowner <> 'hackass_owner'::regrole),
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget') and p.proowner <> 'hackass_owner'::regrole),
   'app_bridge.session_valid(uuid,uuid)',
   'G-3 exception: the ONLY application-schema function not owned by hackass_owner is the postgres-owned bridge');
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review')
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget')
       and (regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* '(\mfrom|\mjoin|(?<!for\s)(?<!distinct\s)\mupdate)\s+(?!app\.|auth\.|pg_catalog\.|app_bridge\.|app_guard\.|app_content\.|app_review\.|api\.|v_|p_|old\.|new\.)[a-z_]+'
         or regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* 'insert\s+into\s+(?!app\.)' or regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* 'delete\s+from\s+(?!app\.)')),
   null, 'no function body names a table or function without a schema (everything is fully qualified)');
@@ -234,8 +253,8 @@ select ok(
   'worker.healthcheck checks the calling login first');
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname in ('api', 'app_guard', 'worker', 'app_bridge', 'app_content', 'app_review') and p.provolatile = 'v' and p.prorettype <> 'trigger'::regtype),
-  'api.create_draft(uuid), api.delete_draft(uuid), api.publish_version(uuid,text,uuid,text), api.record_decision(uuid,text,text,text[],text,uuid), api.record_rights_review(uuid,text,integer,text,text,text,date), api.record_risk_assessment(uuid,text,text,text), api.save_draft(uuid,jsonb), api.start_review(uuid,text), api.submit_version(uuid,text), api.withdraw_publication(uuid,text,text), app_content.freeze_version(uuid,uuid,bytea), app_content.write_doc(uuid,jsonb), app_review.job_assert_lease(app.jobs,bigint), app_review.job_claim(text), app_review.job_complete(uuid,bigint), app_review.job_effect_publication_recheck(app.jobs), app_review.job_ensure_recheck(app.publications), app_review.job_fail(uuid,bigint,text), app_review.job_heartbeat(uuid,bigint), app_review.lock_submission(uuid), app_review.utc_today(), app_review.verify_binding(app.submissions,text), app_review.withdraw_locked(app.publications,text,text,text,text[],text,uuid,uuid,text), worker.claim_job(text), worker.complete_job(uuid,bigint), worker.fail_job(uuid,bigint,text), worker.heartbeat_job(uuid,bigint)',
+    where n.nspname in ('api', 'app_guard', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget') and p.provolatile = 'v' and p.prorettype <> 'trigger'::regtype),
+  'api.create_draft(uuid), api.delete_draft(uuid), api.publish_version(uuid,text,uuid,text), api.record_decision(uuid,text,text,text[],text,uuid), api.record_rights_review(uuid,text,integer,text,text,text,date), api.record_risk_assessment(uuid,text,text,text), api.save_draft(uuid,jsonb), api.start_review(uuid,text), api.submit_version(uuid,text), api.withdraw_publication(uuid,text,text), app_budget.cancel(uuid,text), app_budget.lock_scopes(date,text), app_budget.mark_unknown(uuid,text), app_budget.replay_or_conflict(app.ai_reservations,text,app.submissions,bigint), app_budget.reserve_for_day(text,text,uuid,text,bigint,date), app_budget.reserve(text,text,uuid,text,bigint), app_budget.settle(uuid,bigint), app_budget.today(), app_content.freeze_version(uuid,uuid,bytea), app_content.write_doc(uuid,jsonb), app_review.job_assert_lease(app.jobs,bigint), app_review.job_claim(text), app_review.job_complete(uuid,bigint), app_review.job_effect_publication_recheck(app.jobs), app_review.job_ensure_recheck(app.publications), app_review.job_fail(uuid,bigint,text), app_review.job_heartbeat(uuid,bigint), app_review.lock_submission(uuid), app_review.utc_today(), app_review.verify_binding(app.submissions,text), app_review.withdraw_locked(app.publications,text,text,text,text[],text,uuid,uuid,text), worker.claim_job(text), worker.complete_job(uuid,bigint), worker.fail_job(uuid,bigint,text), worker.heartbeat_job(uuid,bigint)',
   'exactly the writing functions are VOLATILE; every reader, guard, validator and hash function is STABLE or IMMUTABLE');
 
 -- ---- hackass_owner holds nothing it does not need -----------------------------------------------------------------------

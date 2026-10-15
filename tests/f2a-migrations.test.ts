@@ -13,8 +13,8 @@ const sql = Object.fromEntries(files.map((f) => [f, readFileSync(join(migDir, f)
 const all = files.map((f) => sql[f]).join('\n');
 const code = (t: string) => t.replace(/--.*$/gm, '');
 
-test('F2-A, F2-B, F2-C1, F2-C2 and F2-D1 migrations: seventeen timestamped, ordered files, no stray files', () => {
-  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql', 'f2d1_jobs_tables.sql', 'f2d1_jobs_rules.sql', 'f2d1_worker_rpc.sql', 'f2d1_utc_boundary.sql']);
+test('F2-A, F2-B, F2-C1, F2-C2 and F2-D1 and F2-D2 migrations: nineteen timestamped, ordered files, no stray files', () => {
+  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql', 'f2d1_jobs_tables.sql', 'f2d1_jobs_rules.sql', 'f2d1_worker_rpc.sql', 'f2d1_utc_boundary.sql', 'f2d2_budget_tables.sql', 'f2d2_budget_functions.sql']);
   assert.deepEqual(readdirSync(migDir).filter((f) => !f.endsWith('.sql')), ['.gitkeep']);
   for (const f of files) assert.match(f, /^\d{14}_[a-z0-9_]+\.sql$/);
 });
@@ -96,7 +96,7 @@ test('every function in an application schema has PUBLIC execute revoked, and no
 test('every application table has RLS enabled and is covered by the immutability / append-only / truncate triggers where it holds content', () => {
   const c = code(all).replace(/\s+/g, ' ');
   const tables = [...c.matchAll(/create table (app\.\w+)/g)].map((m) => m[1]);
-  assert.equal(tables.length, 21);
+  assert.equal(tables.length, 26);
   for (const t of tables) assert.match(c, new RegExp(`alter table ${t.replace('.', '\\.')} enable row level security;`), `${t} lacks RLS`);
   for (const t of ['hack_steps', 'hack_materials', 'hack_requirements', 'version_tags', 'version_attributions', 'source_claims', 'version_assets']) {
     assert.match(c, new RegExp(`create trigger ${t}_guard before insert or update or delete on app\\.${t} for each row execute function app_content\\.guard_child\\(\\);`), `${t} lacks the child guard`);
@@ -136,7 +136,7 @@ test('the rollback scripts remove every schema, table, role and trigger the migr
   const downA = read('20261013130000_f2a_down.sql');
   const downB = read('20261014090000_f2b_down.sql');
   const createdSchemas = [...all.matchAll(/create schema (\w+)/g)].map((m) => m[1]).sort();
-  assert.deepEqual(createdSchemas, ['api', 'app', 'app_bridge', 'app_content', 'app_guard', 'app_review', 'worker']);
+  assert.deepEqual(createdSchemas, ['api', 'app', 'app_bridge', 'app_budget', 'app_content', 'app_guard', 'app_review', 'worker']);
   for (const s of ['api', 'worker', 'app_guard', 'app', 'app_bridge']) assert.match(downA, new RegExp(`drop schema if exists ${s} cascade;`), `F2-A rollback must drop schema ${s}`);
   assert.match(downB, /drop schema if exists app_content cascade;/);
   for (const r of ['hackass_worker', 'hackass_owner']) assert.match(downA, new RegExp(`drop role if exists ${r};`));
@@ -375,4 +375,33 @@ test('F2-D1 correction: lease and expiry logic use the wall clock and the UTC da
   const down = code(readFileSync(join(root, 'supabase/rollbacks/20261017090000_f2d1_down.sql'), 'utf8'));
   assert.ok(down.includes('app_review.approval_blockers') && down.includes('api.record_rights_review') && down.includes('current_date'), 'the rollback restores the F2-C1 definitions');
   assert.match(down, /drop function if exists app_review\.utc_today\(\);/);
+});
+
+test('F2-D2: the budget objects are owner-only (no grant, no capability wiring), the ledger is the only source of totals, and money-moving functions lock counters before the reservation', () => {
+  const tables = code(sql['20261018090000_f2d2_budget_tables.sql']);
+  const fns = code(sql['20261018090100_f2d2_budget_functions.sql']);
+  assert.ok(!/\bgrant\b/i.test(tables + fns), 'no grant of any kind in the budget migrations');
+  assert.ok(!/create function (api|worker)\./.test(tables + fns), 'no api or worker function (nothing is wired to a capability yet)');
+  for (const t of ['ai_budget_global', 'ai_operation_types', 'ai_reservations', 'ai_ledger', 'ai_budget_days']) assert.match(tables, new RegExp(`alter table app\\.${t}\\s+enable row level security;`), t);
+  assert.match(tables, /create unique index ai_ledger_one_terminal on app\.ai_ledger \(reservation_id\) where kind in \('settle', 'cancel'\);/);
+  assert.match(tables, /create unique index ai_ledger_one_reserve on app\.ai_ledger \(reservation_id\) where kind = 'reserve';/);
+  assert.match(tables, /foreign key \(submission_id, version_id, content_hash, canon_version\)\s+references app\.submissions \(id, version_id, content_hash, canon_version\)/);
+  assert.ok(!/\bnow\(\)/.test(fns), 'budget logic uses the wall clock (clock_timestamp), never now()');
+  assert.ok(!/\bcurrent_date\b/.test(fns), 'and the UTC day, never the session date');
+  for (const name of ['reserve_for_day', 'settle', 'cancel']) {
+    const f = fns.match(new RegExp(`create function app_budget\\.${name}\\([\\s\\S]*?\\n\\$\\$;`))![0];
+    assert.ok(f.indexOf('app_budget.lock_scopes') > 0 && f.indexOf('app_budget.lock_scopes') < f.indexOf('for update') || name === 'reserve_for_day', `${name}: counters first`);
+  }
+  const settle = fns.match(/create function app_budget\.settle\([\s\S]*?\n\$\$;/)![0];
+  assert.ok(settle.indexOf('lock_scopes') < settle.indexOf('x.id = p_reservation_id for update'), 'settle locks the counters before the reservation row');
+  assert.ok(settle.includes("'settlement_conflict'") && settle.includes('greatest(p_actual - r.max_charge_micros, 0)') && settle.includes('greatest(r.max_charge_micros - p_actual, 0)'), 'settle: conflict on a different amount; overrun and released computed, nothing clipped');
+  const cancel = fns.match(/create function app_budget\.cancel\([\s\S]*?\n\$\$;/)![0];
+  assert.match(cancel, /p_basis not in \('provider_confirmed_no_charge', 'never_dispatched'\) then raise exception 'charge_not_ruled_out'/);
+  const unk = fns.match(/create function app_budget\.mark_unknown\([\s\S]*?\n\$\$;/)![0];
+  assert.ok(/'unknown', r\.budget_day, r\.op_type, 0, 0/.test(unk) && !unk.includes('lock_scopes'), 'an unknown mark moves no money and takes no counter lock');
+  const trig = fns.match(/create function app_budget\.apply_ledger\(\)[\s\S]*?\n\$\$;/)![0];
+  assert.ok(trig.includes('reserved_micros = reserved_micros + new.reserved_delta') && trig.includes("raise exception 'budget_refused'"), 'the ledger trigger applies the deltas and refuses an over-limit reserve');
+  const down = code(readFileSync(join(root, 'supabase/rollbacks/20261018090000_f2d2_down.sql'), 'utf8'));
+  assert.ok(down.indexOf('drop schema if exists app_budget cascade') < down.indexOf('drop table if exists app.ai_ledger'), 'functions over the row types go before the tables');
+  assert.match(down, /version in \('20261018090000', '20261018090100'\)/);
 });

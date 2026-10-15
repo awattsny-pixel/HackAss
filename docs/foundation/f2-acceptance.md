@@ -105,3 +105,18 @@ the repository (`npm run scan:secrets`).
 | Rollback | R5 alone and R4..R1 chains rehearsed | done |
 | Read-time expiry for public reads | **gate for the catalog slice** (the recheck is eventual) | not started |
 | AI/provider calls, budgets, automated publication, public projections, UI, a worker process | | out of scope |
+
+## F2-D2 progress (AI spending controls: budgets, reservations, usage accounting)
+| Row | F2-D2 evidence | Status |
+|---|---|---|
+| Contract first | `docs/db/f2d2-ai-budgets.md` (accounting rules, function contracts, recovery path, data loss) written before the implementation | done |
+| Explicit limits | global daily + per-operation daily budgets, UTC days, integer micro-USD; missing / disabled / invalid refused (pgTAP §B, §C) | done |
+| Both limits under concurrency | `B1` 50 sessions vs the global budget (25 of 50), `B2` vs the operation budget (18 of 50), `B3` mixed amounts, `B4` four rounds across two operations, `B5` 640 looped attempts from 8 barrier-started sessions: exactly the budget every time | done locally |
+| Idempotency | 50 identical concurrent requests -> 1 reservation, budget used once; changed maximum / operation / target refused; racing argument sets -> 1 reservation (`I1`, pgTAP §D) | done locally |
+| Accounting | append-only ledger, one reserve and at most one terminal entry per reservation (unique indexes), totals derived from the ledger by trigger, settle releases only the unused part, overrun recorded in full and flagged (pgTAP §E, §F) | done |
+| Races | concurrent identical settles, different amounts, settle vs cancel, settle vs unknown vs cancel, recovery of an unknown reservation: one terminal outcome, no double charge or release (`S1`) | done locally |
+| Uncertain outcomes | unknown stays reserved; cancel needs a confirmed basis; recovery paths settle / cancel documented; UTC rollover keeps obligations on their day (`U1`, pgTAP §G, §H) | done locally |
+| Reconciliation | `reconcile_report` compares totals with the ledger and reservations with their ledger entries; every kind of mismatch is caught by a control | done |
+| Restricted access | owner-only tables (RLS, no grants), owner-only functions in a schema nobody else can use; members, anon, service key, the worker login refused (`A1`, pgTAP §A, golden inventory); no capability wiring | done |
+| Rollback | committed rollback + `supabase migration up` (`R7`), chains R1-R4 rehearsed; spend-history data loss documented | done |
+| AI jobs, provider calls, reconciliation scheduler, alerting, budget-config tooling | not started | out of scope |
