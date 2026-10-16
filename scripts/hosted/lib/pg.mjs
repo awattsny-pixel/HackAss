@@ -33,10 +33,25 @@ const KIND_ENDPOINTS = { read: () => true, admin: (ep) => ep === 'migrate', fixt
 const OPTIONS = new Set(['kind', 'fixtureIds', 'allowedJobTargets', 'allowedJobIds', 'timeoutMs']);
 
 const inflight = new Set();
-/** Called when the process is interrupted: remove every client container still running, synchronously and bounded, so no statement outlives its stage. */
+// The docker daemon may still be creating (or starting) a container whose client was killed, so one `rm -f` can find nothing and the container then appears.
+// Removal is therefore repeated for a bounded time, and absence only counts once it has held for a quiet period.
+const REMOVE_WINDOW_MS = 3_000; const REMOVE_QUIET_MS = 1_000; const REMOVE_RETRY_MS = 200;
+const dockerBin = () => process.env.DOCKER_BIN || 'docker';
+const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+/** Called when the process is interrupted: remove every client container still running, synchronously and bounded, so no statement outlives its stage. Returns the names it could not prove gone. */
 export function reapInflightContainers() {
-  for (const name of inflight) spawnSync(process.env.DOCKER_BIN || 'docker', ['rm', '-f', name], { timeout: 10_000, killSignal: 'SIGKILL', stdio: 'ignore' });
-  inflight.clear();
+  const pending = new Set(inflight); inflight.clear();
+  const t0 = Date.now(); let quietSince = null;
+  while (pending.size) {
+    for (const name of pending) spawnSync(dockerBin(), ['rm', '-f', name], { timeout: 10_000, killSignal: 'SIGKILL', stdio: 'ignore' });
+    const left = new Set();
+    for (const name of pending) { const r = spawnSync(dockerBin(), ['ps', '-a', '-q', '--filter', `name=^${name}$`], { timeout: 10_000, killSignal: 'SIGKILL', encoding: 'utf8' }); if (r.status !== 0 || r.stdout.trim() !== '') left.add(name); }
+    const now = Date.now();
+    quietSince = left.size ? null : (quietSince ?? now);
+    if ((quietSince !== null && now - quietSince >= REMOVE_QUIET_MS) || now - t0 >= REMOVE_WINDOW_MS) return [...left];
+    sleepSync(REMOVE_RETRY_MS);
+  }
+  return [];
 }
 let seq = 0;
 export const newContainerName = () => `hackass-psql-${process.pid}-${Date.now().toString(36)}-${seq++}`;
@@ -67,14 +82,20 @@ export function wrapScript(kind, sql, timeoutMs) {
 async function dockerBounded(args, timeoutMs = 20_000) {
   return runBounded(process.env.DOCKER_BIN || 'docker', args, { timeoutMs, env: childEnv(), maxBytes: 100_000 });
 }
-/** Remove the named container and PROVE it is gone (docker ps -a). Returns { removed, detail }. */
+/** Remove the named container and PROVE it is gone (docker ps -a): `rm -f` is repeated for up to REMOVE_WINDOW_MS and absence must hold for REMOVE_QUIET_MS, because a late-creating daemon can bring the container back after one removal. Returns { removed, detail }. */
 export async function removeContainer(name) {
-  try { await dockerBounded(['rm', '-f', name]); } catch { /* verified below */ }
-  try {
-    const r = await dockerBounded(['ps', '-a', '-q', '--filter', `name=^${name}$`]);
-    if (r.code === 0 && !r.timedOut && r.stdout.trim() === '') return { removed: true, detail: 'container absent' };
-    return { removed: false, detail: r.timedOut ? 'docker ps timed out' : r.stdout.trim() ? 'container still present' : `docker ps exit ${r.code}` };
-  } catch { return { removed: false, detail: 'docker unavailable' }; }
+  const t0 = Date.now(); let quietSince = null; let detail = 'docker unavailable';
+  for (;;) {
+    try { await dockerBounded(['rm', '-f', name]); } catch { /* verified below */ }
+    try {
+      const r = await dockerBounded(['ps', '-a', '-q', '--filter', `name=^${name}$`]);
+      if (r.code === 0 && !r.timedOut && r.stdout.trim() === '') { quietSince ??= Date.now(); detail = 'container absent'; } else { quietSince = null; detail = r.timedOut ? 'docker ps timed out' : r.stdout.trim() ? 'container still present' : `docker ps exit ${r.code}`; }
+    } catch { quietSince = null; detail = 'docker unavailable'; }
+    const now = Date.now();
+    if (quietSince !== null && now - quietSince >= REMOVE_QUIET_MS) return { removed: true, detail };
+    if (now - t0 >= REMOVE_WINDOW_MS) return { removed: false, detail };
+    await new Promise((r) => setTimeout(r, REMOVE_RETRY_MS));
+  }
 }
 
 async function execPsql(ctx, endpoint, script, { passfile, user, timeoutMs }) {

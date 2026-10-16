@@ -322,6 +322,38 @@ test('if the container cannot be proved gone the failure says so', async () => {
   const d = stubDocker({ rmWorks: false }); process.env.DOCKER_BIN = d.bin;
   try { await assert.rejects(() => pg.runSql(selfCtx(), 'migrate', 'select 1', { kind: 'read', timeoutMs: 2500 }), (e: { containerRemoved?: boolean; message: string }) => e.containerRemoved === false && /may survive/.test(e.message)); } finally { delete process.env.DOCKER_BIN; }
 });
+/** Plays the container daemon of the stub: once `run` has been logged it creates the container (the marker) `delayMs` later, whatever happened to the client in the meantime. */
+function lateDaemon(d: { log: string; marker: string; calls: () => string[] }, delayMs: number) {
+  let created = false; const t = setInterval(() => { if (!created && d.calls().some((c) => c.startsWith('run '))) { created = true; setTimeout(() => writeFileSync(d.marker, 'late\n'), delayMs); } }, 20);
+  return () => clearInterval(t);
+}
+test('a container the daemon creates AFTER the first removal is still removed (deadline path)', async () => {
+  const d = stubDocker(); process.env.DOCKER_BIN = d.bin; const stop = lateDaemon(d, 600);
+  try {
+    await assert.rejects(() => pg.runSql(selfCtx(), 'migrate', 'select pg_sleep(30)', { kind: 'read', timeoutMs: 300 }), (e: { containerRemoved?: boolean }) => e.containerRemoved === true);
+    assert.ok(d.calls().filter((c) => c.startsWith('rm -f ')).length >= 2, 'removal was repeated');
+    await new Promise((res) => setTimeout(res, 800));
+    assert.ok(!existsSync(d.marker), 'no container survives, including one created after the first removal');
+  } finally { stop(); delete process.env.DOCKER_BIN; }
+});
+test('a container the daemon creates AFTER the interrupt handler started is still removed (signal path)', async () => {
+  const d = stubDocker(); const stop = lateDaemon(d, 600);
+  const script = `import { pathToFileURL } from 'node:url';
+const [pg, ctxm, ex] = await Promise.all(['lib/pg.mjs', 'lib/context.mjs', 'lib/exec.mjs'].map((f) => import(pathToFileURL(process.argv[1] + '/scripts/hosted/' + f).href)));
+const ctx = ctxm.createContext(JSON.parse(process.env.CTX_ENV), { profile: 'selftest' });
+pg.runSql(ctx, 'migrate', 'select pg_sleep(30)', { kind: 'read', timeoutMs: 60000 }).catch(() => {});
+await new Promise((r) => setTimeout(r, 300));
+ex.killActiveChildren(); const survivors = pg.reapInflightContainers(); console.log(JSON.stringify(survivors));`;
+  try {
+    // asynchronous spawn: the daemon stand-in above must keep running in this process while the child is inside its synchronous reap
+    const child = spawn(process.execPath, ['--input-type=module', '-e', script, root], { env: { ...process.env, DOCKER_BIN: d.bin, CTX_ENV: JSON.stringify(selfEnv()) } });
+    let out = ''; let err = ''; child.stdout.on('data', (c) => { out += c; }); child.stderr.on('data', (c) => { err += c; });
+    const code = await new Promise((res) => child.on('close', res));
+    assert.equal(code, 0, err); assert.deepEqual(JSON.parse(out.trim()), [], 'nothing reported as surviving');
+    await new Promise((res) => setTimeout(res, 800));
+    assert.ok(!existsSync(d.marker), 'no container survives');
+  } finally { stop(); }
+});
 test('truncated or timed-out migration output is rejected, never trusted', () => {
   assert.ok(push, 'lib/push.mjs exists');
   const good = { code: 0, stdout: '{"type":"result","data":{"upToDate":true,"migrations":[]}}\n', stderr: '', timedOut: false, truncated: false };
