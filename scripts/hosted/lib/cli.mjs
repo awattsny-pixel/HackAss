@@ -10,7 +10,7 @@ import { SqlRefused } from './sqlguard.mjs';
 import { RECOVERY, STAGES } from './stages.mjs';
 import { privateFileProblems } from './secretfile.mjs';
 import { validateOwnerDate, DateRefused } from './dates.mjs';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeSync } from 'node:fs';
 import { killActiveChildren } from './exec.mjs';
 import { reapInflightContainers } from './pg.mjs';
 
@@ -41,11 +41,29 @@ export function readEnv(source = process.env, { repoRoot = REPO_ROOT, uid = proc
   return env;
 }
 
+/** The container cleanup of an interrupted stage could not be proved: the names, why, and one line to print and record. The stage stays interrupted (unsuccessful) either way. */
+export function describeCleanup(unresolved) {
+  const containers = unresolved.map(({ name, state, detail }) => ({ name, state, detail }));
+  return { status: 'NOT PROVEN', containers, message: `cleanup NOT PROVEN: ${containers.map((c) => `${c.name} (${c.state}: ${c.detail})`).join('; ')}; check \`docker ps -a --filter name=hackass-psql-\` and remove any survivor before retrying` };
+}
+/** Persist the interruption: status 'interrupted' always, with the cleanup verdict in the error text (evidence lists it) and in a `cleanup` field when it is not proven. */
+export function recordInterrupt(run, stage, sig, cleanup) {
+  const s = run.state();
+  s.stages[stage] = { ...s.stages[stage], status: 'interrupted', at: new Date().toISOString(), error: `received ${sig}${cleanup ? `; ${cleanup.message}` : ''}`.slice(0, 1000), ...(cleanup ? { cleanup: { status: cleanup.status, containers: cleanup.containers } } : {}) };
+  run.save(s);
+  run.log({ id: 'STAGE-ERROR', stage, status: 'FAIL', error: `interrupted by ${sig}` });
+  if (cleanup) run.log({ id: 'CLEANUP-NOT-PROVEN', stage, status: 'FAIL', error: cleanup.message, containers: cleanup.containers });
+  run.releaseLock();
+}
+
 export async function runStage(stage, argv, fn, { env = process.env, git = gitState(), repoRoot = REPO_ROOT } = {}) {
   let code = 3; let run = null; let started = false; let ctx = null;
   const onSignal = (sig) => () => {
-    try { killActiveChildren(); reapInflightContainers(); } catch { /* best effort */ }
-    try { if (run && started) { const s = run.state(); s.stages[stage] = { ...s.stages[stage], status: 'interrupted', at: new Date().toISOString(), error: `received ${sig}` }; run.save(s); run.log({ id: 'STAGE-ERROR', stage, status: 'FAIL', error: `interrupted by ${sig}` }); run.releaseLock(); } } catch { /* nothing more can be done */ }
+    let unresolved = [];
+    try { killActiveChildren(); unresolved = reapInflightContainers(); } catch (e) { unresolved = [{ name: '(unknown)', state: 'not-established', detail: `container cleanup raised ${e?.constructor?.name ?? 'an error'}` }]; }
+    const cleanup = unresolved.length ? describeCleanup(unresolved) : null;
+    if (cleanup) { try { writeSync(2, `${redact(cleanup.message)}\n`); } catch { /* stderr closed */ } } // printed whether or not a run exists; written synchronously because the process exits next
+    try { if (run && started) recordInterrupt(run, stage, sig, cleanup); } catch { /* nothing more can be done */ }
     process.exit(130);
   };
   const handlers = { SIGINT: onSignal('SIGINT'), SIGTERM: onSignal('SIGTERM') };
