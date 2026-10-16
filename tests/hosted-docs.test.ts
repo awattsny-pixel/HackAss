@@ -30,7 +30,7 @@ const checkBody = (id: string) => {
 };
 
 test('docs/hosted holds the preparation documents and says nothing was executed', () => {
-  assert.deepEqual(hostedFiles.sort(), ['README.md', 'approval-summary.md', 'ci-review.md', 'credential-retirement.md', 'staging-plan.md', 'verification-procedure.md']);
+  assert.deepEqual(hostedFiles.sort(), ['README.md', 'approval-summary.md', 'ci-review.md', 'credential-retirement.md', 'migration-route.md', 'staging-plan.md', 'verification-procedure.md']);
   assert.match(read('docs/hosted/README.md'), /Status: prepared, not executed/);
   assert.match(read('docs/hosted/README.md'), /No hosted system was contacted|no hosted system was contacted/);
 });

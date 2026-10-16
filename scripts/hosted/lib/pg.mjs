@@ -20,8 +20,8 @@ export function endpointInfo(ctx, endpoint) {
   const t = ctx.targets;
   switch (endpoint) {
     case 'migrate': return { host: t.migrate.host, port: t.migrate.port, user: t.migrate.user };
-    case 'session': return { host: t.session.host, port: t.session.port, user: t.migrate.user };
-    case 'txn': return { host: t.txn.host, port: t.txn.port, user: t.migrate.user };
+    case 'session': return { host: t.session.host, port: t.session.port, user: t.poolerUser };
+    case 'txn': return { host: t.txn.host, port: t.txn.port, user: t.poolerUser };
     case 'worker-session': return { host: t.session.host, port: t.session.port, user: t.workerUser };
     case 'worker-txn': return { host: t.txn.host, port: t.txn.port, user: t.workerUser };
     default: throw new Error(`unknown endpoint ${endpoint}`);

@@ -46,7 +46,7 @@ export function selftestEnv({ supabaseBin = process.env.SUPABASE_BIN || 'supabas
     dir, workerPw,
     env: {
       HOSTED_SELFTEST: '1', STAGING_REF: 'selftest', STAGING_URL: `http://127.0.0.1:${apiPort}`,
-      STAGING_MIGRATE_HOST: 'host.docker.internal', STAGING_MIGRATE_PORT: '54322', STAGING_MIGRATE_USER: 'postgres',
+      STAGING_MIGRATE_HOST: 'host.docker.internal', STAGING_MIGRATE_PORT: '54322', STAGING_MIGRATE_USER: 'postgres', STAGING_POOLER_USER: 'postgres',
       STAGING_POOLER_TXN_HOST: 'host.docker.internal', STAGING_POOLER_TXN_PORT: '54322', STAGING_POOLER_SESSION_HOST: 'host.docker.internal', STAGING_POOLER_SESSION_PORT: '54322',
       STAGING_WORKER_USER: 'hackass_worker', STAGING_PGPASSFILE: passfile,
       STAGING_PUBLISHABLE_KEY: cfg.PUBLISHABLE_KEY || cfg.ANON_KEY, STAGING_SECRET_KEY: cfg.SECRET_KEY || cfg.SERVICE_ROLE_KEY,

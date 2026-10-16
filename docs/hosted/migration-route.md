@@ -1,0 +1,95 @@
+# Migration route: direct connection only
+
+**Status:** local implementation, awaiting source review. Nothing in this document has been run against staging by the code of this commit. Hosted behavior of the real migration CLI on the direct route is untested.
+
+## 1. Decision
+
+Migrations run **only** over the staging **direct** connection, `db.<ref>.supabase.co:5432`, as `postgres`. The pooler (`aws-0-us-east-1.pooler.supabase.com`, ports 5432 and 6543) is used by the application and the pooler/worker checks, with the separate login `postgres.<ref>`. A migration through a pooler is refused in code.
+
+### Why not a pooler (local lab, Supavisor 2.9.13, session mode, the pinned Supabase CLI 2.120.0; Claude-reported, not hosted)
+* startup `options` (lock, statement, idle-in-transaction timeouts and the connection check) are **ignored**: all four read 0 inside the CLI's own session;
+* `application_name` is replaced by `Supavisor`; server connections are **reused** across clients and runs, so a session cannot be identified by its name or its start time;
+* the `BackendKeyData` pid handed to the client is fabricated;
+* a CLI **killed mid-file does not roll the file back**: the file ran to completion and committed about 20 s later (ledger row and all three tables), while the shipped identification matched zero sessions;
+* a killed CLI's blocked session persisted for at least 75 s with no limit.
+The runner of `0e1e2a1` is therefore unsuitable for pooled execution; it was accepted only for a direct connection. Full record: `pooler-lab/FINDINGS.md` and its checksum manifest (outside the repository).
+
+### Why the direct route is acceptable (measured)
+* local direct connection (the disposable stack): the four startup limits survive the CLI's `RESET ALL`, a killed CLI's session ends within about 2 s, and the interrupted file is rolled back completely;
+* **S6B on staging (run `stg-<date>-direct1`, ten checks passed, `psql` probes only):** TLS 1.3 with `sslmode=require`; the options are honored; the timeouts fire; a client killed mid-statement is noticed by the server in under a second; the shipped identification predicate matched exactly one positively identified probe. The real CLI on the hosted direct route has **not** been run.
+
+## 2. What changed in the scripts
+| Item | Before | Now |
+|---|---|---|
+| Migration target (`STAGING_MIGRATE_*`) | pooler as `postgres.<ref>`, or direct as `postgres` | **direct only**: host exactly `db.<ref>.supabase.co`, port 5432, login `postgres` |
+| Pooler login | the migration login was reused for the pooler endpoints | new `STAGING_POOLER_USER`, exactly `postgres.<ref>` (selftest: `postgres`, or `postgres.<tenant>` for a local pooler lab) |
+| `session` / `txn` endpoints | `targets.migrate.user` | `targets.poolerUser` |
+| Password file | migration login + worker + (same login) at the pooler | `postgres` at the direct host `:5432`; `postgres.<ref>` at the pooler `:5432` and `:6543`; `hackass_worker.<ref>` at the pooler `:5432` and `:6543` |
+| Refusal of a pooler migration | none | H0 (`lib/config.mjs` `migrationRouteErrors`); `cliUrl`; and the first statement of `pushMigrations` (`assertDirectMigrationTarget`), before the server clock is read, the database contacted or the CLI started |
+Migration SQL (`supabase/migrations`) is unchanged from `0e1e2a1` (asserted by a test).
+
+**Shown locally with the repository code and a real Supavisor (lab record `split-proof.mjs`):** the `migrate` endpoint connects directly as `postgres` (the server sees the client's own application name), the `session` and `txn` endpoints connect through the pooler as `postgres.<tenant>` (the server sees `Supavisor`); the previous shape, the migration login reused for the pooler, is refused by the pooler (and, with the real password file, already by H0 because the file has no such entry); the bounded runner's dry-run over the direct target lists the 21 pending migrations.
+
+## 3. Environment and password file
+```
+STAGING_REF=<ref>   STAGING_URL=https://<ref>.supabase.co
+STAGING_MIGRATE_HOST=db.<ref>.supabase.co   STAGING_MIGRATE_PORT=5432   STAGING_MIGRATE_USER=postgres
+STAGING_POOLER_USER=postgres.<ref>
+STAGING_POOLER_TXN_HOST=<pooler host>   STAGING_POOLER_TXN_PORT=6543
+STAGING_POOLER_SESSION_HOST=<pooler host>   STAGING_POOLER_SESSION_PORT=5432
+STAGING_WORKER_USER=hackass_worker.<ref>
+STAGING_PGPASSFILE=<0600 file>  STAGING_PUBLISHABLE_KEY_FILE=<0600 file>  STAGING_SECRET_KEY_FILE=<0600 file>  FORBIDDEN_PROJECT_REFS=<legacy ref>
+```
+The existing password file (five lines, added by the approved helper) already satisfies these requirements. Only host, port, database and login columns are ever read.
+
+## 4. Exact proposed S7 commands (NOT authorized; for review)
+`SHA` is the full SHA of the reviewed commit; `RUN` is a fresh run id (for example `stg-<date>-s7a`). The stage dependencies require `preflight` in the same run, so the first S7 run begins with a fresh S6 preflight under the new environment.
+```bash
+cd <repository>
+D="<private directory>"; R=<ref>; H=<pooler host>; SHA=<the reviewed commit>; RUN=<fresh run id>
+# docker must be on PATH
+S7ENV=(env -u HOSTED_SELFTEST STAGING_REF=$R STAGING_URL=https://$R.supabase.co STAGING_MIGRATE_HOST=db.$R.supabase.co STAGING_MIGRATE_PORT=5432 STAGING_MIGRATE_USER=postgres
+  STAGING_POOLER_USER=postgres.$R STAGING_POOLER_TXN_HOST=$H STAGING_POOLER_TXN_PORT=6543 STAGING_POOLER_SESSION_HOST=$H STAGING_POOLER_SESSION_PORT=5432 STAGING_WORKER_USER=hackass_worker.$R
+  STAGING_PGPASSFILE="$D/pgpass" STAGING_PUBLISHABLE_KEY_FILE="$D/publishable.key" STAGING_SECRET_KEY_FILE="$D/secret.key" FORBIDDEN_PROJECT_REFS=<legacy ref>)
+# step A (read-only first, then mutating); stop on any failure, no retries
+"${S7ENV[@]}" node scripts/hosted/preflight.mjs      --run-id=$RUN --authorized=S6@$SHA
+"${S7ENV[@]}" node scripts/hosted/s7-apply.mjs identity --run-id=$RUN --authorized=S7@$SHA --confirm-mutating=identity
+"${S7ENV[@]}" node scripts/hosted/s7-apply.mjs migrate  --run-id=$RUN --authorized=S7@$SHA --confirm-mutating=migrate
+# step B (only after the owner has exposed ONLY the api schema and set the worker password)
+"${S7ENV[@]}" node scripts/hosted/s7-verify.mjs exposure --run-id=$RUN --authorized=S7@$SHA --owner-confirmed=exposure
+"${S7ENV[@]}" node scripts/hosted/s7-apply.mjs worker-marker --run-id=$RUN --authorized=S7@$SHA --confirm-mutating=worker-marker --owner-confirmed=exposure,worker-password
+"${S7ENV[@]}" node scripts/hosted/s7-apply.mjs rerun    --run-id=$RUN --authorized=S7@$SHA --confirm-mutating=rerun
+"${S7ENV[@]}" node scripts/hosted/s7-verify.mjs inventory --run-id=$RUN --authorized=S7@$SHA
+```
+Each stage is a separate process; each mutating stage runs once per run; a failed or interrupted stage blocks the run and is never retried (only `cleanup` and `evidence` run after it). The `migrate` stage: checks the target ledger is empty and the dry-run lists exactly the 21 repository migrations, applies them with the bounded runner, then checks the ledger equals the repository.
+The worker password is set later by the owner; until then the worker lines in `pgpass` are the nonfunctional placeholder, so step B's worker checks cannot pass before that.
+
+## 5. Per-file recovery procedure
+**Facts this relies on (measured locally; hosted unverified):** the CLI applies each migration file in **one transaction together with its ledger row**; a failing file is rolled back completely and earlier files stay committed; a CLI killed on the direct route has its server session ended within about 2 s and the interrupted file is rolled back. A static scan of the 21 files found no top-level `BEGIN`/`COMMIT`/`ROLLBACK`/`START TRANSACTION` and no non-transactional DDL (`CONCURRENTLY`, `VACUUM`, `CREATE DATABASE`, `ALTER TYPE ... ADD VALUE`):
+```bash
+grep -nEi "^\s*(begin\s*;|commit\b|rollback\b|start transaction)|concurrently|\bvacuum\b|alter system|create database|alter type [a-z_.]+ add value" supabase/migrations/*.sql   # expect no output
+```
+Atomicity is per file, **not** per batch.
+
+After any failure, deadline or interruption of `migrate` (or `rerun`):
+1. **Do not retry the stage.** Read the stage's error. It says whether the migration's database session end was **proven** or **NOT PROVEN**.
+2. **NOT PROVEN, or in doubt:** the owner lists the sessions of the `postgres` login in the dashboard SQL editor and ends only a session that is the migration's: `select pid, application_name, state, wait_event_type, left(query, 80) from pg_stat_activity where usename = 'postgres' and pid <> pg_backend_pid();` (the CLI's session is named `@effect/sql-pg`); repeat until nothing of the migration remains. Nothing below is valid before this.
+3. **Inventory what committed (read-only).** The committed files are exactly the ledger versions; the first repository file not in the ledger is the interrupted or failed one:
+```bash
+{ echo "begin read only;"; node -e "import('./scripts/hosted/lib/sql.mjs').then(m=>console.log(m.LEDGER_EXISTS_SQL+';\n'+m.FINGERPRINT_SQL+';'))"; echo "rollback;"; } \
+ | docker run --rm -i -v "$D/pgpass:/pgpass:ro" -e PGPASSFILE=/pgpass public.ecr.aws/supabase/postgres:17.11.0.004 psql "host=db.$R.supabase.co port=5432 dbname=postgres user=postgres sslmode=require connect_timeout=15" -X -w -q -At
+# then, only if the first line is "true":   select version || ' ' || name from supabase_migrations.schema_migrations order by version;  (same way)
+```
+4. **Did the interrupted file leave changes?** Compare the staging catalog fingerprint with the fingerprint a disposable local stack gets from applying exactly the first N committed files (N = the ledger count): reset the local application state, run the CLI with a work directory holding only those N files, and compute the same fingerprint. **Equal:** the interrupted file left nothing. **Different:** partial or unexpected changes; stop.
+5. **Decide (CTO/owner).** The `migrate` stage requires an empty ledger on staging, so a partially migrated project cannot simply be resumed by the stage. Because staging is disposable and holds no data, the simplest safe recovery for any NOT PROVEN or mismatch is a new staging project (new keys, new password file, and the IPv4 add-on again). Resuming from an exact ledger prefix would need a reviewed code change.
+6. Keep the evidence: run `evidence` (it records the failed attempt), and do not delete the failed run directory.
+
+**Rehearsed locally (disposable stack, direct connection, the real 21 migrations, Claude-reported):** the first 7 files applied twice give the same catalog fingerprint (the method is deterministic); applying the first 8 files with the 8th failing at its last statement leaves the ledger at exactly the first 7 and the fingerprint identical to the 7-file one (the failed file left nothing); applying the 8th file outside the ledger (a partial or unexplained change) makes the fingerprint differ, so the comparison detects it. The script (`recovery-rehearsal.mjs`) is kept outside the repository with the lab record.
+
+## 6. Open: server certificate verification
+`sslmode=require` encrypts but does not verify the server certificate (S6B said so). Verification (`sslmode=verify-full` with the Supabase CA certificate the owner downloads from the dashboard, mounted read-only into the psql container and passed to the CLI) is **not implemented** here. It should be done and measured on the local stack and then on the direct route before any migration is executed.
+
+## 7. What this does not establish
+* the real CLI on the hosted direct route (S6B used `psql`); the 21 migrations on staging;
+* the server certificate;
+* that the lab's pooler behavior equals the hosted one (the migration route no longer depends on it).

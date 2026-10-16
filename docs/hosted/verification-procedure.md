@@ -12,7 +12,8 @@
   |---|---|
   | `STAGING_REF` | the staging project reference |
   | `STAGING_URL` | `https://<ref>.supabase.co` (API, Auth, REST) |
-  | `STAGING_MIGRATE_HOST`, `STAGING_MIGRATE_PORT`, `STAGING_MIGRATE_USER` | the endpoint and login used for migrations and owner-side SQL (a pooler session endpoint with user `postgres.<ref>`, or the direct host `db.<ref>.supabase.co` with user `postgres`) |
+  | `STAGING_MIGRATE_HOST`, `STAGING_MIGRATE_PORT`, `STAGING_MIGRATE_USER` | the endpoint and login used for migrations and owner-side SQL: ONLY the direct host `db.<ref>.supabase.co`, port 5432, user `postgres` (a migration through a pooler is refused; see `migration-route.md`) |
+  | `STAGING_POOLER_USER` | the login for the pooler transaction and session checks: `postgres.<ref>` |
   | `STAGING_POOLER_TXN_HOST`, `STAGING_POOLER_TXN_PORT` | the pooler **transaction-mode** endpoint |
   | `STAGING_POOLER_SESSION_HOST`, `STAGING_POOLER_SESSION_PORT` | the pooler **session-mode** endpoint |
   | `STAGING_WORKER_USER` | `hackass_worker.<ref>` |
@@ -31,14 +32,14 @@
 ```
 <host>:<port>:postgres:<login>:<password>
 ```
-with lines for the migration login, for the pooler transaction and session endpoints, and for `hackass_worker.<ref>`. It is never read, printed or copied by me; the scripts only check that it exists, is outside the working tree, and has mode `0600` (H0).
+with lines for the migration login (`postgres` on the direct host), for the pooler transaction and session endpoints (`postgres.<ref>`), and for `hackass_worker.<ref>`. It is never read, printed or copied by me; the scripts only check that it exists, is outside the working tree, and has mode `0600` (H0).
 
 **Migration command.** The URL carries no password:
 ```
 PGPASSFILE="$STAGING_PGPASSFILE" supabase db push \
-  --db-url "postgresql://$STAGING_MIGRATE_USER@$STAGING_MIGRATE_HOST:$STAGING_MIGRATE_PORT/postgres?sslmode=require" --dry-run
+  --db-url "postgresql://postgres@db.$STAGING_REF.supabase.co:5432/postgres?sslmode=require" --dry-run
 ```
-(the same without `--dry-run` for the real run). `STAGING_MIGRATE_USER` is `postgres.<ref>`, which is not a secret. `psql` uses the same file: `PGPASSFILE=... psql "host=... port=... dbname=postgres user=... sslmode=require"`.
+(the same without `--dry-run` for the real run). The migration login is `postgres` on the direct host, which is not a secret (the pooler login `postgres.<ref>` is used only for the pooler checks). `psql` uses the same file: `PGPASSFILE=... psql "host=... port=... dbname=postgres user=... sslmode=require"`.
 
 **Never:** a password inside the URL or any argument; `SUPABASE_DB_PASSWORD` (see below, it is not honoured with `--db-url`); `--debug` (not shown to leak in the test below, but its output on a hosted target is unknown); `supabase link`.
 
@@ -99,8 +100,8 @@ Because staff membership is changed only for `s-rm`, and sign-out happens only f
 Proves every connection the run will make is aimed at the staging project and nothing else. A correct API reference alone does not establish that the database connections reach the same project, so each endpoint is validated separately, and H1b adds a live cross-check.
 * `STAGING_REF` is set and not in `FORBIDDEN_PROJECT_REFS`; no variable contains a forbidden reference as a substring of a host, user or URL.
 * **API:** `STAGING_URL` equals `https://$STAGING_REF.supabase.co` exactly.
-* **Database (migration login):** user is `postgres.$STAGING_REF` with a host ending `.pooler.supabase.com`, or user `postgres` with host exactly `db.$STAGING_REF.supabase.co`; port is 5432 or 6543.
-* **Pooler transaction endpoint and pooler session endpoint:** each host ends `.pooler.supabase.com` (not loopback, private, link-local or a container name); the transaction port is 6543 and the session port is 5432; both hosts equal the migration host when it is a pooler host (one project, one region).
+* **Database (migration login):** user `postgres` with host exactly `db.$STAGING_REF.supabase.co` and port 5432. A pooler host, the login `postgres.<ref>` or port 6543 for migrations is refused. **Pooler login:** `STAGING_POOLER_USER` is exactly `postgres.$STAGING_REF`.
+* **Pooler transaction endpoint and pooler session endpoint:** each host ends `.pooler.supabase.com` (not loopback, private, link-local or a container name); the transaction port is 6543 and the session port is 5432; both are the same host (one project, one region), and different from the migration host.
 * **Worker login:** `STAGING_WORKER_USER` equals `hackass_worker.$STAGING_REF`.
 * **Password file:** `STAGING_PGPASSFILE` exists, has mode `0600`, is outside the repository working tree, and every entry's login carries the same `$STAGING_REF` suffix (or is the direct-host `postgres` login for `db.$STAGING_REF.supabase.co`); the check reads only the host, port, database and login fields and never the password field.
 * Decode only the `ref` claim of the staging keys **if they are JWTs** and require it to equal `STAGING_REF` (a mismatch means a key belongs to another project). Never print a key.
@@ -124,8 +125,8 @@ Pass: the count is **1 on all three** endpoints before the deletion and 0 after.
 ### H2. Apply the 21 migrations (H2a mutating once; H2b exposure; H2c worker endpoint proof)
 *H2a (mutating, once).* With the method of section 0.2:
 ```
-PGPASSFILE="$STAGING_PGPASSFILE" supabase db push --db-url "postgresql://$STAGING_MIGRATE_USER@$STAGING_MIGRATE_HOST:$STAGING_MIGRATE_PORT/postgres?sslmode=require" --dry-run   # lists the 21 pending, in filename order; changes nothing
-PGPASSFILE="$STAGING_PGPASSFILE" supabase db push --db-url "postgresql://$STAGING_MIGRATE_USER@$STAGING_MIGRATE_HOST:$STAGING_MIGRATE_PORT/postgres?sslmode=require"             # applies them, stopping at the first failure
+PGPASSFILE="$STAGING_PGPASSFILE" supabase db push --db-url "postgresql://postgres@db.$STAGING_REF.supabase.co:5432/postgres?sslmode=require" --dry-run   # lists the 21 pending, in filename order; changes nothing
+PGPASSFILE="$STAGING_PGPASSFILE" supabase db push --db-url "postgresql://postgres@db.$STAGING_REF.supabase.co:5432/postgres?sslmode=require"             # applies them, stopping at the first failure
 ```
 The `--dry-run` listing is compared with `staging-plan.md` section 4 before the real run. Pass: all 21 apply; `select count(*) from supabase_migrations.schema_migrations where version like '2026%'` is 21; the versions match the filenames. A failure is a **hosted-specific risk** from the staging plan: record the failing file and error, stop and report. Do not edit the migration or the database to get past it.
 

@@ -10,7 +10,7 @@ const code = await runStage('preflight', process.argv.slice(2), async ({ ctx, ru
   const c = checker(run, say);
   const t = ctx.targets;
   await c.check('H0', 'every target validated before anything was contacted', async () =>
-    `ref ${t.ref}; API ${t.url}; migration login ${t.migrate.user} at ${t.migrate.host}:${t.migrate.port}; pooler txn ${t.txn.host}:${t.txn.port}, session ${t.session.host}:${t.session.port}; worker login ${t.workerUser}`);
+    `ref ${t.ref}; API ${t.url}; migration (direct) login ${t.migrate.user} at ${t.migrate.host}:${t.migrate.port}; pooler login ${t.poolerUser}: txn ${t.txn.host}:${t.txn.port}, session ${t.session.host}:${t.session.port}; worker login ${t.workerUser}`);
   const facts = {};
   await c.check('H1a', 'platform facts through the migration, pooler-session and pooler-transaction endpoints agree and match the expectations', async () => {
     for (const ep of ['migrate', 'session', 'txn']) facts[ep] = await queryJson(ctx, ep, FACTS_SQL, { timeoutMs: 45_000 });

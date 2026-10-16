@@ -9,7 +9,7 @@
 // What this does not do: it cannot identify the CLI's session through a pooler that reuses server connections (backend_start would predate the mark) - then verification reports
 // NOT PROVEN whenever a blocked session remains, which is the safe direction. The limits and the identification were verified on a direct connection to the local stack only.
 import { runBounded, childEnv } from './exec.mjs';
-import { cliUrl, REPO_ROOT } from './config.mjs';
+import { cliUrl, assertDirectMigrationTarget, REPO_ROOT } from './config.mjs';
 import { runSql } from './pg.mjs';
 import { MIGRATION_SQL } from './sqlguard.mjs';
 import { parsePushResult } from './push.mjs';
@@ -58,6 +58,8 @@ const describe = (e) => (e.error ? `the migration session could not be examined 
  * `timeoutMs` and `limits` are honoured only by the selftest profile. `deps` is for unit tests.
  */
 export async function pushMigrations(ctx, { dryRun = false, cli, workdir = REPO_ROOT, timeoutMs, limits, deps = {} } = {}) {
+  // the guard is the FIRST thing the invocation does: a pooler (or any non-direct) migration target is refused before the database is contacted or the CLI started
+  assertDirectMigrationTarget(ctx.targets.migrate, { profile: ctx.profile });
   const sql = deps.sql ?? runSql; const run = deps.run ?? runBounded;
   const L = effectiveLimits(ctx, limits);
   const deadline = ctx.profile === 'selftest' && Number.isInteger(timeoutMs) ? timeoutMs : (dryRun ? L.dryRunDeadlineMs : L.deadlineMs);

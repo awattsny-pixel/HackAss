@@ -20,6 +20,7 @@ const ctxm = await load('lib/context.mjs');
 
 const REF = cfg.STAGING.ref as string;
 const HOST = 'aws-0-us-east-1.pooler.supabase.com';
+const DIRECT = 'db.' + (cfg.STAGING.ref as string) + '.supabase.co';
 const OLD = 'oldprojectref0123456';
 // secret-shaped test values are assembled at run time so that no literal key or credential URL is committed
 const shaped = (kind: string) => `sb_${kind}_${'q'.repeat(20)}`;
@@ -30,10 +31,10 @@ function passfile(lines: string[], mode = 0o600) {
   const dir = mkdtempSync(join(tmpdir(), 'hosted-test-')); const f = join(dir, 'pgpass');
   writeFileSync(f, lines.join('\n') + '\n'); chmodSync(f, mode); return f;
 }
-const goodLines = [`${HOST}:5432:postgres:postgres.${REF}:p1`, `${HOST}:6543:postgres:postgres.${REF}:p1`, `${HOST}:5432:postgres:hackass_worker.${REF}:p2`, `${HOST}:6543:postgres:hackass_worker.${REF}:p2`];
+const goodLines = [`${HOST}:5432:postgres:postgres.${REF}:p1`, `${HOST}:6543:postgres:postgres.${REF}:p1`, `${HOST}:5432:postgres:hackass_worker.${REF}:p2`, `${HOST}:6543:postgres:hackass_worker.${REF}:p2`, `${DIRECT}:5432:postgres:postgres:p0`];
 function env(over: Record<string, string> = {}, lines = goodLines) {
   return {
-    STAGING_REF: REF, STAGING_URL: `https://${REF}.supabase.co`, STAGING_MIGRATE_HOST: HOST, STAGING_MIGRATE_PORT: '5432', STAGING_MIGRATE_USER: `postgres.${REF}`,
+    STAGING_REF: REF, STAGING_URL: `https://${REF}.supabase.co`, STAGING_MIGRATE_HOST: DIRECT, STAGING_MIGRATE_PORT: '5432', STAGING_MIGRATE_USER: 'postgres', STAGING_POOLER_USER: `postgres.${REF}`,
     STAGING_POOLER_TXN_HOST: HOST, STAGING_POOLER_TXN_PORT: '6543', STAGING_POOLER_SESSION_HOST: HOST, STAGING_POOLER_SESSION_PORT: '5432', STAGING_WORKER_USER: `hackass_worker.${REF}`,
     STAGING_PGPASSFILE: passfile(lines), STAGING_PUBLISHABLE_KEY: shaped('publishable'), STAGING_SECRET_KEY: shaped('secret'), FORBIDDEN_PROJECT_REFS: OLD, ...over,
   };
@@ -49,10 +50,11 @@ test('H0 rejects a wrong or forbidden project reference, and a missing forbidden
   refused(env({ STAGING_URL: `https://${OLD}.supabase.co` }), /STAGING_URL must equal|forbidden/);
 });
 test('H0 rejects an API reference that does not match the database endpoints (each endpoint is validated on its own)', () => {
-  refused(env({ STAGING_MIGRATE_USER: `postgres.${OLD}` }), /migration login on the pooler must be/);
+  refused(env({ STAGING_MIGRATE_USER: `postgres.${OLD}` }), /migration login on the direct host must be postgres/);
+  refused(env({ STAGING_POOLER_USER: `postgres.${OLD}` }), /pooler login must be postgres\./);
   refused(env({ STAGING_WORKER_USER: `hackass_worker.${OLD}` }), /worker login must be/);
   refused(env({ STAGING_POOLER_TXN_HOST: 'aws-0-eu-west-1.pooler.supabase.com' }), /same host/);
-  refused(env({ STAGING_MIGRATE_HOST: 'aws-0-eu-west-1.pooler.supabase.com' }), /must equal the pooler host/);
+  refused(env({ STAGING_MIGRATE_HOST: 'aws-0-eu-west-1.pooler.supabase.com' }), /through a pooler is refused/);
   refused(env({ STAGING_POOLER_TXN_PORT: '5432' }), /transaction port must be 6543/);
   refused(env({ STAGING_POOLER_SESSION_PORT: '6543' }), /session port must be 5432/);
 });
@@ -88,7 +90,7 @@ test('the password file reader never returns a password', () => {
 });
 test('connection strings carry no password', () => {
   const t = { host: HOST, port: 5432, user: `postgres.${REF}`, profile: 'staging' };
-  for (const s of [cfg.conninfo(t), cfg.cliUrl(t)]) { assert.ok(!/:[^@\s/]*@/.test(s.replace(/^postgres(ql)?:\/\//, '').split('@')[0].includes(':') ? s : 'x'), s); assert.ok(!/sslmode=(disable|allow|prefer)/.test(s)); }
+  for (const s of [cfg.conninfo(t), cfg.cliUrl({ host: DIRECT, port: 5432, user: 'postgres', profile: 'staging' })]) { assert.ok(!/:[^@\s/]*@/.test(s.replace(/^postgres(ql)?:\/\//, '').split('@')[0].includes(':') ? s : 'x'), s); assert.ok(!/sslmode=(disable|allow|prefer)/.test(s)); }
 });
 
 test('redaction removes tokens, keys, passwords, connection strings and non-synthetic e-mail; registered secrets in any position', () => {

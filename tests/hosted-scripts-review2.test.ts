@@ -34,7 +34,7 @@ test.after(() => { for (const d of made) rmSync(d, { recursive: true, force: tru
 function selfEnv() {
   const pf = join(tmp(), 'pgpass');
   writeFileSync(pf, 'host.docker.internal:54322:postgres:postgres:p1\nhost.docker.internal:54322:postgres:hackass_worker:p2\n', { mode: 0o600 });
-  return { HOSTED_SELFTEST: '1', STAGING_REF: 'selftest', STAGING_URL: 'http://127.0.0.1:54321', STAGING_MIGRATE_HOST: 'host.docker.internal', STAGING_MIGRATE_PORT: '54322', STAGING_MIGRATE_USER: 'postgres',
+  return { HOSTED_SELFTEST: '1', STAGING_REF: 'selftest', STAGING_URL: 'http://127.0.0.1:54321', STAGING_MIGRATE_HOST: 'host.docker.internal', STAGING_MIGRATE_PORT: '54322', STAGING_MIGRATE_USER: 'postgres', STAGING_POOLER_USER: 'postgres',
     STAGING_POOLER_TXN_HOST: 'host.docker.internal', STAGING_POOLER_TXN_PORT: '54322', STAGING_POOLER_SESSION_HOST: 'host.docker.internal', STAGING_POOLER_SESSION_PORT: '54322',
     STAGING_WORKER_USER: 'hackass_worker', STAGING_PGPASSFILE: pf, STAGING_PUBLISHABLE_KEY: shaped('publishable'), STAGING_SECRET_KEY: shaped('secret') } as Record<string, string>;
 }
@@ -42,8 +42,8 @@ const selfCtx = (env = selfEnv()) => ctxm.createContext(env, { profile: 'selftes
 const REF = cfg.STAGING.ref as string; const HOST = 'aws-0-us-east-1.pooler.supabase.com';
 function stagingCtx() {
   const pf = join(tmp(), 'pgpass');
-  writeFileSync(pf, [`${HOST}:5432:postgres:postgres.${REF}:p1`, `${HOST}:6543:postgres:postgres.${REF}:p1`, `${HOST}:5432:postgres:hackass_worker.${REF}:p2`, `${HOST}:6543:postgres:hackass_worker.${REF}:p2`].join('\n') + '\n', { mode: 0o600 });
-  return ctxm.createContext({ STAGING_REF: REF, STAGING_URL: `https://${REF}.supabase.co`, STAGING_MIGRATE_HOST: HOST, STAGING_MIGRATE_PORT: '5432', STAGING_MIGRATE_USER: `postgres.${REF}`, STAGING_POOLER_TXN_HOST: HOST, STAGING_POOLER_TXN_PORT: '6543',
+  writeFileSync(pf, [`${HOST}:5432:postgres:postgres.${REF}:p1`, `${HOST}:6543:postgres:postgres.${REF}:p1`, `${HOST}:5432:postgres:hackass_worker.${REF}:p2`, `${HOST}:6543:postgres:hackass_worker.${REF}:p2`, `db.${REF}.supabase.co:5432:postgres:postgres:p0`].join('\n') + '\n', { mode: 0o600 });
+  return ctxm.createContext({ STAGING_REF: REF, STAGING_URL: `https://${REF}.supabase.co`, STAGING_MIGRATE_HOST: `db.${REF}.supabase.co`, STAGING_MIGRATE_PORT: '5432', STAGING_MIGRATE_USER: 'postgres', STAGING_POOLER_USER: `postgres.${REF}`, STAGING_POOLER_TXN_HOST: HOST, STAGING_POOLER_TXN_PORT: '6543',
     STAGING_POOLER_SESSION_HOST: HOST, STAGING_POOLER_SESSION_PORT: '5432', STAGING_WORKER_USER: `hackass_worker.${REF}`, STAGING_PGPASSFILE: pf, STAGING_PUBLISHABLE_KEY: shaped('publishable'), STAGING_SECRET_KEY: shaped('secret'), FORBIDDEN_PROJECT_REFS: 'oldprojectref0123456' }, { profile: 'staging' });
 }
 function preparedRun(env: Record<string, string>, doneStages: string[]) {
@@ -137,11 +137,11 @@ test('SIGKILL, recovery and an approved retry: the retry may succeed but the int
 test('the CLI url carries the documented server-side limits as startup options, and a staging run cannot change them', () => {
   assert.ok(migrate, 'lib/migrate.mjs exists');
   const L = migrate.MIGRATION_LIMITS;
-  const u = cfg.cliUrl({ host: HOST, port: 5432, user: `postgres.${REF}`, profile: 'staging', limits: L });
+  const u = cfg.cliUrl({ host: `db.${REF}.supabase.co`, port: 5432, user: 'postgres', profile: 'staging', limits: L });
   assert.equal(decodeURIComponent(new URL(u).searchParams.get('options') ?? ''), '-c lock_timeout=30000 -c statement_timeout=300000 -c idle_in_transaction_session_timeout=60000 -c client_connection_check_interval=2000');
   assert.ok(!/password|:[^@/]*@/.test(u.replace(/^postgresql:\/\//, '').split('@')[0].includes(':') ? u : 'x'), 'no password in the url');
-  assert.throws(() => cfg.cliUrl({ host: HOST, port: 5432, user: 'u', profile: 'staging', limits: { ...L, lockTimeoutMs: -1 } }), /invalid server-side limit/);
-  assert.throws(() => cfg.cliUrl({ host: HOST, port: 5432, user: 'u', profile: 'staging', limits: { ...L, statementTimeoutMs: 1.5 } }), /invalid server-side limit/);
+  assert.throws(() => cfg.cliUrl({ host: `db.${REF}.supabase.co`, port: 5432, user: 'postgres', profile: 'staging', limits: { ...L, lockTimeoutMs: -1 } }), /invalid server-side limit/);
+  assert.throws(() => cfg.cliUrl({ host: `db.${REF}.supabase.co`, port: 5432, user: 'postgres', profile: 'staging', limits: { ...L, statementTimeoutMs: 1.5 } }), /invalid server-side limit/);
   assert.deepEqual(migrate.effectiveLimits(stagingCtx(), { lockTimeoutMs: 1, deadlineMs: 1 }), L, 'staging ignores overrides');
   assert.equal(migrate.effectiveLimits(selfCtx(), { lockTimeoutMs: 1 }).lockTimeoutMs, 1, 'the selftest may shorten them');
 });

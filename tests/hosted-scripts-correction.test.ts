@@ -48,7 +48,7 @@ test.after(() => { for (const d of made) rmSync(d, { recursive: true, force: tru
 function selfEnv(extra: Record<string, string> = {}) {
   const dir = tmp(); const pf = join(dir, 'pgpass');
   writeFileSync(pf, 'host.docker.internal:54322:postgres:postgres:p1\nhost.docker.internal:54322:postgres:hackass_worker:p2\n', { mode: 0o600 });
-  return { HOSTED_SELFTEST: '1', STAGING_REF: 'selftest', STAGING_URL: 'http://127.0.0.1:54321', STAGING_MIGRATE_HOST: 'host.docker.internal', STAGING_MIGRATE_PORT: '54322', STAGING_MIGRATE_USER: 'postgres',
+  return { HOSTED_SELFTEST: '1', STAGING_REF: 'selftest', STAGING_URL: 'http://127.0.0.1:54321', STAGING_MIGRATE_HOST: 'host.docker.internal', STAGING_MIGRATE_PORT: '54322', STAGING_MIGRATE_USER: 'postgres', STAGING_POOLER_USER: 'postgres',
     STAGING_POOLER_TXN_HOST: 'host.docker.internal', STAGING_POOLER_TXN_PORT: '54322', STAGING_POOLER_SESSION_HOST: 'host.docker.internal', STAGING_POOLER_SESSION_PORT: '54322',
     STAGING_WORKER_USER: 'hackass_worker', STAGING_PGPASSFILE: pf, STAGING_PUBLISHABLE_KEY: shaped('publishable'), STAGING_SECRET_KEY: shaped('secret'), ...extra } as Record<string, string>;
 }
@@ -56,8 +56,8 @@ const selfCtx = (env = selfEnv()) => ctxm.createContext(env, { profile: 'selftes
 const REF = cfg.STAGING.ref as string; const HOST = 'aws-0-us-east-1.pooler.supabase.com';
 function stagingCtx() {
   const pf = join(tmp(), 'pgpass');
-  writeFileSync(pf, [`${HOST}:5432:postgres:postgres.${REF}:p1`, `${HOST}:6543:postgres:postgres.${REF}:p1`, `${HOST}:5432:postgres:hackass_worker.${REF}:p2`, `${HOST}:6543:postgres:hackass_worker.${REF}:p2`].join('\n') + '\n', { mode: 0o600 });
-  return ctxm.createContext({ STAGING_REF: REF, STAGING_URL: `https://${REF}.supabase.co`, STAGING_MIGRATE_HOST: HOST, STAGING_MIGRATE_PORT: '5432', STAGING_MIGRATE_USER: `postgres.${REF}`, STAGING_POOLER_TXN_HOST: HOST, STAGING_POOLER_TXN_PORT: '6543',
+  writeFileSync(pf, [`${HOST}:5432:postgres:postgres.${REF}:p1`, `${HOST}:6543:postgres:postgres.${REF}:p1`, `${HOST}:5432:postgres:hackass_worker.${REF}:p2`, `${HOST}:6543:postgres:hackass_worker.${REF}:p2`, `db.${REF}.supabase.co:5432:postgres:postgres:p0`].join('\n') + '\n', { mode: 0o600 });
+  return ctxm.createContext({ STAGING_REF: REF, STAGING_URL: `https://${REF}.supabase.co`, STAGING_MIGRATE_HOST: `db.${REF}.supabase.co`, STAGING_MIGRATE_PORT: '5432', STAGING_MIGRATE_USER: 'postgres', STAGING_POOLER_USER: `postgres.${REF}`, STAGING_POOLER_TXN_HOST: HOST, STAGING_POOLER_TXN_PORT: '6543',
     STAGING_POOLER_SESSION_HOST: HOST, STAGING_POOLER_SESSION_PORT: '5432', STAGING_WORKER_USER: `hackass_worker.${REF}`, STAGING_PGPASSFILE: pf, STAGING_PUBLISHABLE_KEY: shaped('publishable'), STAGING_SECRET_KEY: shaped('secret'), FORBIDDEN_PROJECT_REFS: 'oldprojectref0123456' }, { profile: 'staging' });
 }
 /** A run directory in the selftest base with the given stages done under SHA and a binding to the given environment. */
