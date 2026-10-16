@@ -153,3 +153,46 @@ test('8. the migration SQL is unchanged from the accepted commit', () => {
   assert.equal(r.status, 0); assert.equal(r.stdout.trim(), '', `supabase/migrations differs from ${base}`);
   assert.ok(existsSync(join(root, 'supabase/migrations')));
 });
+
+// ---------- the proposed S7 command block stops mechanically ----------
+function s7Block() {
+  const doc = readFileSync(join(root, 'docs/hosted/migration-route.md'), 'utf8');
+  const m = /```bash\n(#!\/bin\/bash\n[\s\S]*?)```\n/.exec(doc); assert.ok(m, 'the command block is in the document');
+  return m![1];
+}
+function runS7(part: string | null, failOn: string | null) {
+  const dir = tmp(); const bin = join(dir, 'bin'); mkdirSync(bin); const log = join(dir, 'calls.log'); writeFileSync(log, '');
+  writeFileSync(join(bin, 'node'), `#!/bin/sh\necho "$@" >> "${log}"\ncase "$*" in *"${failOn ?? 'NO-SUCH-STAGE'}"*) exit 7;; esac\nexit 0\n`, { mode: 0o755 });
+  const script = s7Block().replace('<repository>', dir).replace('<private directory>', join(dir, 'secrets')).replace(/<ref>/g, 'abcdefghijklmnopqrst').replace('<pooler host>', 'aws-0-us-east-1.pooler.supabase.com')
+    .replace('<the reviewed commit>', 'a'.repeat(40)).replace('<fresh run id>', 'route-run-1').replace('<legacy ref>', 'oldprojectref0123456');
+  assert.ok(!/<[a-z ]+>/.test(script), 'every placeholder was substituted');
+  const f = join(dir, 's7.sh'); writeFileSync(f, script);
+  const r = spawnSync('bash', part ? [f, part] : [f], { encoding: 'utf8', env: { PATH: `${bin}:${process.env.PATH}`, HOME: dir } });
+  const calls = readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => l.split(' ').slice(0, 2).join(' '));
+  return { status: r.status, err: r.stderr, out: r.stdout, calls };
+}
+test('9. the S7 command block runs every stage in order when all succeed, and stops at the first failing one', () => {
+  assert.deepEqual(runS7('A', null).calls.map((c) => c.split(' ').slice(0, 2).join(' ')), ['scripts/hosted/preflight.mjs --run-id=route-run-1', 'scripts/hosted/s7-apply.mjs identity', 'scripts/hosted/s7-apply.mjs migrate']);
+  assert.equal(runS7('A', null).status, 0);
+  assert.equal(runS7('B', null).calls.length, 4);
+  const failId = runS7('A', 'identity'); assert.equal(failId.status, 1); assert.equal(failId.calls.length, 2, 'migrate did not run after a failed identity'); assert.match(failId.err, /STOP: .*identity.*failed \(exit 7\)\. Nothing further was run/);
+  const failPre = runS7('A', 'preflight.mjs'); assert.equal(failPre.status, 1); assert.equal(failPre.calls.length, 1, 'identity did not run after a failed preflight');
+  const failMig = runS7('A', 'migrate'); assert.equal(failMig.status, 1); assert.equal(failMig.calls.length, 3);
+  const failB = runS7('B', 'worker-marker'); assert.equal(failB.status, 1); assert.equal(failB.calls.length, 2, 'rerun and inventory did not run after a failed worker-marker');
+});
+test('9b. the block refuses an unknown or missing part, runs nothing then, and every node call goes through the stopping function', () => {
+  for (const part of [null, 'C', 'AB']) { const r = runS7(part, null); assert.equal(r.status, 2); assert.equal(r.calls.length, 0); }
+  const block = s7Block(); assert.match(block, /^set -euo pipefail$/m);
+  assert.deepEqual(block.split('\n').filter((l) => /\bnode\b/.test(l) && !l.trim().startsWith('#')), ['step() { echo "== $*"; "${S7ENV[@]}" node "$@" || { echo "STOP: \'$*\' failed (exit $?). Nothing further was run." >&2; exit 1; }; }']);
+});
+
+test('10. the documentation makes no stale or overstated safety claim: pooled execution is not "safe", and fingerprint equality is not proof', () => {
+  const mig = readFileSync(join(root, 'scripts/hosted/lib/migrate.mjs'), 'utf8');
+  assert.ok(!/which is the safe direction/.test(mig)); assert.match(mig, /DIRECT CONNECTION ONLY/); assert.match(mig, /FALSE CLEAN result/); assert.match(mig, /assertDirectMigrationTarget/);
+  const doc = readFileSync(join(root, 'docs/hosted/migration-route.md'), 'utf8');
+  assert.match(doc, /equal fingerprints do not show that the interrupted file left nothing, and equality alone never clears recovery/);
+  assert.match(doc, /does \*\*not\*\* cover table columns, constraints, indexes, triggers, policies, role attributes or data/);
+  assert.ok(!/the failed file left nothing\)/.test(doc.replace(/consistent with, but not proof of, the failed file leaving nothing\)/g, '')), 'no unqualified "left nothing" claim remains');
+  assert.match(doc, /One green run does not resolve the causes of the failed ones/); assert.match(doc, /interference/i);
+  for (const f of ['docs/hosted/verification-procedure.md', 'scripts/hosted/README.md']) assert.match(readFileSync(join(root, f), 'utf8'), /direct\*{0,2} connection only|direct connection only/i, f);
+});

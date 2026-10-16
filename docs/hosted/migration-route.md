@@ -45,23 +45,31 @@ The existing password file (five lines, added by the approved helper) already sa
 ## 4. Exact proposed S7 commands (NOT authorized; for review)
 `SHA` is the full SHA of the reviewed commit; `RUN` is a fresh run id (for example `stg-<date>-s7a`). The stage dependencies require `preflight` in the same run, so the first S7 run begins with a fresh S6 preflight under the new environment.
 ```bash
+#!/bin/bash
+# Save as a file and run it as `bash s7.sh A` or `bash s7.sh B`. Any failing command stops the sequence at once; nothing after it is run.
+set -euo pipefail
 cd <repository>
-D="<private directory>"; R=<ref>; H=<pooler host>; SHA=<the reviewed commit>; RUN=<fresh run id>
+D=<private directory>; R=<ref>; H=<pooler host>; SHA=<the reviewed commit>; RUN=<fresh run id>
 # docker must be on PATH
 S7ENV=(env -u HOSTED_SELFTEST STAGING_REF=$R STAGING_URL=https://$R.supabase.co STAGING_MIGRATE_HOST=db.$R.supabase.co STAGING_MIGRATE_PORT=5432 STAGING_MIGRATE_USER=postgres
   STAGING_POOLER_USER=postgres.$R STAGING_POOLER_TXN_HOST=$H STAGING_POOLER_TXN_PORT=6543 STAGING_POOLER_SESSION_HOST=$H STAGING_POOLER_SESSION_PORT=5432 STAGING_WORKER_USER=hackass_worker.$R
   STAGING_PGPASSFILE="$D/pgpass" STAGING_PUBLISHABLE_KEY_FILE="$D/publishable.key" STAGING_SECRET_KEY_FILE="$D/secret.key" FORBIDDEN_PROJECT_REFS=<legacy ref>)
-# step A (read-only first, then mutating); stop on any failure, no retries
-"${S7ENV[@]}" node scripts/hosted/preflight.mjs      --run-id=$RUN --authorized=S6@$SHA
-"${S7ENV[@]}" node scripts/hosted/s7-apply.mjs identity --run-id=$RUN --authorized=S7@$SHA --confirm-mutating=identity
-"${S7ENV[@]}" node scripts/hosted/s7-apply.mjs migrate  --run-id=$RUN --authorized=S7@$SHA --confirm-mutating=migrate
-# step B (only after the owner has exposed ONLY the api schema and set the worker password)
-"${S7ENV[@]}" node scripts/hosted/s7-verify.mjs exposure --run-id=$RUN --authorized=S7@$SHA --owner-confirmed=exposure
-"${S7ENV[@]}" node scripts/hosted/s7-apply.mjs worker-marker --run-id=$RUN --authorized=S7@$SHA --confirm-mutating=worker-marker --owner-confirmed=exposure,worker-password
-"${S7ENV[@]}" node scripts/hosted/s7-apply.mjs rerun    --run-id=$RUN --authorized=S7@$SHA --confirm-mutating=rerun
-"${S7ENV[@]}" node scripts/hosted/s7-verify.mjs inventory --run-id=$RUN --authorized=S7@$SHA
+# one stage; a non-zero exit status prints which one failed and ends the whole script (the stage itself is then failed and is never retried)
+step() { echo "== $*"; "${S7ENV[@]}" node "$@" || { echo "STOP: '$*' failed (exit $?). Nothing further was run." >&2; exit 1; }; }
+case "${1:-}" in
+  A) # read-only preflight, then the two mutating stages that precede the migration
+    step scripts/hosted/preflight.mjs       --run-id=$RUN --authorized=S6@$SHA
+    step scripts/hosted/s7-apply.mjs identity --run-id=$RUN --authorized=S7@$SHA --confirm-mutating=identity
+    step scripts/hosted/s7-apply.mjs migrate  --run-id=$RUN --authorized=S7@$SHA --confirm-mutating=migrate ;;
+  B) # only after the owner has exposed ONLY the api schema and set the worker password
+    step scripts/hosted/s7-verify.mjs exposure --run-id=$RUN --authorized=S7@$SHA --owner-confirmed=exposure
+    step scripts/hosted/s7-apply.mjs worker-marker --run-id=$RUN --authorized=S7@$SHA --confirm-mutating=worker-marker --owner-confirmed=exposure,worker-password
+    step scripts/hosted/s7-apply.mjs rerun    --run-id=$RUN --authorized=S7@$SHA --confirm-mutating=rerun
+    step scripts/hosted/s7-verify.mjs inventory --run-id=$RUN --authorized=S7@$SHA ;;
+  *) echo "usage: bash s7.sh A|B" >&2; exit 2 ;;
+esac
 ```
-Each stage is a separate process; each mutating stage runs once per run; a failed or interrupted stage blocks the run and is never retried (only `cleanup` and `evidence` run after it). The `migrate` stage: checks the target ledger is empty and the dry-run lists exactly the 21 repository migrations, applies them with the bounded runner, then checks the ledger equals the repository.
+Each stage is a separate process and the script above stops at the first non-zero exit status (a test runs this very block with a stub that fails each stage in turn); each mutating stage runs once per run; a failed or interrupted stage blocks the run and is never retried (only `cleanup` and `evidence` run after it). The `migrate` stage: checks the target ledger is empty and the dry-run lists exactly the 21 repository migrations, applies them with the bounded runner, then checks the ledger equals the repository.
 The worker password is set later by the owner; until then the worker lines in `pgpass` are the nonfunctional placeholder, so step B's worker checks cannot pass before that.
 
 ## 5. Per-file recovery procedure
@@ -80,11 +88,11 @@ After any failure, deadline or interruption of `migrate` (or `rerun`):
  | docker run --rm -i -v "$D/pgpass:/pgpass:ro" -e PGPASSFILE=/pgpass public.ecr.aws/supabase/postgres:17.11.0.004 psql "host=db.$R.supabase.co port=5432 dbname=postgres user=postgres sslmode=require connect_timeout=15" -X -w -q -At
 # then, only if the first line is "true":   select version || ' ' || name from supabase_migrations.schema_migrations order by version;  (same way)
 ```
-4. **Did the interrupted file leave changes?** Compare the staging catalog fingerprint with the fingerprint a disposable local stack gets from applying exactly the first N committed files (N = the ledger count): reset the local application state, run the CLI with a work directory holding only those N files, and compute the same fingerprint. **Equal:** the interrupted file left nothing. **Different:** partial or unexpected changes; stop.
+4. **Supporting evidence, never proof.** Compare the staging catalog fingerprint with the fingerprint a disposable local stack gets from applying exactly the first N committed files (N = the ledger count): reset the local application state, run the CLI with a work directory holding only those N files, and compute the same fingerprint. `FINGERPRINT_SQL` hashes only the function definitions with their ACLs, the schema ACLs, and the names, ACLs and row-security flag of the tables, views, materialized views and sequences in the application schemas. It does **not** cover table columns, constraints, indexes, triggers, policies, role attributes or data, so **equal fingerprints do not show that the interrupted file left nothing, and equality alone never clears recovery.** An unexplained **difference** is a finding to investigate. Recovery is cleared only by all of: the session end proven, the ledger an exact prefix of the repository files, no unexplained difference, and a fuller comparison that the CTO accepts (for example a schema-only dump of staging compared with the same dump of the local rebuild; not implemented or rehearsed here). Otherwise treat the project as not recoverable and recreate it.
 5. **Decide (CTO/owner).** The `migrate` stage requires an empty ledger on staging, so a partially migrated project cannot simply be resumed by the stage. Because staging is disposable and holds no data, the simplest safe recovery for any NOT PROVEN or mismatch is a new staging project (new keys, new password file, and the IPv4 add-on again). Resuming from an exact ledger prefix would need a reviewed code change.
 6. Keep the evidence: run `evidence` (it records the failed attempt), and do not delete the failed run directory.
 
-**Rehearsed locally (disposable stack, direct connection, the real 21 migrations, Claude-reported):** the first 7 files applied twice give the same catalog fingerprint (the method is deterministic); applying the first 8 files with the 8th failing at its last statement leaves the ledger at exactly the first 7 and the fingerprint identical to the 7-file one (the failed file left nothing); applying the 8th file outside the ledger (a partial or unexplained change) makes the fingerprint differ, so the comparison detects it. The script (`recovery-rehearsal.mjs`) is kept outside the repository with the lab record.
+**Rehearsed locally (disposable stack, direct connection, the real 21 migrations, Claude-reported):** the first 7 files applied twice give the same catalog fingerprint (the method is deterministic); applying the first 8 files with the 8th failing at its last statement leaves the ledger at exactly the first 7 and the fingerprint identical to the 7-file one (consistent with, but not proof of, the failed file leaving nothing); applying the 8th file outside the ledger (a partial or unexplained change) makes the fingerprint differ, so a difference of that kind is detected (a change outside what the fingerprint covers would not be). The script (`recovery-rehearsal.mjs`) is kept outside the repository with the lab record.
 
 ## 6. Open: server certificate verification
 `sslmode=require` encrypts but does not verify the server certificate (S6B said so). Verification (`sslmode=verify-full` with the Supabase CA certificate the owner downloads from the dashboard, mounted read-only into the psql container and passed to the CLI) is **not implemented** here. It should be done and measured on the local stack and then on the direct route before any migration is executed.
@@ -93,3 +101,11 @@ After any failure, deadline or interruption of `migrate` (or `rerun`):
 * the real CLI on the hosted direct route (S6B used `psql`); the 21 migrations on staging;
 * the server certificate;
 * that the lab's pooler behavior equals the hosted one (the migration route no longer depends on it).
+
+## 8. Local verification record (Claude-reported; failures kept)
+* **Unit tests:** the full suite passed (312 of 312) after the documentation tests were updated for this document. An earlier full run had three failures: two were this document breaking the `docs/hosted` guard tests (fixed), and one was a timing-sensitive smoke-harness test (`smoke-cleanup`, about 2 s) that passes alone and passed in the next full run; it may be the earlier undiagnosed intermittent failure, but its cause is not established.
+* **Selftest (standard, without the 15-minute window), six full runs on this change:** run 1 to 3: two failures each, run 4: one failure, all of them the container-survival checks in section 3 and at the end of the run (a `Created` psql client container left behind); run 5: six failures after empty-error Docker query failures (the deadline check, then the preflight stage and the checks that depend on it); run 6: all checks passed. In runs 1 to 4 every stage of the chain, the evidence and the secret checks passed.
+* **Not caused by this change, but not explained either:** the previous commit's full selftest passed once on the same day, yet repeating only the first three selftest sections failed in 4 of 6 runs on the previous commit and in 4 of 6 on this one, and a loop of the SIGTERM scenario left a `Created` container in 6 of 12 iterations on each. The likely mechanism is a race between a killed Docker client and the daemon creating the container; a separate change is investigating it. **One green run does not resolve the causes of the failed ones.**
+* **Interference:** a second Claude session ran Docker-backed loops against the same daemon and local stack during the later runs; each session's cleanup removed `hackass-psql-*` containers belonging to the other. Some of the failures in runs 5 and 6 and in the comparison loops may therefore be interference. The sessions agreed to stop overlapping.
+* **Certificate verification and the real CLI on the hosted direct route** are still open (section 6).
+

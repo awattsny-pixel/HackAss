@@ -6,8 +6,11 @@
 //      launch) and, after a deadline or a failure, ended by cancel then terminate;
 //   3. the end is VERIFIED: no such session, no lock held by one, and no session of the login left waiting on a lock or idle in a transaction. If that cannot be shown, the error says
 //      NOT PROVEN. Either way the stage fails and a mutating stage is never retried (the run must be cleaned up).
-// What this does not do: it cannot identify the CLI's session through a pooler that reuses server connections (backend_start would predate the mark) - then verification reports
-// NOT PROVEN whenever a blocked session remains, which is the safe direction. The limits and the identification were verified on a direct connection to the local stack only.
+// DIRECT CONNECTION ONLY. Everything above holds for a direct connection (measured on the local stack; staging's direct host was probed with psql only, never with this CLI). Through a pooler
+// it does NOT hold, and NOT PROVEN is not a safety net there: the lab measured a FALSE CLEAN result. A pooler ignores the startup limits, renames the session, reuses server connections, and a
+// killed CLI's file keeps running and COMMITS, while the identification above finds no session and no session is waiting or idle in a transaction, so the verification would report the end as
+// proven. That is why pushMigrations (and cliUrl, and target validation) refuse any non-direct migration target before the server clock is read or the CLI is started
+// (assertDirectMigrationTarget); the guard, not the verification, is what prevents pooled execution. Record: docs/hosted/migration-route.md.
 import { runBounded, childEnv } from './exec.mjs';
 import { cliUrl, assertDirectMigrationTarget, REPO_ROOT } from './config.mjs';
 import { runSql } from './pg.mjs';
