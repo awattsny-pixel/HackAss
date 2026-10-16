@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync, appendFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync, appendFileSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -41,6 +41,9 @@ const git = { head: SHA, clean: true };
 const shaped = (kind: string) => `sb_${kind}_${'q'.repeat(20)}`;
 const made: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'hs-corr-')); chmodSync(d, 0o700); made.push(d); return d; };
+
+/** A copy of the public test root certificate in a private temp directory (the checker refuses a file inside the repository). */
+const caFile = (() => { let f: string | null = null; return () => { if (f) return f; const d = mkdtempSync(join(tmpdir(), 'hs-ca-')); f = join(d, 'root-ca.pem'); copyFileSync(join(root, 'tests/fixtures/hosted-test-root-ca.pem'), f); chmodSync(f, 0o644); return f; }; })();
 const runIds: string[] = [];
 const freshRunId = () => { const id = `ut-${Math.random().toString(36).slice(2, 10)}`; runIds.push(id); return id; };
 test.after(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); for (const id of runIds) rmSync(join(state.runBase('selftest'), id), { recursive: true, force: true }); });
@@ -58,7 +61,7 @@ function stagingCtx() {
   const pf = join(tmp(), 'pgpass');
   writeFileSync(pf, [`${HOST}:5432:postgres:postgres.${REF}:p1`, `${HOST}:6543:postgres:postgres.${REF}:p1`, `${HOST}:5432:postgres:hackass_worker.${REF}:p2`, `${HOST}:6543:postgres:hackass_worker.${REF}:p2`, `db.${REF}.supabase.co:5432:postgres:postgres:p0`].join('\n') + '\n', { mode: 0o600 });
   return ctxm.createContext({ STAGING_REF: REF, STAGING_URL: `https://${REF}.supabase.co`, STAGING_MIGRATE_HOST: `db.${REF}.supabase.co`, STAGING_MIGRATE_PORT: '5432', STAGING_MIGRATE_USER: 'postgres', STAGING_POOLER_USER: `postgres.${REF}`, STAGING_POOLER_TXN_HOST: HOST, STAGING_POOLER_TXN_PORT: '6543',
-    STAGING_POOLER_SESSION_HOST: HOST, STAGING_POOLER_SESSION_PORT: '5432', STAGING_WORKER_USER: `hackass_worker.${REF}`, STAGING_PGPASSFILE: pf, STAGING_PUBLISHABLE_KEY: shaped('publishable'), STAGING_SECRET_KEY: shaped('secret'), FORBIDDEN_PROJECT_REFS: 'oldprojectref0123456' }, { profile: 'staging' });
+    STAGING_POOLER_SESSION_HOST: HOST, STAGING_POOLER_SESSION_PORT: '5432', STAGING_WORKER_USER: `hackass_worker.${REF}`, STAGING_PGPASSFILE: pf, STAGING_PUBLISHABLE_KEY: shaped('publishable'), STAGING_SECRET_KEY: shaped('secret'), STAGING_SSLROOTCERT: caFile(), FORBIDDEN_PROJECT_REFS: 'oldprojectref0123456' }, { profile: 'staging' });
 }
 /** A run directory in the selftest base with the given stages done under SHA and a binding to the given environment. */
 function preparedRun(env: Record<string, string>, doneStages: string[], extra: Record<string, unknown> = {}) {

@@ -2,7 +2,7 @@
 // Nothing here contacts a hosted system, Docker, the Supabase CLI or a database (the integration run is scripts/hosted/selftest.mjs against the disposable local stack).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -26,6 +26,8 @@ const OLD = 'oldprojectref0123456';
 const shaped = (kind: string) => `sb_${kind}_${'q'.repeat(20)}`;
 const FAKE_DBURL = ['postgresql:/', '/u:hunter2pass@h:5432/postgres'].join('');
 const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
+/** A copy of the public test root certificate in a private temp directory (the checker refuses a file inside the repository). */
+const caFile = (() => { let f: string | null = null; return () => { if (f) return f; const d = mkdtempSync(join(tmpdir(), 'hs-ca-')); f = join(d, 'root-ca.pem'); copyFileSync(join(root, 'tests/fixtures/hosted-test-root-ca.pem'), f); chmodSync(f, 0o644); return f; }; })();
 const key = (ref: string) => [b64({ alg: 'HS256' }), b64({ ref }), b64({ sig: 'x' })].join('.');
 function passfile(lines: string[], mode = 0o600) {
   const dir = mkdtempSync(join(tmpdir(), 'hosted-test-')); const f = join(dir, 'pgpass');
@@ -36,7 +38,7 @@ function env(over: Record<string, string> = {}, lines = goodLines) {
   return {
     STAGING_REF: REF, STAGING_URL: `https://${REF}.supabase.co`, STAGING_MIGRATE_HOST: DIRECT, STAGING_MIGRATE_PORT: '5432', STAGING_MIGRATE_USER: 'postgres', STAGING_POOLER_USER: `postgres.${REF}`,
     STAGING_POOLER_TXN_HOST: HOST, STAGING_POOLER_TXN_PORT: '6543', STAGING_POOLER_SESSION_HOST: HOST, STAGING_POOLER_SESSION_PORT: '5432', STAGING_WORKER_USER: `hackass_worker.${REF}`,
-    STAGING_PGPASSFILE: passfile(lines), STAGING_PUBLISHABLE_KEY: shaped('publishable'), STAGING_SECRET_KEY: shaped('secret'), FORBIDDEN_PROJECT_REFS: OLD, ...over,
+    STAGING_PGPASSFILE: passfile(lines), STAGING_PUBLISHABLE_KEY: shaped('publishable'), STAGING_SECRET_KEY: shaped('secret'), STAGING_SSLROOTCERT: caFile(), FORBIDDEN_PROJECT_REFS: OLD, ...over,
   };
 }
 const errorsOf = (e: Record<string, string>, profile = 'staging') => cfg.validateTargets(e, { profile, repoRoot: root }).errors as string[];
@@ -90,7 +92,7 @@ test('the password file reader never returns a password', () => {
 });
 test('connection strings carry no password', () => {
   const t = { host: HOST, port: 5432, user: `postgres.${REF}`, profile: 'staging' };
-  for (const s of [cfg.conninfo(t), cfg.cliUrl({ host: DIRECT, port: 5432, user: 'postgres', profile: 'staging' })]) { assert.ok(!/:[^@\s/]*@/.test(s.replace(/^postgres(ql)?:\/\//, '').split('@')[0].includes(':') ? s : 'x'), s); assert.ok(!/sslmode=(disable|allow|prefer)/.test(s)); }
+  for (const s of [cfg.conninfo(t), cfg.cliUrl({ host: DIRECT, port: 5432, user: 'postgres', profile: 'staging', sslRootCert: caFile() })]) { assert.ok(!/:[^@\s/]*@/.test(s.replace(/^postgres(ql)?:\/\//, '').split('@')[0].includes(':') ? s : 'x'), s); assert.ok(!/sslmode=(disable|allow|prefer)/.test(s)); }
 });
 
 test('redaction removes tokens, keys, passwords, connection strings and non-synthetic e-mail; registered secrets in any position', () => {

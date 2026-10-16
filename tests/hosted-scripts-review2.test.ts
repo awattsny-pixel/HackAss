@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -29,6 +29,9 @@ const git = { head: SHA, clean: true };
 const shaped = (kind: string) => `sb_${kind}_${'q'.repeat(20)}`;
 const made: string[] = []; const runIds: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'hs-rev2-')); chmodSync(d, 0o700); made.push(d); return d; };
+
+/** A copy of the public test root certificate in a private temp directory (the checker refuses a file inside the repository). */
+const caFile = (() => { let f: string | null = null; return () => { if (f) return f; const d = mkdtempSync(join(tmpdir(), 'hs-ca-')); f = join(d, 'root-ca.pem'); copyFileSync(join(root, 'tests/fixtures/hosted-test-root-ca.pem'), f); chmodSync(f, 0o644); return f; }; })();
 const freshRunId = () => { const id = `r2-${Math.random().toString(36).slice(2, 10)}`; runIds.push(id); return id; };
 test.after(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); for (const id of runIds) rmSync(join(state.runBase('selftest'), id), { recursive: true, force: true }); });
 function selfEnv() {
@@ -44,7 +47,7 @@ function stagingCtx() {
   const pf = join(tmp(), 'pgpass');
   writeFileSync(pf, [`${HOST}:5432:postgres:postgres.${REF}:p1`, `${HOST}:6543:postgres:postgres.${REF}:p1`, `${HOST}:5432:postgres:hackass_worker.${REF}:p2`, `${HOST}:6543:postgres:hackass_worker.${REF}:p2`, `db.${REF}.supabase.co:5432:postgres:postgres:p0`].join('\n') + '\n', { mode: 0o600 });
   return ctxm.createContext({ STAGING_REF: REF, STAGING_URL: `https://${REF}.supabase.co`, STAGING_MIGRATE_HOST: `db.${REF}.supabase.co`, STAGING_MIGRATE_PORT: '5432', STAGING_MIGRATE_USER: 'postgres', STAGING_POOLER_USER: `postgres.${REF}`, STAGING_POOLER_TXN_HOST: HOST, STAGING_POOLER_TXN_PORT: '6543',
-    STAGING_POOLER_SESSION_HOST: HOST, STAGING_POOLER_SESSION_PORT: '5432', STAGING_WORKER_USER: `hackass_worker.${REF}`, STAGING_PGPASSFILE: pf, STAGING_PUBLISHABLE_KEY: shaped('publishable'), STAGING_SECRET_KEY: shaped('secret'), FORBIDDEN_PROJECT_REFS: 'oldprojectref0123456' }, { profile: 'staging' });
+    STAGING_POOLER_SESSION_HOST: HOST, STAGING_POOLER_SESSION_PORT: '5432', STAGING_WORKER_USER: `hackass_worker.${REF}`, STAGING_PGPASSFILE: pf, STAGING_PUBLISHABLE_KEY: shaped('publishable'), STAGING_SECRET_KEY: shaped('secret'), STAGING_SSLROOTCERT: caFile(), FORBIDDEN_PROJECT_REFS: 'oldprojectref0123456' }, { profile: 'staging' });
 }
 function preparedRun(env: Record<string, string>, doneStages: string[]) {
   const id = freshRunId(); const run = state.openRun({ runId: id, profile: 'selftest' });
@@ -137,11 +140,11 @@ test('SIGKILL, recovery and an approved retry: the retry may succeed but the int
 test('the CLI url carries the documented server-side limits as startup options, and a staging run cannot change them', () => {
   assert.ok(migrate, 'lib/migrate.mjs exists');
   const L = migrate.MIGRATION_LIMITS;
-  const u = cfg.cliUrl({ host: `db.${REF}.supabase.co`, port: 5432, user: 'postgres', profile: 'staging', limits: L });
+  const u = cfg.cliUrl({ host: `db.${REF}.supabase.co`, port: 5432, user: 'postgres', profile: 'staging', limits: L, sslRootCert: caFile() });
   assert.equal(decodeURIComponent(new URL(u).searchParams.get('options') ?? ''), '-c lock_timeout=30000 -c statement_timeout=300000 -c idle_in_transaction_session_timeout=60000 -c client_connection_check_interval=2000');
   assert.ok(!/password|:[^@/]*@/.test(u.replace(/^postgresql:\/\//, '').split('@')[0].includes(':') ? u : 'x'), 'no password in the url');
-  assert.throws(() => cfg.cliUrl({ host: `db.${REF}.supabase.co`, port: 5432, user: 'postgres', profile: 'staging', limits: { ...L, lockTimeoutMs: -1 } }), /invalid server-side limit/);
-  assert.throws(() => cfg.cliUrl({ host: `db.${REF}.supabase.co`, port: 5432, user: 'postgres', profile: 'staging', limits: { ...L, statementTimeoutMs: 1.5 } }), /invalid server-side limit/);
+  assert.throws(() => cfg.cliUrl({ host: `db.${REF}.supabase.co`, port: 5432, user: 'postgres', profile: 'staging', limits: { ...L, lockTimeoutMs: -1 }, sslRootCert: caFile() }), /invalid server-side limit/);
+  assert.throws(() => cfg.cliUrl({ host: `db.${REF}.supabase.co`, port: 5432, user: 'postgres', profile: 'staging', limits: { ...L, statementTimeoutMs: 1.5 }, sslRootCert: caFile() }), /invalid server-side limit/);
   assert.deepEqual(migrate.effectiveLimits(stagingCtx(), { lockTimeoutMs: 1, deadlineMs: 1 }), L, 'staging ignores overrides');
   assert.equal(migrate.effectiveLimits(selfCtx(), { lockTimeoutMs: 1 }).lockTimeoutMs, 1, 'the selftest may shorten them');
 });

@@ -91,7 +91,7 @@ test('database secrets never appear in an argument: a verified password-file met
   for (const [i, line] of doc.split('\n').entries()) {
     if (/supabase db push/.test(line) && /--db-url/.test(line)) {
       assert.doesNotMatch(line, /:\/\/[^/\s"]*:[^@\s"]*@/, `line ${i + 1}: a password inside the URL`);
-      assert.match(line, /sslmode=require/, `line ${i + 1}: db push URL without sslmode`);
+      assert.match(line, /sslmode=verify-full&sslrootcert=/, `line ${i + 1}: db push URL without certificate verification`);
     }
   }
   // the commands in the checks use the password file; PGPASSWORD / SUPABASE_DB_PASSWORD / --debug appear only in verified-results or "never" text

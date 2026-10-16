@@ -3,6 +3,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parsePassfileEntries } from './passfile.mjs';
+import { rootCertProblems } from './rootcert.mjs';
 import { privateFileProblems } from './secretfile.mjs';
 
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -22,7 +23,7 @@ export const APP_SCHEMAS = Object.freeze(['app', 'app_guard', 'api', 'worker', '
 export const PROFILES = Object.freeze(['staging', 'selftest']);
 
 export const ENV_NAMES = Object.freeze(['STAGING_REF', 'STAGING_URL', 'STAGING_MIGRATE_HOST', 'STAGING_MIGRATE_PORT', 'STAGING_MIGRATE_USER', 'STAGING_POOLER_USER', 'STAGING_POOLER_TXN_HOST', 'STAGING_POOLER_TXN_PORT',
-  'STAGING_POOLER_SESSION_HOST', 'STAGING_POOLER_SESSION_PORT', 'STAGING_WORKER_USER', 'STAGING_PGPASSFILE', 'STAGING_PUBLISHABLE_KEY', 'STAGING_SECRET_KEY', 'FORBIDDEN_PROJECT_REFS']);
+  'STAGING_POOLER_SESSION_HOST', 'STAGING_POOLER_SESSION_PORT', 'STAGING_WORKER_USER', 'STAGING_PGPASSFILE', 'STAGING_PUBLISHABLE_KEY', 'STAGING_SECRET_KEY', 'STAGING_SSLROOTCERT', 'FORBIDDEN_PROJECT_REFS']);
 
 const POOLER_SUFFIX = '.pooler.supabase.com';
 const SELFTEST_HOST = 'host.docker.internal';
@@ -88,7 +89,7 @@ export function validateTargets(env, { profile = 'staging', repoRoot = REPO_ROOT
     migrate: { host: env.STAGING_MIGRATE_HOST ?? '', port: num(env.STAGING_MIGRATE_PORT), user: env.STAGING_MIGRATE_USER ?? '' },
     txn: { host: env.STAGING_POOLER_TXN_HOST ?? '', port: num(env.STAGING_POOLER_TXN_PORT) },
     session: { host: env.STAGING_POOLER_SESSION_HOST ?? '', port: num(env.STAGING_POOLER_SESSION_PORT) },
-    poolerUser: env.STAGING_POOLER_USER ?? '', workerUser: env.STAGING_WORKER_USER ?? '', passfile: env.STAGING_PGPASSFILE ?? '', profile,
+    sslRootCert: env.STAGING_SSLROOTCERT ?? '', poolerUser: env.STAGING_POOLER_USER ?? '', workerUser: env.STAGING_WORKER_USER ?? '', passfile: env.STAGING_PGPASSFILE ?? '', profile,
   };
   const dnsName = (h) => /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(h) && !/^\d+(\.\d+){3}$/.test(h);
   if (selftest) {
@@ -127,6 +128,9 @@ export function validateTargets(env, { profile = 'staging', repoRoot = REPO_ROOT
       for (const e of entries) for (const f of forbidden) if (f && (e.login.includes(f) || e.host.includes(f))) bad('a password file entry names a forbidden project reference');
     } catch (e) { bad(e instanceof Error && /password file/.test(e.message) ? e.message : 'STAGING_PGPASSFILE cannot be read'); }
   }
+  // the server's root certificate: the migration route is TLS with certificate AND host-name verification (verify-full), so on staging the CA file is required; the local stack has no TLS
+  if (selftest) { if (t.sslRootCert) bad('selftest has no TLS: STAGING_SSLROOTCERT must not be set'); }
+  else for (const m of rootCertProblems(t.sslRootCert, { repoRoot, uid, label: 'STAGING_SSLROOTCERT' }).problems) bad(m);
   // keys: required; JWT-shaped keys must carry this project's ref
   for (const k of ['STAGING_PUBLISHABLE_KEY', 'STAGING_SECRET_KEY']) {
     const v = env[k];
@@ -138,20 +142,30 @@ export function validateTargets(env, { profile = 'staging', repoRoot = REPO_ROOT
   return { errors, targets: t };
 }
 
-/** libpq connection string (no password, no secret). sslmode is fixed by the profile, never taken from the environment. */
-export function conninfo({ host, port, user, profile, appName }) {
+/** The TLS part of a libpq connection string. `verify` (staging only) = certificate and host-name verification against the root certificate mounted at SSLROOT_IN_CONTAINER. */
+export const SSLROOT_IN_CONTAINER = '/sslroot.crt';
+const sslPart = (profile, verify) => (profile === 'selftest' ? 'sslmode=disable' : verify ? `sslmode=verify-full sslrootcert=${SSLROOT_IN_CONTAINER}` : 'sslmode=require');
+/** libpq connection string (no password, no secret). sslmode is fixed by the profile and the endpoint, never taken from the environment. */
+export function conninfo({ host, port, user, profile, appName, verify = false }) {
   if (appName !== undefined && !/^hackass-[a-z0-9-]{3,48}$/.test(appName)) throw new Error('unexpected application name');
-  return `host=${host} port=${port} dbname=postgres user=${user} sslmode=${profile === 'selftest' ? 'disable' : 'require'} connect_timeout=15${appName ? ` application_name=${appName}` : ''}`;
+  if (verify && profile === 'selftest') throw new Error('the selftest profile has no TLS to verify');
+  return `host=${host} port=${port} dbname=postgres user=${user} ${sslPart(profile, verify)} connect_timeout=15${appName ? ` application_name=${appName}` : ''}`;
+}
+/** The TLS query parameters of the CLI url: staging always verifies the certificate and the host name against the given root certificate file. */
+export function cliSslQuery({ profile, sslRootCert }) {
+  if (profile === 'selftest') return ['sslmode=disable'];
+  if (typeof sslRootCert !== 'string' || !sslRootCert.startsWith('/')) throw new Error('certificate verification is required for the migration route: an absolute root certificate path (STAGING_SSLROOTCERT) is needed');
+  return ['sslmode=verify-full', `sslrootcert=${encodeURIComponent(sslRootCert)}`];
 }
 /**
  * Password-free `postgresql://` URL for the Supabase CLI (the password file path is passed through PGPASSFILE by the caller). `limits` become STARTUP OPTIONS of the CLI's database session
  * (`options=-c name=value ...`), so the SERVER enforces them whatever happens to the client process: lock wait, statement time, idle-in-transaction time and a connection check that
  * ends a session whose client has died. (The CLI ignores an application_name given in the URL, so the session cannot be named; see lib/migrate.mjs.)
  */
-export function cliUrl({ host, port, user, profile, limits }) {
+export function cliUrl({ host, port, user, profile, limits, sslRootCert }) {
   assertDirectMigrationTarget({ host, port, user }, { profile }); // the CLI is only ever pointed at the direct route
   const h = profile === 'selftest' && host === SELFTEST_HOST ? '127.0.0.1' : host; // the CLI runs on the host, the container-side name does not resolve there
-  const q = [`sslmode=${profile === 'selftest' ? 'disable' : 'require'}`];
+  const q = cliSslQuery({ profile, sslRootCert });
   if (limits) {
     const opts = [['lock_timeout', limits.lockTimeoutMs], ['statement_timeout', limits.statementTimeoutMs], ['idle_in_transaction_session_timeout', limits.idleInTxnMs], ['client_connection_check_interval', limits.connectionCheckMs]];
     for (const [k, v] of opts) if (!Number.isInteger(v) || v < 0 || v > 86_400_000) throw new Error(`invalid server-side limit ${k}`);

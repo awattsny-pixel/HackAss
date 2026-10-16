@@ -33,6 +33,7 @@ Every stage that contacts a target requires `--authorized=<group>@<40-hex SHA>`;
 | Legacy project reference(s) | `FORBIDDEN_PROJECT_REFS` (comma separated) |
 | Publishable and secret API keys | `STAGING_PUBLISHABLE_KEY` / `STAGING_SECRET_KEY`, or `..._KEY_FILE` pointing at a private `0600` file outside the checkout |
 | The project's database password (the same password for `postgres` on the direct host and `postgres.<ref>` on the pooler) and the worker password (set by the owner after the migrations) | a `0600` password file outside the repository, one line per login and endpoint (host:port:postgres:login:password): `db.<ref>.supabase.co:5432` as `postgres`; the pooler host on 5432 and 6543 as `postgres.<ref>` and as `hackass_worker.<ref>` |
+| The server's root certificate (public; the CA file the owner downloads from the Supabase dashboard's database SSL settings, wording to confirm) | `STAGING_SSLROOTCERT`: an absolute path outside the repository to a file that only you can write; the migration endpoint and the CLI use `sslmode=verify-full` with it |
 | Pooler host (region endpoint) | `STAGING_POOLER_TXN_HOST`, `STAGING_POOLER_SESSION_HOST` (`STAGING_MIGRATE_HOST` is fixed: `db.<ref>.supabase.co`, which needs the IPv4 add-on or IPv6) |
 | Exposed schemas set to `api` only after the migrations | dashboard; then `--owner-confirmed=exposure` |
 | Worker password set | dashboard or owner SQL session; then `--owner-confirmed=worker-password` |
@@ -40,7 +41,7 @@ Every stage that contacts a target requires `--authorized=<group>@<40-hex SHA>`;
 | Project deletion date (O9) | `--owner-deletion-date=YYYY-MM-DD` on `cleanup`: a real calendar date, not in the past, not more than a year away |
 
 Environment (names only):
-`STAGING_REF=foptxhdnhudburqtnflt`, `STAGING_URL=https://foptxhdnhudburqtnflt.supabase.co`, `STAGING_MIGRATE_HOST=db.foptxhdnhudburqtnflt.supabase.co`, `STAGING_MIGRATE_PORT=5432`, `STAGING_MIGRATE_USER=postgres`, `STAGING_POOLER_USER=postgres.foptxhdnhudburqtnflt`, `STAGING_POOLER_TXN_HOST`/`PORT` (6543), `STAGING_POOLER_SESSION_HOST`/`PORT` (5432), `STAGING_WORKER_USER=hackass_worker.foptxhdnhudburqtnflt`, `STAGING_PGPASSFILE`, `STAGING_PUBLISHABLE_KEY`, `STAGING_SECRET_KEY`, `FORBIDDEN_PROJECT_REFS`.
+`STAGING_REF=foptxhdnhudburqtnflt`, `STAGING_URL=https://foptxhdnhudburqtnflt.supabase.co`, `STAGING_MIGRATE_HOST=db.foptxhdnhudburqtnflt.supabase.co`, `STAGING_MIGRATE_PORT=5432`, `STAGING_MIGRATE_USER=postgres`, `STAGING_POOLER_USER=postgres.foptxhdnhudburqtnflt`, `STAGING_POOLER_TXN_HOST`/`PORT` (6543), `STAGING_POOLER_SESSION_HOST`/`PORT` (5432), `STAGING_WORKER_USER=hackass_worker.foptxhdnhudburqtnflt`, `STAGING_PGPASSFILE`, `STAGING_SSLROOTCERT`, `STAGING_PUBLISHABLE_KEY`, `STAGING_SECRET_KEY`, `FORBIDDEN_PROJECT_REFS`.
 
 ## Stages and proposed commands
 

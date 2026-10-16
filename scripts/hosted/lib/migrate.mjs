@@ -72,7 +72,7 @@ export async function pushMigrations(ctx, { dryRun = false, cli, workdir = REPO_
   const mark = markRes.ok ? markRes.stdout.split('\n').filter(Boolean).pop() : null;
   if (!mark || !MARK.test(mark)) throw new MigrationBoundError(`${what} was not started: the server clock could not be read, so the CLI's session could not be identified`);
   const m = ctx.targets.migrate;
-  const args = ['--output-format', 'stream-json', 'db', 'push', '--db-url', cliUrl({ host: m.host, port: m.port, user: m.user, profile: ctx.profile, limits: L }), ...(dryRun ? ['--dry-run'] : [])];
+  const args = ['--output-format', 'stream-json', 'db', 'push', '--db-url', cliUrl({ host: m.host, port: m.port, user: m.user, profile: ctx.profile, limits: L, sslRootCert: ctx.targets.sslRootCert }), ...(dryRun ? ['--dry-run'] : [])];
   // stdin is closed (nothing can be answered at a prompt); the password comes only from the private password file; the whole process group is killed at the deadline
   const r = await run(cli, args, { cwd: workdir, timeoutMs: deadline, env: childEnv({ PGPASSFILE: ctx.targets.passfile }) });
   const unfinished = r.timedOut || r.truncated || r.code !== 0 || !!r.signal;

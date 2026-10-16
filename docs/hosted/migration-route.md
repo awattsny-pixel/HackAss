@@ -24,6 +24,7 @@ The runner of `0e1e2a1` is therefore unsuitable for pooled execution; it was acc
 | Migration target (`STAGING_MIGRATE_*`) | pooler as `postgres.<ref>`, or direct as `postgres` | **direct only**: host exactly `db.<ref>.supabase.co`, port 5432, login `postgres` |
 | Pooler login | the migration login was reused for the pooler endpoints | new `STAGING_POOLER_USER`, exactly `postgres.<ref>` (selftest: `postgres`, or `postgres.<tenant>` for a local pooler lab) |
 | `session` / `txn` endpoints | `targets.migrate.user` | `targets.poolerUser` |
+| TLS on the migration route | `sslmode=require` (encrypted, certificate not verified) | **`sslmode=verify-full`** (certificate and host name) against the owner-supplied root certificate `STAGING_SSLROOTCERT`, for the migration endpoint (psql) and the CLI; the pooler endpoints still use `require` |
 | Password file | migration login + worker + (same login) at the pooler | `postgres` at the direct host `:5432`; `postgres.<ref>` at the pooler `:5432` and `:6543`; `hackass_worker.<ref>` at the pooler `:5432` and `:6543` |
 | Refusal of a pooler migration | none | H0 (`lib/config.mjs` `migrationRouteErrors`); `cliUrl`; and the first statement of `pushMigrations` (`assertDirectMigrationTarget`), before the server clock is read, the database contacted or the CLI started |
 Migration SQL (`supabase/migrations`) is unchanged from `0e1e2a1` (asserted by a test).
@@ -38,7 +39,7 @@ STAGING_POOLER_USER=postgres.<ref>
 STAGING_POOLER_TXN_HOST=<pooler host>   STAGING_POOLER_TXN_PORT=6543
 STAGING_POOLER_SESSION_HOST=<pooler host>   STAGING_POOLER_SESSION_PORT=5432
 STAGING_WORKER_USER=hackass_worker.<ref>
-STAGING_PGPASSFILE=<0600 file>  STAGING_PUBLISHABLE_KEY_FILE=<0600 file>  STAGING_SECRET_KEY_FILE=<0600 file>  FORBIDDEN_PROJECT_REFS=<legacy ref>
+STAGING_PGPASSFILE=<0600 file>  STAGING_SSLROOTCERT=<root certificate file, writable by you only>  STAGING_PUBLISHABLE_KEY_FILE=<0600 file>  STAGING_SECRET_KEY_FILE=<0600 file>  FORBIDDEN_PROJECT_REFS=<legacy ref>
 ```
 The existing password file (five lines, added by the approved helper) already satisfies these requirements. Only host, port, database and login columns are ever read.
 
@@ -53,7 +54,7 @@ D="<private directory>"; R=<ref>; H=<pooler host>; SHA=<the reviewed commit>; RU
 # docker must be on PATH
 S7ENV=(env -u HOSTED_SELFTEST STAGING_REF=$R STAGING_URL=https://$R.supabase.co STAGING_MIGRATE_HOST=db.$R.supabase.co STAGING_MIGRATE_PORT=5432 STAGING_MIGRATE_USER=postgres
   STAGING_POOLER_USER=postgres.$R STAGING_POOLER_TXN_HOST=$H STAGING_POOLER_TXN_PORT=6543 STAGING_POOLER_SESSION_HOST=$H STAGING_POOLER_SESSION_PORT=5432 STAGING_WORKER_USER=hackass_worker.$R
-  STAGING_PGPASSFILE="$D/pgpass" STAGING_PUBLISHABLE_KEY_FILE="$D/publishable.key" STAGING_SECRET_KEY_FILE="$D/secret.key" FORBIDDEN_PROJECT_REFS=<legacy ref>)
+  STAGING_PGPASSFILE="$D/pgpass" STAGING_SSLROOTCERT="$D/supabase-root-ca.pem" STAGING_PUBLISHABLE_KEY_FILE="$D/publishable.key" STAGING_SECRET_KEY_FILE="$D/secret.key" FORBIDDEN_PROJECT_REFS=<legacy ref>)
 # one stage; a non-zero exit status prints which one failed and ends the whole script (the stage itself is then failed and is never retried)
 step() { echo "== $*"; "${S7ENV[@]}" node "$@" || { echo "STOP: '$*' failed (exit $?). Nothing further was run." >&2; exit 1; }; }
 case "${1:-}" in
@@ -70,7 +71,7 @@ case "${1:-}" in
 esac
 ```
 Each stage is a separate process and the script above stops at the first non-zero exit status (a test runs this very block with a stub that fails each stage in turn); each mutating stage runs once per run; a failed or interrupted stage blocks the run and is never retried (only `cleanup` and `evidence` run after it). The paths are quoted so that directories with spaces work (the real ones do; a test runs the block from and with paths that contain spaces). The `migrate` stage: checks the target ledger is empty and the dry-run lists exactly the 21 repository migrations, applies them with the bounded runner, then checks the ledger equals the repository.
-The worker password is set later by the owner; until then the worker lines in `pgpass` are the nonfunctional placeholder, so step B's worker checks cannot pass before that.
+The root certificate file must exist first (section 6). The first command, the fresh S6 preflight, is also the first hosted proof of certificate verification: its platform-facts queries to the direct host use `verify-full` and fail if the certificate or the host name does not verify. The worker password is set later by the owner; until then the worker lines in `pgpass` are the nonfunctional placeholder, so step B's worker checks cannot pass before that.
 
 ## 5. Per-file recovery procedure
 **Facts this relies on (measured locally; hosted unverified):** the CLI applies each migration file in **one transaction together with its ledger row**; a failing file is rolled back completely and earlier files stay committed; a CLI killed on the direct route has its server session ended within about 2 s and the interrupted file is rolled back. A static scan of the 21 files found no top-level `BEGIN`/`COMMIT`/`ROLLBACK`/`START TRANSACTION` and no non-transactional DDL (`CONCURRENTLY`, `VACUUM`, `CREATE DATABASE`, `ALTER TYPE ... ADD VALUE`):
@@ -94,12 +95,24 @@ After any failure, deadline or interruption of `migrate` (or `rerun`):
 
 **Rehearsed locally (disposable stack, direct connection, the real 21 migrations, Claude-reported):** the first 7 files applied twice give the same catalog fingerprint (the method is deterministic); applying the first 8 files with the 8th failing at its last statement leaves the ledger at exactly the first 7 and the fingerprint identical to the 7-file one (consistent with, but not proof of, the failed file leaving nothing); applying the 8th file outside the ledger (a partial or unexplained change) makes the fingerprint differ, so a difference of that kind is detected (a change outside what the fingerprint covers would not be). The script (`recovery-rehearsal.mjs`) is kept outside the repository with the lab record.
 
-## 6. Open: server certificate verification
-`sslmode=require` encrypts but does not verify the server certificate (S6B said so). Verification (`sslmode=verify-full` with the Supabase CA certificate the owner downloads from the dashboard, mounted read-only into the psql container and passed to the CLI) is **not implemented** here. It should be done and measured on the local stack and then on the direct route before any migration is executed.
+## 6. Server certificate verification (implemented locally; not yet exercised against the hosted server)
+**What the code does.** The staging profile requires `STAGING_SSLROOTCERT`, the Supabase root certificate (public) that the owner downloads from the dashboard's database SSL settings (wording to confirm) and stores outside the repository where only they can write it. It is checked as a trust anchor before use (`lib/rootcert.mjs`): an absolute path, a regular file that is not a symbolic link, owned by the caller, not writable by group or others, outside the checkout, at most 64 KB, PEM `CERTIFICATE` blocks only (no private key, no stray text), every certificate parseable and currently valid. The migration endpoint (psql, the file mounted read-only into the client container) and the CLI (`sslmode=verify-full&sslrootcert=<path>` in the URL) connect with certificate **and host-name** verification; the URL builder cannot produce a staging URL without it. The pooler endpoints still use `sslmode=require`: whether the pooler's certificate chains to the same root is not known.
+**Measured locally on a throwaway TLS-only Postgres with a test CA generated for the purpose (psql 17 in a container and the pinned CLI 2.120.0; Claude-reported):**
+| Case | psql | CLI |
+|---|---|---|
+| `verify-full`, right CA, name in the certificate | connected, TLS 1.3 | connected (the CA path contained a space) |
+| `verify-full`, unrelated CA | refused: certificate verify failed | refused: unable to verify the first certificate |
+| `verify-full`, name not in the certificate | refused: certificate does not match host name | refused: hostname/IP does not match the certificate's altnames |
+| `verify-full`, no root certificate given | refused: root certificate file missing | refused: unable to verify the first certificate |
+| `verify-full`, root certificate file missing | n/a | refused: failed to read sslrootcert |
+| `sslmode=require` (what S6 and S6B used), wrong CA and/or wrong name | **connected** | **connected** |
+| `verify-ca`, name not in the certificate | **connected** | not tested |
+So `require` verifies nothing, and only `verify-full` is acceptable.
+**Not established, and what would establish it.** That the Supabase root certificate the owner provides validates the real direct host's certificate and name: the fresh S6 preflight under the new environment (section 4, step 1) is the first hosted test, it is read-only, and it fails if the certificate does not verify. That the CLI's verification works against the hosted server: the `migrate` stage starts with a dry-run through the CLI, which fails before anything is applied if it does not (a failed stage cannot be retried, so a new run would be needed). That the pooler certificates chain to the same root. How certificate rotation or expiry is handled (the file is checked for validity at the start of every stage).
 
 ## 7. What this does not establish
 * the real CLI on the hosted direct route (S6B used `psql`); the 21 migrations on staging;
-* the server certificate;
+* the server certificate against the real server (only measured on a local test server);
 * that the lab's pooler behavior equals the hosted one (the migration route no longer depends on it).
 
 ## 8. Local verification record (Claude-reported; failures kept)

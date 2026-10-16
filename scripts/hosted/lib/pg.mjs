@@ -7,7 +7,7 @@ import { writeFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { assertContext } from './context.mjs';
-import { PSQL_IMAGE, conninfo } from './config.mjs';
+import { PSQL_IMAGE, SSLROOT_IN_CONTAINER, conninfo } from './config.mjs';
 import { runBounded, childEnv } from './exec.mjs';
 import { checkSql, splitStatements } from './sqlguard.mjs';
 import { redact } from './redact.mjs';
@@ -42,9 +42,11 @@ let seq = 0;
 export const newContainerName = () => `hackass-psql-${process.pid}-${Date.now().toString(36)}-${seq++}`;
 
 export function dockerArgs(ctx, endpoint, { passfile = ctx.targets.passfile, name, user } = {}) {
-  const info = { ...endpointInfo(ctx, endpoint), profile: ctx.profile, appName: name };
+  // the migration endpoint (the direct host) is TLS with certificate and host-name verification against the owner-supplied root certificate; the pooler endpoints are not (yet) verified
+  const verify = endpoint === 'migrate' && ctx.profile !== 'selftest';
+  const info = { ...endpointInfo(ctx, endpoint), profile: ctx.profile, appName: name, verify };
   if (user) info.user = user;
-  return ['run', '--rm', '-i', ...(name ? ['--name', name] : []), ...(ctx.profile === 'selftest' ? ['--add-host', 'host.docker.internal:host-gateway'] : []), '-v', `${passfile}:/pgpass:ro`, '-e', 'PGPASSFILE=/pgpass',
+  return ['run', '--rm', '-i', ...(name ? ['--name', name] : []), ...(ctx.profile === 'selftest' ? ['--add-host', 'host.docker.internal:host-gateway'] : []), '-v', `${passfile}:/pgpass:ro`, ...(verify ? ['-v', `${ctx.targets.sslRootCert}:${SSLROOT_IN_CONTAINER}:ro`] : []), '-e', 'PGPASSFILE=/pgpass',
     PSQL_IMAGE, 'psql', conninfo(info), '-X', '-w', '-q', '-v', 'ON_ERROR_STOP=1', '-At'];
 }
 

@@ -37,7 +37,7 @@ with lines for the migration login (`postgres` on the direct host), for the pool
 **Migration command.** The URL carries no password:
 ```
 PGPASSFILE="$STAGING_PGPASSFILE" supabase db push \
-  --db-url "postgresql://postgres@db.$STAGING_REF.supabase.co:5432/postgres?sslmode=require" --dry-run
+  --db-url "postgresql://postgres@db.$STAGING_REF.supabase.co:5432/postgres?sslmode=verify-full&sslrootcert=<URL-encoded path of $STAGING_SSLROOTCERT>" --dry-run
 ```
 (the same without `--dry-run` for the real run). The migration login is `postgres` on the direct host, which is not a secret (the pooler login `postgres.<ref>` is used only for the pooler checks). `psql` uses the same file: `PGPASSFILE=... psql "host=... port=... dbname=postgres user=... sslmode=require"`.
 
@@ -125,8 +125,8 @@ Pass: the count is **1 on all three** endpoints before the deletion and 0 after.
 ### H2. Apply the 21 migrations (H2a mutating once; H2b exposure; H2c worker endpoint proof)
 *H2a (mutating, once).* With the method of section 0.2:
 ```
-PGPASSFILE="$STAGING_PGPASSFILE" supabase db push --db-url "postgresql://postgres@db.$STAGING_REF.supabase.co:5432/postgres?sslmode=require" --dry-run   # lists the 21 pending, in filename order; changes nothing
-PGPASSFILE="$STAGING_PGPASSFILE" supabase db push --db-url "postgresql://postgres@db.$STAGING_REF.supabase.co:5432/postgres?sslmode=require"             # applies them, stopping at the first failure
+PGPASSFILE="$STAGING_PGPASSFILE" supabase db push --db-url "postgresql://postgres@db.$STAGING_REF.supabase.co:5432/postgres?sslmode=verify-full&sslrootcert=<URL-encoded path of $STAGING_SSLROOTCERT>" --dry-run   # lists the 21 pending, in filename order; changes nothing
+PGPASSFILE="$STAGING_PGPASSFILE" supabase db push --db-url "postgresql://postgres@db.$STAGING_REF.supabase.co:5432/postgres?sslmode=verify-full&sslrootcert=<URL-encoded path of $STAGING_SSLROOTCERT>"             # applies them, stopping at the first failure
 ```
 The `--dry-run` listing is compared with `staging-plan.md` section 4 before the real run. Pass: all 21 apply; `select count(*) from supabase_migrations.schema_migrations where version like '2026%'` is 21; the versions match the filenames. A failure is a **hosted-specific risk** from the staging plan: record the failing file and error, stop and report. Do not edit the migration or the database to get past it.
 

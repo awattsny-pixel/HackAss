@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -23,6 +23,9 @@ const DIRECT = `db.${REF}.supabase.co`;
 const shaped = (kind: string) => `sb_${kind}_${'q'.repeat(20)}`;
 const made: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'hs-route-')); chmodSync(d, 0o700); made.push(d); return d; };
+
+/** A copy of the public test root certificate in a private temp directory (the checker refuses a file inside the repository). */
+const caFile = (() => { let f: string | null = null; return () => { if (f) return f; const d = mkdtempSync(join(tmpdir(), 'hs-ca-')); f = join(d, 'root-ca.pem'); copyFileSync(join(root, 'tests/fixtures/hosted-test-root-ca.pem'), f); chmodSync(f, 0o644); return f; }; })();
 test.after(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); });
 
 const GOOD = [`${POOLER}:5432:postgres:postgres.${REF}:p1`, `${POOLER}:6543:postgres:postgres.${REF}:p1`, `${POOLER}:5432:postgres:hackass_worker.${REF}:p2`, `${POOLER}:6543:postgres:hackass_worker.${REF}:p2`, `${DIRECT}:5432:postgres:postgres:p0`];
@@ -30,7 +33,7 @@ const passfile = (lines: string[]) => { const f = join(tmp(), 'pgpass'); writeFi
 function env(over: Record<string, string> = {}, lines = GOOD): Record<string, string> {
   return { STAGING_REF: REF, STAGING_URL: `https://${REF}.supabase.co`, STAGING_MIGRATE_HOST: DIRECT, STAGING_MIGRATE_PORT: '5432', STAGING_MIGRATE_USER: 'postgres', STAGING_POOLER_USER: `postgres.${REF}`,
     STAGING_POOLER_TXN_HOST: POOLER, STAGING_POOLER_TXN_PORT: '6543', STAGING_POOLER_SESSION_HOST: POOLER, STAGING_POOLER_SESSION_PORT: '5432', STAGING_WORKER_USER: `hackass_worker.${REF}`,
-    STAGING_PGPASSFILE: passfile(lines), STAGING_PUBLISHABLE_KEY: shaped('publishable'), STAGING_SECRET_KEY: shaped('secret'), FORBIDDEN_PROJECT_REFS: OLD, ...over };
+    STAGING_PGPASSFILE: passfile(lines), STAGING_PUBLISHABLE_KEY: shaped('publishable'), STAGING_SECRET_KEY: shaped('secret'), STAGING_SSLROOTCERT: caFile(), FORBIDDEN_PROJECT_REFS: OLD, ...over };
 }
 const errorsOf = (e: Record<string, string>) => cfg.validateTargets(e, { profile: 'staging', repoRoot: root }).errors as string[];
 const refused = (e: Record<string, string>, re: RegExp) => { const errs = errorsOf(e); assert.ok(errs.some((x) => re.test(x)), `expected an error matching ${re}; got ${JSON.stringify(errs)}`); };
@@ -45,13 +48,16 @@ test('1. the split: the migration target is the direct host as postgres, the poo
   assert.deepEqual(pg.endpointInfo(ctx, 'worker-txn'), { host: POOLER, port: 6543, user: `hackass_worker.${REF}` });
 });
 
-test('1b. the psql client for each endpoint is built with that endpoint\'s own host, port and login, always with TLS required and never a password', () => {
+test('1b. the psql client for each endpoint is built with that endpoint\'s own host, port and login and never a password; the migration endpoint verifies the certificate, the pooler endpoints still only encrypt', () => {
   const ctx = ctxm.createContext(env(), { profile: 'staging', repoRoot: root });
-  const conn = (ep: string) => pg.dockerArgs(ctx, ep, { name: 'hackass-psql-x' }).find((a: string) => a.startsWith('host=')) as string;
-  assert.match(conn('migrate'), new RegExp(`host=${DIRECT.replace(/\./g, '\\.')} port=5432 .*user=postgres sslmode=require`));
+  const args = (ep: string) => pg.dockerArgs(ctx, ep, { name: 'hackass-psql-x' }) as string[];
+  const conn = (ep: string) => args(ep).find((a) => a.startsWith('host=')) as string;
+  assert.match(conn('migrate'), new RegExp(`host=${DIRECT.replace(/\./g, '\\.')} port=5432 .*user=postgres sslmode=verify-full sslrootcert=/sslroot\\.crt`));
   assert.match(conn('session'), new RegExp(`host=${POOLER.replace(/\./g, '\\.')} port=5432 .*user=postgres\\.${REF} sslmode=require`));
   assert.match(conn('txn'), new RegExp(`port=6543 .*user=postgres\\.${REF} sslmode=require`));
   for (const ep of ['migrate', 'session', 'txn']) assert.ok(!/password/i.test(conn(ep)));
+  const mount = `${ctx.targets.sslRootCert}:/sslroot.crt:ro`;
+  assert.ok(args('migrate').includes(mount), 'the root certificate is mounted read-only for the migration endpoint'); assert.ok(!args('session').includes(mount) && !args('txn').includes(mount));
 });
 
 test('2. a pooler migration target is refused by target validation (H0), whichever pooler host, port or login is given', () => {
@@ -112,9 +118,10 @@ test('5b. control: the direct target passes the guard and then proceeds to its f
 });
 
 test('5c. the CLI url builder refuses a pooler too, and the selftest profile accepts only the local container host', () => {
-  assert.throws(() => cfg.cliUrl({ host: POOLER, port: 5432, user: `postgres.${REF}`, profile: 'staging' }), cfg.MigrationRouteRefused);
-  assert.throws(() => cfg.cliUrl({ host: DIRECT, port: 5432, user: `postgres.${REF}`, profile: 'staging' }), cfg.MigrationRouteRefused);
-  assert.match(cfg.cliUrl({ host: DIRECT, port: 5432, user: 'postgres', profile: 'staging' }), /^postgresql:\/\/postgres@db\.[a-z]+\.supabase\.co:5432\/postgres\?sslmode=require/);
+  const sslRootCert = caFile();
+  assert.throws(() => cfg.cliUrl({ host: POOLER, port: 5432, user: `postgres.${REF}`, profile: 'staging', sslRootCert }), cfg.MigrationRouteRefused);
+  assert.throws(() => cfg.cliUrl({ host: DIRECT, port: 5432, user: `postgres.${REF}`, profile: 'staging', sslRootCert }), cfg.MigrationRouteRefused);
+  assert.match(cfg.cliUrl({ host: DIRECT, port: 5432, user: 'postgres', profile: 'staging', sslRootCert }), /^postgresql:\/\/postgres@db\.[a-z]+\.supabase\.co:5432\/postgres\?sslmode=verify-full&sslrootcert=/);
   assert.match(cfg.cliUrl({ host: 'host.docker.internal', port: 54322, user: 'postgres', profile: 'selftest' }), /@127\.0\.0\.1:54322\/postgres\?sslmode=disable/);
   assert.throws(() => cfg.cliUrl({ host: POOLER, port: 54322, user: 'postgres', profile: 'selftest' }), cfg.MigrationRouteRefused);
 });
