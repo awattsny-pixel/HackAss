@@ -161,15 +161,16 @@ function s7Block() {
   return m![1];
 }
 function runS7(part: string | null, failOn: string | null) {
-  const dir = tmp(); const bin = join(dir, 'bin'); mkdirSync(bin); const log = join(dir, 'calls.log'); writeFileSync(log, '');
-  writeFileSync(join(bin, 'node'), `#!/bin/sh\necho "$@" >> "${log}"\ncase "$*" in *"${failOn ?? 'NO-SUCH-STAGE'}"*) exit 7;; esac\nexit 0\n`, { mode: 0o755 });
-  const script = s7Block().replace('<repository>', dir).replace('<private directory>', join(dir, 'secrets')).replace(/<ref>/g, 'abcdefghijklmnopqrst').replace('<pooler host>', 'aws-0-us-east-1.pooler.supabase.com')
+  const dir = tmp(); const bin = join(dir, 'bin'); mkdirSync(bin); const log = join(dir, 'calls.log'); const envLog = join(dir, 'env.log'); writeFileSync(log, ''); writeFileSync(envLog, '');
+  const repo = join(dir, 'repository with spaces'); const priv = join(dir, 'private directory with spaces'); mkdirSync(repo); mkdirSync(priv); // the real paths contain spaces
+  writeFileSync(join(bin, 'node'), `#!/bin/sh\necho "$@" >> "${log}"\necho "$PWD|$STAGING_PGPASSFILE|$STAGING_PUBLISHABLE_KEY_FILE|$STAGING_SECRET_KEY_FILE" >> "${envLog}"\ncase "$*" in *"${failOn ?? 'NO-SUCH-STAGE'}"*) exit 7;; esac\nexit 0\n`, { mode: 0o755 });
+  const script = s7Block().replace('<repository>', repo).replace('<private directory>', priv).replace(/<ref>/g, 'abcdefghijklmnopqrst').replace('<pooler host>', 'aws-0-us-east-1.pooler.supabase.com')
     .replace('<the reviewed commit>', 'a'.repeat(40)).replace('<fresh run id>', 'route-run-1').replace('<legacy ref>', 'oldprojectref0123456');
   assert.ok(!/<[a-z ]+>/.test(script), 'every placeholder was substituted');
   const f = join(dir, 's7.sh'); writeFileSync(f, script);
   const r = spawnSync('bash', part ? [f, part] : [f], { encoding: 'utf8', env: { PATH: `${bin}:${process.env.PATH}`, HOME: dir } });
   const calls = readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => l.split(' ').slice(0, 2).join(' '));
-  return { status: r.status, err: r.stderr, out: r.stdout, calls };
+  return { status: r.status, err: r.stderr, out: r.stdout, calls, envSeen: readFileSync(envLog, 'utf8').split('\n').filter(Boolean), repo, priv };
 }
 test('9. the S7 command block runs every stage in order when all succeed, and stops at the first failing one', () => {
   assert.deepEqual(runS7('A', null).calls.map((c) => c.split(' ').slice(0, 2).join(' ')), ['scripts/hosted/preflight.mjs --run-id=route-run-1', 'scripts/hosted/s7-apply.mjs identity', 'scripts/hosted/s7-apply.mjs migrate']);
@@ -180,13 +181,20 @@ test('9. the S7 command block runs every stage in order when all succeed, and st
   const failMig = runS7('A', 'migrate'); assert.equal(failMig.status, 1); assert.equal(failMig.calls.length, 3);
   const failB = runS7('B', 'worker-marker'); assert.equal(failB.status, 1); assert.equal(failB.calls.length, 2, 'rerun and inventory did not run after a failed worker-marker');
 });
+test('9a. paths containing spaces survive the block: the working directory and every private-file path reach the stage intact', () => {
+  const r = runS7('A', null); assert.equal(r.status, 0, r.err); assert.equal(r.envSeen.length, 3);
+  for (const line of r.envSeen) { const [pwd, pass, pub, sec] = line.split('|'); assert.ok(pwd.endsWith('repository with spaces'), pwd); assert.equal(pass, join(r.priv, 'pgpass')); assert.equal(pub, join(r.priv, 'publishable.key')); assert.equal(sec, join(r.priv, 'secret.key')); }
+  assert.match(s7Block(), /^cd "<repository>"$/m); assert.match(s7Block(), /^D="<private directory>";/m);
+});
 test('9b. the block refuses an unknown or missing part, runs nothing then, and every node call goes through the stopping function', () => {
   for (const part of [null, 'C', 'AB']) { const r = runS7(part, null); assert.equal(r.status, 2); assert.equal(r.calls.length, 0); }
   const block = s7Block(); assert.match(block, /^set -euo pipefail$/m);
   assert.deepEqual(block.split('\n').filter((l) => /\bnode\b/.test(l) && !l.trim().startsWith('#')), ['step() { echo "== $*"; "${S7ENV[@]}" node "$@" || { echo "STOP: \'$*\' failed (exit $?). Nothing further was run." >&2; exit 1; }; }']);
 });
 
-test('10. the documentation makes no stale or overstated safety claim: pooled execution is not "safe", and fingerprint equality is not proof', () => {
+test('10. the documentation makes no stale or overstated safety claim: pooled execution is not "safe" and does not fail closed, and fingerprint equality is not proof', () => {
+  const proc = readFileSync(join(root, 'docs/hosted/verification-procedure.md'), 'utf8');
+  assert.ok(!/a hosted run fails closed if it does not/.test(proc)); assert.match(proc, /does \*\*not\*\* fail closed: it can produce a false clean result/);
   const mig = readFileSync(join(root, 'scripts/hosted/lib/migrate.mjs'), 'utf8');
   assert.ok(!/which is the safe direction/.test(mig)); assert.match(mig, /DIRECT CONNECTION ONLY/); assert.match(mig, /FALSE CLEAN result/); assert.match(mig, /assertDirectMigrationTarget/);
   const doc = readFileSync(join(root, 'docs/hosted/migration-route.md'), 'utf8');

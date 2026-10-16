@@ -48,8 +48,8 @@ The existing password file (five lines, added by the approved helper) already sa
 #!/bin/bash
 # Save as a file and run it as `bash s7.sh A` or `bash s7.sh B`. Any failing command stops the sequence at once; nothing after it is run.
 set -euo pipefail
-cd <repository>
-D=<private directory>; R=<ref>; H=<pooler host>; SHA=<the reviewed commit>; RUN=<fresh run id>
+cd "<repository>"
+D="<private directory>"; R=<ref>; H=<pooler host>; SHA=<the reviewed commit>; RUN=<fresh run id>
 # docker must be on PATH
 S7ENV=(env -u HOSTED_SELFTEST STAGING_REF=$R STAGING_URL=https://$R.supabase.co STAGING_MIGRATE_HOST=db.$R.supabase.co STAGING_MIGRATE_PORT=5432 STAGING_MIGRATE_USER=postgres
   STAGING_POOLER_USER=postgres.$R STAGING_POOLER_TXN_HOST=$H STAGING_POOLER_TXN_PORT=6543 STAGING_POOLER_SESSION_HOST=$H STAGING_POOLER_SESSION_PORT=5432 STAGING_WORKER_USER=hackass_worker.$R
@@ -69,7 +69,7 @@ case "${1:-}" in
   *) echo "usage: bash s7.sh A|B" >&2; exit 2 ;;
 esac
 ```
-Each stage is a separate process and the script above stops at the first non-zero exit status (a test runs this very block with a stub that fails each stage in turn); each mutating stage runs once per run; a failed or interrupted stage blocks the run and is never retried (only `cleanup` and `evidence` run after it). The `migrate` stage: checks the target ledger is empty and the dry-run lists exactly the 21 repository migrations, applies them with the bounded runner, then checks the ledger equals the repository.
+Each stage is a separate process and the script above stops at the first non-zero exit status (a test runs this very block with a stub that fails each stage in turn); each mutating stage runs once per run; a failed or interrupted stage blocks the run and is never retried (only `cleanup` and `evidence` run after it). The paths are quoted so that directories with spaces work (the real ones do; a test runs the block from and with paths that contain spaces). The `migrate` stage: checks the target ledger is empty and the dry-run lists exactly the 21 repository migrations, applies them with the bounded runner, then checks the ledger equals the repository.
 The worker password is set later by the owner; until then the worker lines in `pgpass` are the nonfunctional placeholder, so step B's worker checks cannot pass before that.
 
 ## 5. Per-file recovery procedure
