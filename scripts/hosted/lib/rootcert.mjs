@@ -1,7 +1,8 @@
 // The server's root certificate for verified TLS on the migration route (sslmode=verify-full). It is PUBLIC, so unlike the credential files it need not be 0600, but it is a trust anchor:
 // whoever can change it decides whom the migration connection trusts. So before it is mounted or named in a URL it must be an absolute path, a regular file that is not a symbolic link,
 // owned by the caller, writable by nobody else, outside the repository checkout, small, and made of PEM CERTIFICATE blocks only (no private key, no stray text), every one a parseable,
-// currently valid X.509 certificate.
+// currently valid X.509 certificate. NOTE: whether a certificate is a CA (basicConstraints) is RECORDED (`ca` in the result) but NOT required: a non-CA (leaf) certificate is accepted, so this check
+// does not enforce CA status; trust is decided by the owner's choice of file and by the TLS verification (verify-full), not by this check.
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { X509Certificate } from 'node:crypto';

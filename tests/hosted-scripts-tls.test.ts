@@ -1,4 +1,4 @@
-// Certificate verification on the migration route: the owner-supplied root certificate is validated as a trust anchor, the staging profile requires it, and the migration endpoint and the
+// Certificate verification on the migration route: the owner-supplied root certificate file is validated (path, ownership, content, parse, validity; CA status is recorded but not required), the staging profile requires it, and the migration endpoint and the
 // CLI connect with sslmode=verify-full against it. Nothing here contacts a hosted system; the behavior of psql and the pinned CLI against a real TLS server (wrong CA and wrong host
 // refused) was measured on a throwaway local server and is recorded in docs/hosted/migration-route.md.
 import test from 'node:test';
@@ -26,13 +26,13 @@ function caCopy(mode = 0o644, text = pem()) { const d = join(tmp(), 'dir with sp
 const problems = (f: string, extra: Record<string, unknown> = {}) => rc.rootCertProblems(f, { repoRoot: root, ...extra }).problems as string[];
 const has = (p: string[], re: RegExp) => assert.ok(p.some((x) => re.test(x)), `expected ${re}; got ${JSON.stringify(p)}`);
 
-test('1. a public root certificate file is accepted: spaces in the path, mode 0644, a CA certificate, currently valid', () => {
+test('1. a public root certificate file is accepted: spaces in the path, mode 0644, parseable, currently valid', () => {
   const r = rc.rootCertProblems(caCopy(), { repoRoot: root }); assert.deepEqual(r.problems, []); assert.equal(r.certs.length, 1); assert.equal(r.certs[0].ca, true);
   assert.deepEqual(problems(caCopy(0o600)), []); assert.deepEqual(problems(caCopy(0o444)), []);
   assert.deepEqual(problems(caCopy(0o644, `${pem()}\n${pem()}`)), [], 'a bundle of certificates');
 });
 
-test('2. a root certificate that is not exactly a valid, current, unshared CA certificate file is refused', () => {
+test('2. a root certificate file that is not exactly valid, current, unshared PEM certificates is refused', () => {
   has(problems(''), /not set/); has(problems('relative/ca.pem'), /absolute/); has(problems(join(tmp(), 'missing.pem')), /does not exist/);
   has(problems(tmp()), /not a regular file/);
   const link = join(tmp(), 'link.pem'); symlinkSync(caCopy(), link); has(problems(link), /symbolic link/);
@@ -90,4 +90,13 @@ test('6. the actual migration invocation hands the CLI verify-full and the root 
   await migrate.pushMigrations(ctx, { cli: '/bin/true', deps });
   const url = new URL(seen[seen.indexOf('--db-url') + 1]); assert.equal(url.searchParams.get('sslmode'), 'verify-full'); assert.equal(url.searchParams.get('sslrootcert'), f);
   await assert.rejects(() => migrate.pushMigrations({ ...ctx, targets: { ...ctx.targets, sslRootCert: '' } }, { cli: '/bin/true', deps: { ...deps, run: async () => { throw new Error('the CLI must not start'); } } }), /certificate verification is required/);
+});
+
+test('7. CA status is recorded, not enforced: a non-CA (leaf) certificate is accepted and reported as ca = false', () => {
+  const leaf = readFileSync(join(root, 'tests/fixtures/hosted-test-leaf.pem'), 'utf8');
+  const r = rc.rootCertProblems(caCopy(0o644, leaf), { repoRoot: root });
+  assert.deepEqual(r.problems, []); assert.equal(r.certs.length, 1); assert.equal(r.certs[0].ca, false);
+  assert.equal(rc.rootCertProblems(caCopy(), { repoRoot: root }).certs[0].ca, true);
+  const doc = readFileSync(join(root, 'docs/hosted/migration-route.md'), 'utf8'); assert.match(doc, /does \*\*not require\*\* it/); assert.ok(!/checked as a trust anchor/.test(doc));
+  assert.match(readFileSync(join(root, 'scripts/hosted/lib/rootcert.mjs'), 'utf8'), /does not enforce CA status/);
 });
