@@ -33,10 +33,38 @@ const KIND_ENDPOINTS = { read: () => true, admin: (ep) => ep === 'migrate', fixt
 const OPTIONS = new Set(['kind', 'fixtureIds', 'allowedJobTargets', 'allowedJobIds', 'timeoutMs']);
 
 const inflight = new Set();
-/** Called when the process is interrupted: remove every client container still running, synchronously and bounded, so no statement outlives its stage. */
-export function reapInflightContainers() {
-  for (const name of inflight) spawnSync(process.env.DOCKER_BIN || 'docker', ['rm', '-f', name], { timeout: 10_000, killSignal: 'SIGKILL', stdio: 'ignore' });
-  inflight.clear();
+// The docker daemon may still be creating (or starting) a container whose client was killed, so one `rm -f` can find nothing and the container then appears.
+// Removal is therefore repeated for a bounded time, and absence only counts once it has held for a quiet period. The quiet period is a bounded OBSERVATION, not a
+// guarantee: a daemon slower than REMOVE_QUIET_MS can still create the container afterwards. So a removal ends in one of three verdicts, and only the first is proof:
+//   removed          absent at every check for the whole quiet period
+//   quiet-incomplete absent at the last check, but not for the whole quiet period before the window ran out
+//   not-established  still present, or docker could not answer, at the last check
+export const REMOVE_WINDOW_MS = 3_000; export const REMOVE_QUIET_MS = 1_000; const REMOVE_RETRY_MS = 200;
+const dockerBin = () => process.env.DOCKER_BIN || 'docker';
+const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+/** One docker call may not outlast the window by more than a little: its deadline is what is left of the window (at least 500 ms, at most `cap`). */
+const callTimeout = (deadline, cap) => Math.max(500, Math.min(cap, deadline - Date.now()));
+const quietIncomplete = (quietMs) => `absent at the last check, but not for the whole ${quietMs} ms quiet period`;
+/** Called when the process is interrupted: remove every client container still running, synchronously and bounded, so no statement outlives its stage.
+ *  Returns [] when every one is proved gone, otherwise [{ name, state, detail }] for each one that is not (state: 'quiet-incomplete' | 'not-established'). */
+export function reapInflightContainers({ windowMs = REMOVE_WINDOW_MS, quietMs = REMOVE_QUIET_MS } = {}) {
+  const pending = [...inflight]; inflight.clear();
+  const t0 = Date.now(); const deadline = t0 + windowMs; let quietSince = null; let last = new Map();
+  while (pending.length) {
+    for (const name of pending) spawnSync(dockerBin(), ['rm', '-f', name], { timeout: callTimeout(deadline, 10_000), killSignal: 'SIGKILL', stdio: 'ignore' });
+    last = new Map();
+    for (const name of pending) {
+      const r = spawnSync(dockerBin(), ['ps', '-a', '-q', '--filter', `name=^${name}$`], { timeout: callTimeout(deadline, 10_000), killSignal: 'SIGKILL', encoding: 'utf8' });
+      if (r.error || r.status !== 0) last.set(name, { state: 'not-established', detail: r.error?.code === 'ETIMEDOUT' ? 'docker ps timed out' : `docker ps exit ${r.status}` });
+      else if (r.stdout.trim() !== '') last.set(name, { state: 'not-established', detail: 'container still present' });
+    }
+    const now = Date.now();
+    quietSince = last.size ? null : (quietSince ?? now);
+    if (quietSince !== null && now - quietSince >= quietMs) return [];
+    if (now >= deadline) break;
+    sleepSync(REMOVE_RETRY_MS);
+  }
+  return pending.map((name) => ({ name, ...(last.get(name) ?? { state: 'quiet-incomplete', detail: quietIncomplete(quietMs) }) }));
 }
 let seq = 0;
 export const newContainerName = () => `hackass-psql-${process.pid}-${Date.now().toString(36)}-${seq++}`;
@@ -69,14 +97,22 @@ export function wrapScript(kind, sql, timeoutMs) {
 async function dockerBounded(args, timeoutMs = 20_000) {
   return runBounded(process.env.DOCKER_BIN || 'docker', args, { timeoutMs, env: childEnv(), maxBytes: 100_000 });
 }
-/** Remove the named container and PROVE it is gone (docker ps -a). Returns { removed, detail }. */
-export async function removeContainer(name) {
-  try { await dockerBounded(['rm', '-f', name]); } catch { /* verified below */ }
-  try {
-    const r = await dockerBounded(['ps', '-a', '-q', '--filter', `name=^${name}$`]);
-    if (r.code === 0 && !r.timedOut && r.stdout.trim() === '') return { removed: true, detail: 'container absent' };
-    return { removed: false, detail: r.timedOut ? 'docker ps timed out' : r.stdout.trim() ? 'container still present' : `docker ps exit ${r.code}` };
-  } catch { return { removed: false, detail: 'docker unavailable' }; }
+/** Remove the named container and PROVE it is gone (docker ps -a): `rm -f` is repeated for up to the window and absence must hold for the quiet period (see the verdicts above).
+ *  Returns { removed, state, detail }; removed is true only for the verdict 'removed'. */
+export async function removeContainer(name, { windowMs = REMOVE_WINDOW_MS, quietMs = REMOVE_QUIET_MS } = {}) {
+  const deadline = Date.now() + windowMs; let quietSince = null; let detail = 'docker unavailable'; let absent = false;
+  for (;;) {
+    try { await dockerBounded(['rm', '-f', name], callTimeout(deadline, 20_000)); } catch { /* verified below */ }
+    try {
+      const r = await dockerBounded(['ps', '-a', '-q', '--filter', `name=^${name}$`], callTimeout(deadline, 20_000));
+      absent = r.code === 0 && !r.timedOut && r.stdout.trim() === '';
+      if (absent) quietSince ??= Date.now(); else { quietSince = null; detail = r.timedOut ? 'docker ps timed out' : r.stdout.trim() ? 'container still present' : `docker ps exit ${r.code}`; }
+    } catch { absent = false; quietSince = null; detail = 'docker unavailable'; }
+    const now = Date.now();
+    if (quietSince !== null && now - quietSince >= quietMs) return { removed: true, state: 'removed', detail: 'container absent' };
+    if (now >= deadline) return absent ? { removed: false, state: 'quiet-incomplete', detail: quietIncomplete(quietMs) } : { removed: false, state: 'not-established', detail };
+    await new Promise((r) => setTimeout(r, REMOVE_RETRY_MS));
+  }
 }
 
 async function execPsql(ctx, endpoint, script, { passfile, user, timeoutMs }) {
@@ -87,7 +123,7 @@ async function execPsql(ctx, endpoint, script, { passfile, user, timeoutMs }) {
   if (r.timedOut || r.truncated) {
     const gone = await removeContainer(name);
     const why = r.timedOut ? `database call exceeded ${timeoutMs}ms (${endpoint})` : `database output exceeded the size cap (${endpoint})`;
-    throw new PgFailure(`${why}; ${gone.removed ? 'the client container was removed' : `the client container may survive (${name}: ${gone.detail}); check before retrying`}`, { timedOut: r.timedOut, containerRemoved: gone.removed, container: name });
+    throw new PgFailure(`${why}; ${gone.removed ? 'the client container was removed' : `the client container may survive (${name}: ${gone.state}, ${gone.detail}); check before retrying`}`, { timedOut: r.timedOut, containerRemoved: gone.removed, container: name });
   }
   return { ok: r.code === 0, code: r.code, stdout: r.stdout.trim(), stderr: redact(r.stderr.trim()) };
 }

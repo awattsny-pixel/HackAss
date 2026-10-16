@@ -295,7 +295,7 @@ test('git subprocesses are bounded and never prompt', () => {
   assert.match(readFileSync(join(root, 'scripts/hosted/lib/gates.mjs'), 'utf8'), /GIT_TERMINAL_PROMPT/);
 });
 /** A stand-in container runtime: records every call, keeps a marker for a running container, and removes it on `rm -f` unless told not to. */
-function stubDocker(opts: { rmWorks?: boolean } = {}) {
+function stubDocker(opts: { rmWorks?: boolean; psHangs?: boolean } = {}) {
   const dir = tmp(); const log = join(dir, 'calls.log'); const marker = join(dir, 'running');
   const script = join(dir, 'docker');
   writeFileSync(script, `#!/bin/sh
@@ -303,7 +303,7 @@ echo "$@" >> ${JSON.stringify(log)}
 case "$1" in
   run) for a in "$@"; do case "$prev" in --name) echo "$a" > ${JSON.stringify(marker)};; esac; prev="$a"; done; cat > /dev/null & sleep 30; ;;
   rm) ${opts.rmWorks === false ? ':' : `rm -f ${JSON.stringify(marker)}`} ;;
-  ps) [ -f ${JSON.stringify(marker)} ] && cat ${JSON.stringify(marker)}; true ;;
+  ps) ${opts.psHangs ? 'exec sleep 30' : ':'}; [ -f ${JSON.stringify(marker)} ] && cat ${JSON.stringify(marker)}; true ;;
 esac
 `, { mode: 0o755 });
   return { bin: script, log, marker, calls: () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []) };
@@ -324,6 +324,115 @@ test('a database call past its deadline: the client is killed, the NAMED contain
 test('if the container cannot be proved gone the failure says so', async () => {
   const d = stubDocker({ rmWorks: false }); process.env.DOCKER_BIN = d.bin;
   try { await assert.rejects(() => pg.runSql(selfCtx(), 'migrate', 'select 1', { kind: 'read', timeoutMs: 2500 }), (e: { containerRemoved?: boolean; message: string }) => e.containerRemoved === false && /may survive/.test(e.message)); } finally { delete process.env.DOCKER_BIN; }
+});
+/** Plays the container daemon of the stub: once `trigger` ('run' or the first 'rm') has been logged it creates the container (the marker) `delayMs` later, whatever happened to the client in the meantime. */
+function lateDaemon(d: { log: string; marker: string; calls: () => string[] }, delayMs: number, trigger: 'run' | 'rm' = 'run') {
+  let created = false; const t = setInterval(() => { if (!created && d.calls().some((c) => c.startsWith(`${trigger} `))) { created = true; setTimeout(() => writeFileSync(d.marker, 'late\n'), delayMs); } }, 20);
+  return () => clearInterval(t);
+}
+test('a container the daemon creates AFTER the first removal is still removed (deadline path)', async () => {
+  const d = stubDocker(); process.env.DOCKER_BIN = d.bin; const stop = lateDaemon(d, 600);
+  try {
+    await assert.rejects(() => pg.runSql(selfCtx(), 'migrate', 'select pg_sleep(30)', { kind: 'read', timeoutMs: 300 }), (e: { containerRemoved?: boolean }) => e.containerRemoved === true);
+    assert.ok(d.calls().filter((c) => c.startsWith('rm -f ')).length >= 2, 'removal was repeated');
+    await new Promise((res) => setTimeout(res, 800));
+    assert.ok(!existsSync(d.marker), 'no container survives, including one created after the first removal');
+  } finally { stop(); delete process.env.DOCKER_BIN; }
+});
+test('a container the daemon creates AFTER the interrupt handler started is still removed (signal path)', async () => {
+  const d = stubDocker(); const stop = lateDaemon(d, 600);
+  const script = `import { pathToFileURL } from 'node:url'; import { existsSync } from 'node:fs';
+const [pg, ctxm, ex] = await Promise.all(['lib/pg.mjs', 'lib/context.mjs', 'lib/exec.mjs'].map((f) => import(pathToFileURL(process.argv[1] + '/scripts/hosted/' + f).href)));
+const ctx = ctxm.createContext(JSON.parse(process.env.CTX_ENV), { profile: 'selftest' });
+pg.runSql(ctx, 'migrate', 'select pg_sleep(30)', { kind: 'read', timeoutMs: 60000 }).catch(() => {});
+for (let i = 0; i < 400 && !existsSync(process.env.MARKER); i++) await new Promise((r) => setTimeout(r, 25)); // the stub client has really started
+ex.killActiveChildren(); const survivors = pg.reapInflightContainers(); console.log(JSON.stringify(survivors));`;
+  try {
+    // asynchronous spawn: the daemon stand-in above must keep running in this process while the child is inside its synchronous reap
+    const child = spawn(process.execPath, ['--input-type=module', '-e', script, root], { env: { ...process.env, DOCKER_BIN: d.bin, CTX_ENV: JSON.stringify(selfEnv()), MARKER: d.marker } });
+    let out = ''; let err = ''; child.stdout.on('data', (c) => { out += c; }); child.stderr.on('data', (c) => { err += c; });
+    const code = await new Promise((res) => child.on('close', res));
+    assert.equal(code, 0, err); assert.deepEqual(JSON.parse(out.trim()), [], 'nothing reported as surviving');
+    await new Promise((res) => setTimeout(res, 800));
+    assert.ok(!existsSync(d.marker), 'no container survives');
+  } finally { stop(); }
+});
+type Verdict = { name: string; state: string; detail: string };
+/** Runs a database call in a child process, then (after 300 ms, as the interrupt handler would) kills its children and reaps its containers with the given options; returns what the reap returned and how long it took. */
+async function reapInChild(d: { bin: string; marker: string; calls: () => string[] }, reapOpts: { windowMs?: number; quietMs?: number }, lateMs: number | null) {
+  const stop = lateMs === null ? () => {} : lateDaemon(d, lateMs, 'rm'); // measured from the first removal, so machine load moves both ends together
+  const script = `import { pathToFileURL } from 'node:url'; import { existsSync } from 'node:fs';
+const [pg, ctxm, ex] = await Promise.all(['lib/pg.mjs', 'lib/context.mjs', 'lib/exec.mjs'].map((f) => import(pathToFileURL(process.argv[1] + '/scripts/hosted/' + f).href)));
+const ctx = ctxm.createContext(JSON.parse(process.env.CTX_ENV), { profile: 'selftest' });
+pg.runSql(ctx, 'migrate', 'select pg_sleep(30)', { kind: 'read', timeoutMs: 60000 }).catch(() => {});
+for (let i = 0; i < 400 && !existsSync(process.env.MARKER); i++) await new Promise((r) => setTimeout(r, 25)); // the stub client has really started
+ex.killActiveChildren(); const t0 = Date.now(); const left = pg.reapInflightContainers(JSON.parse(process.env.REAP_OPTS)); console.log(JSON.stringify({ left, ms: Date.now() - t0 }));`;
+  try {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', script, root], { env: { ...process.env, DOCKER_BIN: d.bin, CTX_ENV: JSON.stringify(selfEnv()), REAP_OPTS: JSON.stringify(reapOpts), MARKER: d.marker } });
+    let out = ''; let err = ''; child.stdout.on('data', (c) => { out += c; }); child.stderr.on('data', (c) => { err += c; });
+    const code = await new Promise((res) => child.on('close', res)); assert.equal(code, 0, err);
+    return JSON.parse(out.trim()) as { left: Verdict[]; ms: number };
+  } finally { stop(); }
+}
+test('a creation delayed beyond the quiet period is a KNOWN LIMIT of the observation; a longer quiet period catches it', async () => {
+  const d1 = stubDocker(); const r1 = await reapInChild(d1, {}, 2500); // defaults: 1 s quiet, 3 s window; the container appears 2.5 s after the first removal
+  assert.deepEqual(r1.left, [], 'the default quiet period (1 s) has ended: the reap reports nothing unresolved');
+  await new Promise((res) => setTimeout(res, 2500));
+  assert.ok(existsSync(d1.marker), 'and the late container then exists: the quiet period is an observation, not a guarantee');
+  const d2 = stubDocker(); const r2 = await reapInChild(d2, { windowMs: 8000, quietMs: 3000 }, 1500); // appears at 1.5 s, inside the 3 s quiet period
+  assert.deepEqual(r2.left, []); await new Promise((res) => setTimeout(res, 800));
+  assert.ok(!existsSync(d2.marker), 'a quiet period longer than the delay removes it');
+});
+test('deadline expiry distinguishes "absent, quiet period incomplete" from "absence not established" (signal path and deadline path)', async () => {
+  const d = stubDocker();
+  const incomplete = await reapInChild(d, { windowMs: 1500, quietMs: 3000 }, null);
+  assert.equal(incomplete.left.length, 1); assert.equal(incomplete.left[0].state, 'quiet-incomplete'); assert.match(incomplete.left[0].detail, /absent at the last check, but not for the whole 3000 ms quiet period/); assert.match(incomplete.left[0].name, /^hackass-psql-/);
+  assert.ok(incomplete.ms < 3000, `bounded by the window (${incomplete.ms} ms)`);
+  const stuck = stubDocker({ rmWorks: false });
+  const present = await reapInChild(stuck, { windowMs: 1200, quietMs: 500 }, null);
+  assert.equal(present.left.length, 1); assert.equal(present.left[0].state, 'not-established'); assert.equal(present.left[0].detail, 'container still present');
+  // the same two verdicts from the deadline path
+  const e = stubDocker(); process.env.DOCKER_BIN = e.bin;
+  try {
+    const a = await pg.removeContainer('hackass-psql-x-0', { windowMs: 1200, quietMs: 3000 }); assert.deepEqual([a.removed, a.state], [false, 'quiet-incomplete']);
+    const ok = await pg.removeContainer('hackass-psql-x-1', { windowMs: 3000, quietMs: 400 }); assert.deepEqual([ok.removed, ok.state], [true, 'removed']);
+    writeFileSync(e.marker, 'x\n'); const e2 = stubDocker({ rmWorks: false }); process.env.DOCKER_BIN = e2.bin; writeFileSync(e2.marker, 'x\n');
+    const b = await pg.removeContainer('hackass-psql-x-2', { windowMs: 1200, quietMs: 500 }); assert.deepEqual([b.removed, b.state, b.detail], [false, 'not-established', 'container still present']);
+  } finally { delete process.env.DOCKER_BIN; }
+});
+test('slow docker calls cannot outlast the window: a hanging `docker ps` is "not established" and bounded', async () => {
+  const d = stubDocker({ psHangs: true });
+  const r = await reapInChild(d, { windowMs: 1500, quietMs: 500 }, null);
+  assert.equal(r.left.length, 1); assert.equal(r.left[0].state, 'not-established'); assert.match(r.left[0].detail, /docker ps timed out/);
+  assert.ok(r.ms < 5000, `the sync reap returned in ${r.ms} ms despite a ps that never answers`);
+  process.env.DOCKER_BIN = d.bin;
+  try {
+    const t0 = Date.now(); const a = await pg.removeContainer('hackass-psql-y-0', { windowMs: 1500, quietMs: 500 });
+    assert.deepEqual([a.removed, a.state, a.detail], [false, 'not-established', 'docker ps timed out']); assert.ok(Date.now() - t0 < 5000, 'bounded');
+  } finally { delete process.env.DOCKER_BIN; }
+});
+test('an interrupted stage whose container cleanup is NOT PROVEN stays interrupted, records and prints the names, and exits 130', async () => {
+  for (const rmWorks of [false, true]) {
+    const d = stubDocker({ rmWorks }); const id = freshRunId();
+    const script = `import { pathToFileURL } from 'node:url'; import { existsSync } from 'node:fs';
+const [cli, pg, ctxm] = await Promise.all(['lib/cli.mjs', 'lib/pg.mjs', 'lib/context.mjs'].map((f) => import(pathToFileURL(process.argv[1] + '/scripts/hosted/' + f).href)));
+const env = JSON.parse(process.env.CTX_ENV);
+await cli.runStage('preflight', ['--profile=selftest', '--run-id=' + process.env.RUN_ID, '--authorized=S6@' + 'a'.repeat(40)], async ({ ctx }) => {
+  pg.runSql(ctx, 'migrate', 'select pg_sleep(30)', { kind: 'read', timeoutMs: 60000 }).catch((e) => console.log('RUNSQL-ERR ' + e.message));
+  for (let i = 0; i < 400 && !existsSync(process.env.MARKER); i++) await new Promise((r) => setTimeout(r, 25)); // the stub client has really started
+  process.kill(process.pid, 'SIGTERM'); await new Promise((r) => setTimeout(r, 30000));
+}, { env, git: { head: 'a'.repeat(40), clean: true }, repoRoot: process.argv[1] });`;
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e', script, root], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, DOCKER_BIN: d.bin, CTX_ENV: JSON.stringify(selfEnv()), RUN_ID: id, MARKER: d.marker } });
+    assert.equal(r.status, 130, r.stdout + r.stderr);
+    const st = JSON.parse(readFileSync(join(state.runBase('selftest'), id, 'state.json'), 'utf8')).stages.preflight;
+    assert.equal(st.status, 'interrupted', 'never done, never failed-open');
+    if (rmWorks) { assert.ok(!/NOT PROVEN/.test(r.stdout + r.stderr) && st.cleanup === undefined && st.error === 'received SIGTERM', 'a proven cleanup records nothing extra'); continue; }
+    assert.match(r.stderr, /cleanup NOT PROVEN: hackass-psql-\d+-[a-z0-9]+-0 \(not-established: container still present\)/);
+    assert.equal(st.cleanup.status, 'NOT PROVEN'); assert.match(st.cleanup.containers[0].name, /^hackass-psql-/); assert.equal(st.cleanup.containers[0].state, 'not-established');
+    assert.match(st.error, /received SIGTERM; cleanup NOT PROVEN: hackass-psql-/);
+    const results = readFileSync(join(state.runBase('selftest'), id, 'results.jsonl'), 'utf8');
+    assert.match(results, /"id":"CLEANUP-NOT-PROVEN"/);
+  }
 });
 test('truncated or timed-out migration output is rejected, never trusted', () => {
   assert.ok(push, 'lib/push.mjs exists');
