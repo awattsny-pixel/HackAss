@@ -1,6 +1,9 @@
 // What the staging project exposes over the Data API, checked with the right credential for each question.
 //  * METADATA (what is listed): the OpenAPI description at GET /rest/v1/. Supabase serves that root only to a secret key (a publishable or member credential gets HTTP 401; self-hosted and the
-//    local stack are unaffected, which is why the local selftest could not show it). So the description is read with the SECRET key, in `apikey` only (never a Bearer header), and nothing else.
+//    local stack are unaffected for the publishable key, which is why the local selftest could not show it). So the description is read with the SECRET key, in `apikey` only (never a Bearer header),
+//    and nothing else. PostgREST lists only what the calling role may execute, and the secret key is the service role, which has no EXECUTE on the api functions (measured on the local stack: the
+//    description lists only `/`). So this read proves that api is exposed and that no table, view or unexpected function is listed; it can NOT show the public functions, which is why the public
+//    catalog read is proved by an actual anonymous call instead.
 //  * PUBLIC ACCESS AND ISOLATION (what a credential may reach): actual API endpoints with that credential. A non-exposed schema is probed with a function call (POST /rest/v1/rpc/<fn>, profile =
 //    the schema) and must answer HTTP 406 PGRST106 naming the exposed list; a table that must not exist in api is probed with GET /rest/v1/<table> and must be "not found". None of these touch the root.
 import { request, rpc } from './http.mjs';
@@ -41,7 +44,9 @@ export async function tableAbsentFromApi(ctx, table, { token, apikey, what } = {
 export async function verifyExposure(ctx, { staging }) {
   const { surface: s } = await readOpenApiWithSecretKey(ctx);
   checkApiSurface(s, 'OpenAPI description');
-  ok(s.rpc.includes('list_public_hacks') && s.rpc.includes('get_public_hack'), 'the two public catalog reads are not listed (is api exposed?)');
+  // public access: the anonymous (publishable-key) credential really can call a public catalog read through api (which also proves api is exposed to it)
+  const pub = await rpc(ctx, PROBE_FUNCTION, undefined, {}, { schema: 'api' });
+  ok(pub.status === 200 && pub.body && typeof pub.body === 'object', `anonymous ${PROBE_FUNCTION} through api: HTTP ${pub.status}${pub.body?.code ? ` ${pub.body.code}` : ''} (is api exposed?)`);
   // isolation: the publishable (anonymous) credential, through a real endpoint, is refused every non-exposed schema
   const priv = await schemaIsRefused(ctx, 'app', { what: 'anonymous Accept-Profile app' });
   let note = `; private schema app refused through POST /rpc (exposed: ${priv.schemas.join(',')})`;
@@ -53,5 +58,5 @@ export async function verifyExposure(ctx, { staging }) {
     }
     note += `; ${parts.join('; ')}`;
   } else note += '; the local stack exposes public and graphql_public by design, that sub-check is staging-only';
-  return `${s.rpc.length} functions listed (metadata read with the secret key), no table paths${note}`;
+  return `metadata read with the secret key: ${s.rpc.length} functions listed, no table or view paths; anonymous ${PROBE_FUNCTION} through api: HTTP 200${note}`;
 }

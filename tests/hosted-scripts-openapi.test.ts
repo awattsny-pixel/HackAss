@@ -18,11 +18,12 @@ const PUB = `sb_publishable_${'p'.repeat(20)}`; const SEC = `sb_secret_${'s'.rep
 const made: string[] = [];
 test.after(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); });
 
-type Opts = { exposed?: string[]; openApiPaths?: string[]; tableVisible?: boolean; rootOpenToAll?: boolean };
+type Opts = { exposed?: string[]; openApiPaths?: string[]; tableVisible?: boolean; rootOpenToAll?: boolean; anonDenied?: boolean };
 type Seen = { method: string; path: string; apikey?: string; authorization?: string; profile?: string };
-async function withStub(opts: Opts, fn: (ctx: any, seen: Seen[]) => Promise<void>) {
+type Ctx = { keys: { publishable: string; secret: string } };
+async function withStub(opts: Opts, fn: (ctx: Ctx, seen: Seen[]) => Promise<void>) {
   const exposed = opts.exposed ?? ['api'];
-  const paths = opts.openApiPaths ?? ['/', ...cfg.API_FUNCTIONS.map((n: string) => `/rpc/${n}`)];
+  const paths = opts.openApiPaths ?? ['/']; // measured locally: the secret key is the service role, which may execute no api function, so its description lists only the root
   const seen: Seen[] = [];
   const send = (res: http.ServerResponse, status: number, body: unknown) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
   const refuse = (res: http.ServerResponse) => send(res, 406, { code: 'PGRST106', message: 'The schema must be one of the following: ' + exposed.join(', '), hint: `Only the following schemas are exposed: ${exposed.join(', ')}` });
@@ -36,7 +37,7 @@ async function withStub(opts: Opts, fn: (ctx: any, seen: Seen[]) => Promise<void
       if (profile && !exposed.includes(profile)) return refuse(res);
       return send(res, 200, { swagger: '2.0', paths: Object.fromEntries(paths.map((x) => [x, {}])) });
     }
-    if (p.startsWith('/rest/v1/rpc/')) { if (profile && !exposed.includes(profile)) return refuse(res); return exposed.includes(profile ?? 'api') && (profile ?? 'api') === 'api' ? send(res, 200, []) : send(res, 404, { code: 'PGRST202', message: 'function not found' }); }
+    if (p.startsWith('/rest/v1/rpc/')) { if (profile && !exposed.includes(profile)) return refuse(res); return (profile ?? 'api') === 'api' && !opts.anonDenied ? send(res, 200, []) : send(res, (profile ?? 'api') === 'api' ? 401 : 404, { code: (profile ?? 'api') === 'api' ? '42501' : 'PGRST202', message: 'not available' }); }
     if (p.startsWith('/rest/v1/')) { if (profile && !exposed.includes(profile)) return refuse(res); return opts.tableVisible ? send(res, 200, []) : send(res, 404, { code: 'PGRST205', message: 'Could not find the table' }); }
     send(res, 404, {});
   });
@@ -61,12 +62,12 @@ test('hosted restriction: the OpenAPI root refuses the publishable key (HTTP 401
 test('H2b: the description is read with the secret key in apikey only; the isolation probes use real endpoints with the publishable key; the root never sees the publishable key', async () => {
   await withStub({}, async (ctx, seen) => {
     const note = await expo.verifyExposure(ctx, { staging: true });
-    assert.match(note, /metadata read with the secret key/); assert.match(note, /public: refused \(exposed: api\)/); assert.match(note, /graphql_public: refused \(exposed: api\)/);
+    assert.match(note, /metadata read with the secret key/); assert.match(note, /anonymous list_public_hacks through api: HTTP 200/); assert.match(note, /public: refused \(exposed: api\)/); assert.match(note, /graphql_public: refused \(exposed: api\)/);
     const roots = seen.filter((s) => s.path === '/rest/v1/');
     assert.equal(roots.length, 1, 'exactly one request to the restricted root');
     assert.equal(roots[0].apikey, SEC); assert.equal(roots[0].method, 'GET'); assert.equal(roots[0].profile, 'api');
     const probes = seen.filter((s) => s.path !== '/rest/v1/');
-    assert.deepEqual(probes.map((s) => s.profile), ['app', 'public', 'graphql_public']);
+    assert.deepEqual(probes.map((s) => s.profile), ['api', 'app', 'public', 'graphql_public']); // the first is the anonymous public read through api itself
     for (const p of probes) { assert.equal(p.method, 'POST'); assert.equal(p.path, '/rest/v1/rpc/list_public_hacks'); assert.equal(p.apikey, PUB); }
     for (const s of seen) assert.equal(s.authorization, undefined, 'an sb_ key is never sent as a Bearer token');
     assert.ok(!seen.some((s) => s.apikey === PUB && s.path === '/rest/v1/'), 'the publishable key never reaches the root');
@@ -77,11 +78,12 @@ test('H2b still fails when a non-exposed schema is exposed (the refusal checks a
   await withStub({ exposed: ['api', 'graphql_public'] }, async (ctx) => { await assert.rejects(() => expo.verifyExposure(ctx, { staging: true }), /graphql_public|exposed schemas are/); });
   await withStub({ exposed: ['api', 'app'] }, async (ctx) => { await assert.rejects(() => expo.verifyExposure(ctx, { staging: true }), /private schema is exposed|app/); });
 });
-test('H2b still inspects the description: a table path, an extra function or a missing public read fails', async () => {
-  const base = ['/', ...cfg.API_FUNCTIONS.map((n: string) => `/rpc/${n}`)];
+test('H2b still inspects the description and the anonymous public read: a table path, an extra function, a denied anonymous read or an unexposed api fails', async () => {
+  const base = ['/', ...cfg.API_FUNCTIONS.map((n: string) => `/rpc/${n}`)]; // a description that lists the documented functions is also fine (a different platform or grants)
   await withStub({ openApiPaths: [...base, '/hacks'] }, async (ctx) => { await assert.rejects(() => expo.verifyExposure(ctx, { staging: true }), /non-function paths/); });
   await withStub({ openApiPaths: [...base, '/rpc/not_in_the_allowlist'] }, async (ctx) => { await assert.rejects(() => expo.verifyExposure(ctx, { staging: true }), /outside the api allowlist/); });
-  await withStub({ openApiPaths: ['/', '/rpc/whoami'] }, async (ctx) => { await assert.rejects(() => expo.verifyExposure(ctx, { staging: true }), /public catalog reads are not listed/); });
+  await withStub({ anonDenied: true }, async (ctx) => { await assert.rejects(() => expo.verifyExposure(ctx, { staging: true }), /anonymous list_public_hacks through api: HTTP 401 42501 \(is api exposed\?\)/); }); // api exposed but the anonymous read fails
+  await withStub({ exposed: ['public'] }, async (ctx) => { await assert.rejects(() => expo.verifyExposure(ctx, { staging: true }), /HTTP 406 PGRST106/); }); // api itself is not exposed
 });
 test('a secret key that is refused at the root is reported with its status, never hidden', async () => {
   await withStub({}, async (ctx) => {

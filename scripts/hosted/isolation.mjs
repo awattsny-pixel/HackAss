@@ -7,7 +7,6 @@
 import { runStage, checker, ok } from './lib/cli.mjs';
 import { request, rpc } from './lib/http.mjs';
 import { signIn, steppedUp } from './lib/flows.mjs';
-import { API_FUNCTIONS } from './lib/config.mjs';
 import { requireSchemaExcluded } from './lib/refusal.mjs';
 import { readOpenApiWithSecretKey, checkApiSurface, schemaIsRefused, tableAbsentFromApi } from './lib/exposure.mjs';
 
