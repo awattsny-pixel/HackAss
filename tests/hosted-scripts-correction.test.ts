@@ -459,9 +459,10 @@ test('a generic 4xx is not isolation evidence: only the expected schema-exclusio
   assert.throws(() => refusal.requireSchemaExcluded({ status: 406, body: { code: 'PGRST106', hint: 'Only the following schemas are exposed: public, graphql_public, api', message: 'x' } }, 'p', { expectExact: ['api'] }), /expected exactly api/);
 });
 test('the isolation and exposure stages use the strict checks, including public and graphql_public', () => {
-  const iso = readFileSync(join(root, 'scripts/hosted/isolation.mjs'), 'utf8'); const exp = readFileSync(join(root, 'scripts/hosted/s7-verify.mjs'), 'utf8');
+  const iso = readFileSync(join(root, 'scripts/hosted/isolation.mjs'), 'utf8'); const exp = readFileSync(join(root, 'scripts/hosted/lib/exposure.mjs'), 'utf8'); const ver = readFileSync(join(root, 'scripts/hosted/s7-verify.mjs'), 'utf8');
   assert.match(iso, /requireSchemaExcluded/); assert.match(iso, /graphql_public/); assert.ok(!/r\.status >= 400 && r\.status < 500/.test(iso.split("H12b")[1].split("H12c")[0]), 'phase 2 no longer accepts any 4xx');
-  assert.match(exp, /graphql_public/); assert.match(exp, /requireSchemaExcluded/);
+  assert.match(iso, /schemaIsRefused/); // phase 2's public/graphql_public probes go through the shared strict check (a real endpoint, not the OpenAPI root)
+  assert.match(exp, /graphql_public/); assert.match(exp, /requireSchemaExcluded/); assert.match(ver, /verifyExposure/);
 });
 test('the inventory covers row-level security and effective column and sequence privileges', () => {
   for (const needle of [/column_privileges/, /has_column_privilege/, /sequence_privileges/, /has_sequence_privilege/, /tables_without_rls/, /relrowsecurity/]) assert.match(sqlLib.PRIVS_SQL, needle);

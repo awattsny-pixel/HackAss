@@ -2,14 +2,14 @@
 // Authorization S8 (MUTATING class): `isolation` = H12. It creates Auth sessions for the fixture users and POSTs to private functions that WOULD RUN if isolation were broken, so it is
 // confirmed like any mutating stage. Phase 1 proves each credential works on something it may do; phase 2 that the same credential is refused every private table and function FOR THE
 // EXPECTED REASON (the schema is not exposed: HTTP 406 PGRST106, with the exposed list naming no private schema; a rate limit, a malformed request or a missing function proves nothing);
-// phase 3 that the OpenAPI description lists only the documented api functions, and that public and graphql_public are not exposed.
+// phase 3 that the OpenAPI description (a SECRET-key read: the root is not served to other credentials) lists only the documented api functions, that the anonymous and member credentials are served no private table in api, and that public and graphql_public are not exposed.
 // Usage: node scripts/hosted/isolation.mjs --run-id=... --authorized=S8@<sha> --confirm-mutating=isolation [--profile=...]
 import { runStage, checker, ok } from './lib/cli.mjs';
 import { request, rpc } from './lib/http.mjs';
 import { signIn, steppedUp } from './lib/flows.mjs';
 import { API_FUNCTIONS } from './lib/config.mjs';
-import { openApiSurface } from './lib/openapi.mjs';
 import { requireSchemaExcluded } from './lib/refusal.mjs';
+import { readOpenApiWithSecretKey, checkApiSurface, schemaIsRefused, tableAbsentFromApi } from './lib/exposure.mjs';
 
 const TABLES = ['hacks', 'publications', 'jobs', 'ai_ledger', 'accounts', 'staff_assignments'];
 const PRIVATE_FUNCTIONS = [['app_review', 'public_blockers', { p_publication_id: '00000000-0000-0000-0000-000000000000' }], ['app_budget', 'reserve', {}], ['worker', 'claim_job', { p_job_type: 'publication_recheck' }], ['app_guard', 'require_member', {}]];
@@ -55,26 +55,26 @@ const code = await runStage('isolation', process.argv.slice(2), async ({ ctx, ru
         statuses.add(`${r.status}/${r.body?.code}`); n++;
       }
       if (profile === 'staging') {
-        for (const other of NOT_EXPOSED) { requireSchemaExcluded(await request(ctx, { path: '/rest/v1/', token: cr.token, apikey: cr.apikey, headers: { 'accept-profile': other } }), `${cr.name}: Accept-Profile ${other}`, { expectExact: exact }); n++; }
+        for (const other of NOT_EXPOSED) { await schemaIsRefused(ctx, other, { token: cr.token, apikey: cr.apikey, expectExact: exact, what: `${cr.name}: Accept-Profile ${other}` }); n++; } // a real endpoint, not the restricted OpenAPI root
       }
     }
     return `${n} direct requests across ${creds.length} credentials, every one refused for the expected reason, schema not exposed (${[...statuses].sort().join(' ')}), no application data in any body`;
   });
 
-  await c.check('H12c', 'phase 3: the OpenAPI description lists only api functions, no tables and no private schema; GraphQL is off or shows no application type', async () => {
+  await c.check('H12c', 'phase 3: the OpenAPI description (metadata, read with the secret key) lists only api functions, no tables and no private schema; no private table is served in api to the anonymous or member credential; GraphQL is off or shows no application type', async () => {
     const notes = [];
+    // METADATA: Supabase serves the OpenAPI root to a secret key only, so the description is read with the secret key and with nothing else
+    const { doc, surface: s } = await readOpenApiWithSecretKey(ctx);
+    checkApiSurface(s, 'OpenAPI description (secret key)');
+    const defs = Object.keys(doc.definitions ?? doc.components?.schemas ?? {});
+    ok(!defs.some((d) => /^(hacks|publications|jobs|ai_ledger|accounts|staff_assignments)$/.test(d)), 'OpenAPI description (secret key): a table definition is listed');
+    const text = JSON.stringify(doc);
+    for (const sch of NON_API_SCHEMAS) ok(!text.includes(`${sch}.`) && !defs.includes(sch), `OpenAPI description (secret key): the description mentions schema ${sch}`);
+    notes.push(`metadata (secret key): ${s.rpc.length} functions`);
+    // PUBLIC ACCESS: what the publishable and member credentials can actually reach in api, through real endpoints (the description is not available to them)
     for (const cr of creds.slice(0, 2)) {
-      const r = await request(ctx, { path: '/rest/v1/', token: cr.token, headers: { 'accept-profile': 'api' } });
-      ok(r.status === 200 && r.body, `${cr.name}: OpenAPI HTTP ${r.status}`);
-      const s = openApiSurface(r.body);
-      const extra = s.rpc.filter((x) => !API_FUNCTIONS.includes(x));
-      ok(extra.length === 0, `${cr.name}: functions outside the allowlist are listed: ${extra.join(',')}`);
-      ok(s.other.length === 0, `${cr.name}: non-function paths are listed: ${s.other.slice(0, 5).join(',')}`);
-      const defs = Object.keys(r.body.definitions ?? r.body.components?.schemas ?? {});
-      ok(!defs.some((d) => /^(hacks|publications|jobs|ai_ledger|accounts|staff_assignments)$/.test(d)), `${cr.name}: a table definition is listed`);
-      const text = JSON.stringify(r.body);
-      for (const sch of NON_API_SCHEMAS) ok(!text.includes(`${sch}.`) && !defs.includes(sch), `${cr.name}: the description mentions schema ${sch}`);
-      notes.push(`${cr.name}: ${s.rpc.length} functions`);
+      for (const t of TABLES) await tableAbsentFromApi(ctx, t, { token: cr.token, apikey: cr.apikey, what: `${cr.name}: GET api.${t}` });
+      notes.push(`${cr.name}: no private table is served in api (${TABLES.length} probes, not found)`);
     }
     const g = await request(ctx, { path: '/graphql/v1', method: 'POST', body: { query: '{ __schema { types { name } } }' } });
     if (g.status === 200) ok(!JSON.stringify(g.body).match(/hacks|publications|ai_ledger|staff_assignments/i), 'GraphQL introspection shows an application type');
