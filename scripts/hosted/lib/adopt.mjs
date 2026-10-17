@@ -54,9 +54,9 @@ export function migrationChanges(repoRoot, from, { timeoutMs = 10_000 } = {}) {
 
 /**
  * Decide whether the source run may be adopted. Pure: everything it needs is passed in. Returns the state to write, or throws AdoptRefused listing EVERY problem found.
- * input: { source: {runId,state,results}, profile, targetsHash, head, projectRef, expectedRef, migrationChanges: string[], repoVersions: string[], live: {count,versions,md5} | null, at: ISO string }
+ * input: { source: {runId,state,results}, profile, targetsHash, head, projectRef, expectedRef, migrationChanges: string[], repoVersions: string[], live: {count,versions,md5} | null }
  */
-export function planAdoption({ source, profile, targetsHash, head, projectRef, expectedRef, migrationChanges: changed, repoVersions, live, at }) {
+export function planAdoption({ source, profile, targetsHash, head, projectRef, expectedRef, migrationChanges: changed, repoVersions, live }) {
   const bad = [];
   const st = source?.state ?? {}; const stages = st.stages ?? {}; const b = st.binding ?? null;
   // A1 the source run
@@ -125,7 +125,7 @@ export function planAdoption({ source, profile, targetsHash, head, projectRef, e
  * The stage body (called by scripts/hosted/adopt.mjs through runStage). `deps` exist so tests can run it without a database or git:
  * { readSource(runId, profile), changes(repoRoot, fromCommit), queryLedger(ctx) -> {count,versions,md5}, repoVersions() }.
  */
-export async function runAdoption({ ctx, run, flags, profile, git, repoRoot, expectedRef, say, targetsHash, deps, now = () => new Date().toISOString() }) {
+export async function runAdoption({ ctx, run, flags, profile, git, repoRoot, expectedRef, say, targetsHash, deps }) {
   const c = checker(run, say, { continueOnFail: true });
   const problems = []; let plan = null; let src = null;
   const fromRun = flags['from-run'];
@@ -139,7 +139,7 @@ export async function runAdoption({ ctx, run, flags, profile, git, repoRoot, exp
     try { changed = deps.changes(repoRoot, src.state.binding?.commit); } catch (e) { problems.push(`A3 ${e instanceof AdoptRefused ? e.problems.join('; ') : `the migration comparison failed: ${e?.message ?? e}`}`); }
     try { live = await deps.queryLedger(ctx); } catch (e) { problems.push(`A4 the live ledger could not be read: ${e?.message ?? e}`); }
     try {
-      plan = planAdoption({ source: src, profile, targetsHash, head: git.head, projectRef: ctx.targets.ref, expectedRef, migrationChanges: changed, repoVersions: deps.repoVersions(), live, at: now() });
+      plan = planAdoption({ source: src, profile, targetsHash, head: git.head, projectRef: ctx.targets.ref, expectedRef, migrationChanges: changed, repoVersions: deps.repoVersions(), live });
     } catch (e) { if (e instanceof AdoptRefused) problems.push(...e.problems.filter((p) => !problems.includes(p))); else throw e; }
     if (plan && !sourceUnchanged(src)) { plan = null; problems.push('A1 the source run changed while it was being read'); }
   }
