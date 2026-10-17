@@ -1,5 +1,5 @@
 // E1: `adopt --through=s8` carries the S7 and S8 progress of a BLOCKED run (worker-checks failed on finding F-H9-1) into a new run at a new commit. Temporary run directories, a stubbed ledger and fixture
-// inspection and stubbed git: nothing contacts a target. Fixtures are accepted in their EXPECTED post-test state (b2 deleted, s-sess signed out, s-rm de-staffed): nothing is recreated or reset.
+// inspection and stubbed git: nothing contacts a target. Fixtures are accepted in their EXPECTED post-test state (b2 deleted, s-rm de-staffed, the staff fixtures still staffed): nothing is recreated or reset. That s-sess stays signed out is inherited evidence, not checked.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -49,11 +49,11 @@ const secretsObj = () => ({ users: Object.fromEntries(NAMES.map((n) => [n, { pas
 const EXPECT_FIX = () => ({ b1: { auth: 'present', accountStatus: 'active', assignments: 0 }, b2: { auth: 'absent', accountStatus: 'deleted', assignments: 0 }, 's-sess': { auth: 'present', accountStatus: 'active', assignments: 0 },
   's-rm': { auth: 'present', accountStatus: 'active', assignments: 0 }, 's-mfa': { auth: 'present', accountStatus: 'active', assignments: 1 }, 's-rev': { auth: 'present', accountStatus: 'active', assignments: 1 } });
 
-type Inputs = { state?: Record<string, unknown>; results?: unknown[]; targetsHash?: string; changed?: string[] | Error; live?: unknown; fixtures?: unknown; secrets?: unknown | null; secretsMode?: number; head?: string; mutateSource?: (dir: string) => void };
+type Inputs = { secretsRaw?: string; state?: Record<string, unknown>; results?: unknown[]; targetsHash?: string; changed?: string[] | Error; live?: unknown; fixtures?: unknown; secrets?: unknown | null; secretsMode?: number; head?: string; mutateSource?: (dir: string) => void };
 async function attempt(i: Inputs = {}) {
   const base = tmp(); const newBase = tmp(); const dir = join(base, 'stg-mid-run2'); mkdirSync(dir, { recursive: true, mode: 0o700 });
   writeFileSync(join(dir, 'state.json'), JSON.stringify(i.state ?? sourceState(), null, 2), { mode: 0o600 }); writeFileSync(join(dir, 'results.jsonl'), (i.results ?? sourceResults()).map((r) => JSON.stringify(r)).join('\n') + '\n', { mode: 0o600 });
-  if (i.secrets !== null) { writeFileSync(join(dir, 'secrets.json'), JSON.stringify(i.secrets ?? secretsObj()), { mode: 0o600 }); chmodSync(join(dir, 'secrets.json'), i.secretsMode ?? 0o600); }
+  if (i.secrets !== null) { writeFileSync(join(dir, 'secrets.json'), i.secretsRaw ?? JSON.stringify(i.secrets ?? secretsObj()), { mode: 0o600 }); chmodSync(join(dir, 'secrets.json'), i.secretsMode ?? 0o600); }
   const snap = () => ({ s: readFileSync(join(dir, 'state.json')), r: readFileSync(join(dir, 'results.jsonl')), k: existsSync(join(dir, 'secrets.json')) ? readFileSync(join(dir, 'secrets.json')) : null });
   const before = snap();
   const run = stateLib.openRun({ runId: 'stg-new-run3', profile: 'staging', repoRoot: root, base: newBase }); run.acquireLock(); run.initRedaction();
@@ -138,7 +138,7 @@ test('refused: invalid source-run state', async () => {
   for (const [label, input, pattern] of cases) await refuses(label, input, pattern, ['A1', 'A2']);
 });
 test('fixtures: accepted in the expected post-test state; refused when a user is not (b2 present, s-rm still staffed, a staff fixture missing or unstaffed); nothing is recreated or reset', async () => {
-  const ok = await attempt(); assert.equal(ok.out.failed, 0, 'b2 deleted, s-sess signed out, s-rm de-staffed is the expected state');
+  const ok = await attempt(); assert.equal(ok.out.failed, 0, 'b2 deleted, s-rm de-staffed, s-mfa and s-rev staffed is the expected state');
   const f = (over: Record<string, unknown>) => ({ ...EXPECT_FIX(), ...over });
   await refuses('b2 still exists', { fixtures: f({ b2: { auth: 'present', accountStatus: 'active', assignments: 0 } }) }, /fixture b2: Auth user is present, expected absent/, ['A5']);
   await refuses('b2 account not deleted', { fixtures: f({ b2: { auth: 'absent', accountStatus: 'active', assignments: 0 } }) }, /fixture b2: account status is active, expected deleted/, ['A5']);
@@ -173,9 +173,47 @@ test('copySecrets verifies its own copy: a corrupted copy or a wrong mode is ref
   const fake = (write: (f: string) => void) => ({ dir: dst, saveSecrets: () => write(join(dst, 'secrets.json')) });
   assert.throws(() => adopt.copySecrets({ dir: src }, fake((f) => writeFileSync(f, JSON.stringify({ users: { b1: { password: 'tampered' } } }), { mode: 0o600 })), expected), /the copy differs from the source/);
   assert.ok(!existsSync(join(dst, 'secrets.json')), 'a corrupted copy is removed');
-  assert.throws(() => adopt.copySecrets({ dir: src }, fake((f) => { writeFileSync(f, JSON.stringify(secretsObj()), { mode: 0o644 }); chmodSync(f, 0o644); }), expected), /has mode 644, not 600/);
+  assert.throws(() => adopt.copySecrets({ dir: src }, fake((f) => { writeFileSync(f, JSON.stringify(secretsObj()), { mode: 0o644 }); chmodSync(f, 0o644); }), expected), /the copy has the wrong file mode/);
   assert.ok(!existsSync(join(dst, 'secrets.json')), 'a copy with a wrong mode is removed');
   assert.throws(() => adopt.copySecrets({ dir: src }, fake(() => {}), 'e'.repeat(64)), /changed or became invalid/, 'a digest that is not the validated one is refused before anything is written');
   const good = adopt.copySecrets({ dir: src }, fake((f) => { writeFileSync(f, JSON.stringify(secretsObj()), { mode: 0o600 }); chmodSync(f, 0o600); }), expected);
   assert.equal(good.users, 6); assert.equal(good.digest12, expected.slice(0, 12));
+});
+
+const FAKE_SECRET = 'FAKE-SECRET-VALUE-do-not-leak-0123456789';
+test('inspectSecrets rejects null, arrays and primitives explicitly (and says so without quoting the file)', () => {
+  const dir = tmp();
+  for (const [label, raw] of [['null', 'null'], ['an array', '[1,2]'], ['an array holding the secret', `["${FAKE_SECRET}"]`], ['true', 'true'], ['a number', '5'], ['a string', `"${FAKE_SECRET}"`]]) {
+    writeFileSync(join(dir, 'secrets.json'), raw, { mode: 0o600 });
+    const r = adopt.inspectSecrets(dir);
+    assert.ok(r.problems.some((p: string) => /secrets\.json is not a JSON object/.test(p)), `${label}: rejected`); assert.equal(r.parsed, null, `${label}: nothing is parsed for use`); assert.equal(r.digest, null);
+    assert.ok(!JSON.stringify(r.problems).includes(FAKE_SECRET), `${label}: the problem text never quotes the file`);
+  }
+  writeFileSync(join(dir, 'secrets.json'), `{"users":{"b1":{"password":"${FAKE_SECRET}"`, { mode: 0o600 }); // truncated: a parse error would normally quote text
+  const bad = adopt.inspectSecrets(dir); assert.deepEqual(bad.problems, ['secrets.json is not valid JSON']); assert.ok(!JSON.stringify(bad).includes(FAKE_SECRET));
+});
+test('a source secrets file that is JSON null (or another non-object) stops the adoption at A6 before anything is copied', async () => {
+  for (const raw of ['null', '[]', '7', 'true']) await refuses(`secrets.json is ${raw}`, { secretsRaw: raw }, /secrets\.json is not a JSON object/, ['A6']);
+});
+test('copySecrets errors are FIXED messages: malformed copied JSON containing a fake secret, an unwritable copy and an unreadable copy never quote any text', () => {
+  const base = tmp(); const src = join(base, 'src'); const dst = join(base, 'dst'); mkdirSync(src, { mode: 0o700 }); mkdirSync(dst, { mode: 0o700 });
+  writeFileSync(join(src, 'secrets.json'), JSON.stringify(secretsObj()), { mode: 0o600 }); const expected = adopt.inspectSecrets(src).digest;
+  const file = join(dst, 'secrets.json');
+  const attemptCopy = (saveSecrets: () => void) => { try { adopt.copySecrets({ dir: src }, { dir: dst, saveSecrets }, expected); } catch (e) { return e as Error; } return null; };
+  const malformed = attemptCopy(() => writeFileSync(file, `{"users":{"b1":{"password":"${FAKE_SECRET}", "totp": oops`, { mode: 0o600 }));
+  assert.ok(malformed instanceof adopt.AdoptRefused); assert.equal(malformed!.message, 'adoption refused (1): A6 the secrets copy failed its integrity check (the copy could not be read back as valid JSON); the copy was removed and nothing was recorded');
+  for (const needle of [FAKE_SECRET, 'oops', 'Unexpected', 'position', 'JSON.parse', 'token']) assert.ok(!malformed!.message.includes(needle) && !JSON.stringify((malformed as unknown as { problems: string[] }).problems).includes(needle), `no quoted text: ${needle}`);
+  assert.ok(!existsSync(file), 'the malformed copy is removed');
+  const unwritable = attemptCopy(() => { throw new Error(`disk problem near ${FAKE_SECRET}`); });
+  assert.equal(unwritable!.message, 'adoption refused (1): A6 the secrets copy failed its integrity check (the copy could not be written); the copy was removed and nothing was recorded'); assert.ok(!unwritable!.message.includes(FAKE_SECRET));
+  const missing = attemptCopy(() => {}); // saveSecrets wrote nothing: the copy cannot be verified
+  assert.equal(missing!.message, 'adoption refused (1): A6 the secrets copy failed its integrity check (the copy could not be verified); the copy was removed and nothing was recorded');
+  const differs = attemptCopy(() => writeFileSync(file, JSON.stringify({ users: { b1: { password: FAKE_SECRET } } }), { mode: 0o600 }));
+  assert.match(differs!.message, /\(the copy differs from the source\)/); assert.ok(!differs!.message.includes(FAKE_SECRET));
+});
+test('A5 is worded as what it checks: Auth presence, account status and assignments; the s-sess sign-out is inherited evidence, not freshly verified', () => {
+  const src = readFileSync(join(root, 'scripts/hosted/lib/adopt.mjs'), 'utf8'); const readme = readFileSync(join(root, 'scripts/hosted/README.md'), 'utf8');
+  assert.match(src, /A5: "each fixture user's Auth presence, account status and active staff assignments match the expected post-test state .*that s-sess stays signed out is inherited evidence \(H6\), not freshly verified"/);
+  assert.match(readme, /does \*\*not\*\* freshly verify that `s-sess` stays signed out/);
+  assert.doesNotMatch(src.split('\n').filter((l) => /A5:/.test(l)).join(''), /s-sess signed out, s-rm/);
 });

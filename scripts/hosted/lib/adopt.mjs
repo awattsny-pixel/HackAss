@@ -170,7 +170,7 @@ export async function runAdoption({ ctx, run, flags, profile, git, repoRoot, exp
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // adopt --through=s8: carry the S7 AND S8 progress of a blocked run into a NEW run at a new commit (used while finding F-H9-1 is open, so the checks that remain can run). Read-only against the
 // target (ledger and fixture inspection are reads); the source run is never written; the fixtures' private secrets are copied with integrity checks. Rules, in addition to A1 to A4:
-//   A5 each recorded fixture user is in its EXPECTED POST-TEST state (not "every user exists": b2 was deleted on purpose, s-sess signed out, s-rm de-staffed). Nothing is recreated or reset.
+//   A5 each recorded fixture user's Auth presence, account status and ACTIVE STAFF ASSIGNMENTS match the EXPECTED POST-TEST state (not "every user exists": b2 was deleted on purpose, s-rm de-staffed, s-mfa and s-rev still staffed). That s-sess was signed out is NOT freshly verified here (an Auth session cannot be read back): it is inherited evidence (H6). Nothing is recreated or reset.
 //   A6 the fixtures' secrets file is copied (mode 0600), read back, and equal to the source by canonical content digest, before anything is recorded.
 // Provenance is preserved, not flattened: a stage that was already inherited keeps its earlier adoption as `previous`; every earlier failed attempt stays in the history; completed checks (including
 // the MFA evidence H6, H7, H8, H8-default) are recorded INHERITED with their original facts, never PASS.
@@ -194,8 +194,9 @@ export function inspectSecrets(dir, users = FIXTURE_USERS) {
   const st = statSync(f);
   if (!st.isFile()) problems.push('secrets.json is not a regular file');
   if ((st.mode & 0o077) !== 0) problems.push('secrets.json is readable by group or others (mode must be 0600)');
-  let parsed = null; try { parsed = JSON.parse(readFileSync(f, 'utf8')); } catch { problems.push('secrets.json is not valid JSON'); }
-  if (parsed !== null && (typeof parsed !== 'object' || Array.isArray(parsed))) { problems.push('secrets.json is not a JSON object'); parsed = null; }
+  let parsed = null; let readable = false;
+  try { parsed = JSON.parse(readFileSync(f, 'utf8')); readable = true; } catch { problems.push('secrets.json is not valid JSON'); } // fixed text: a parse error can quote the file
+  if (readable && (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed))) { problems.push('secrets.json is not a JSON object (null, an array or a plain value is refused)'); parsed = null; }
   if (parsed) {
     for (const u of users) { if (typeof parsed.users?.[u]?.password !== 'string' || !parsed.users[u].password) problems.push(`secrets.json has no password for ${u}`); }
     for (const u of ['s-rm', 's-mfa', 's-rev']) if (typeof parsed.users?.[u]?.totpSecret !== 'string' || typeof parsed.users?.[u]?.factorId !== 'string') problems.push(`secrets.json has no TOTP material for ${u}`);
@@ -206,14 +207,19 @@ export function inspectSecrets(dir, users = FIXTURE_USERS) {
 export function copySecrets(src, run, expectedDigest) {
   const now = inspectSecrets(src.dir); // re-read: the copy is made from what is on disk now, and must still be what was validated
   if (now.problems.length || now.digest !== expectedDigest) throw new AdoptRefused(['A6 the source secrets changed or became invalid while the adoption ran']);
-  run.saveSecrets(now.parsed);
   const dest = path.join(run.dir, 'secrets.json');
+  try { run.saveSecrets(now.parsed); } catch { rmSync(dest, { force: true }); throw new AdoptRefused(['A6 the secrets copy failed its integrity check (the copy could not be written); the copy was removed and nothing was recorded']); }
+  // Every failure below maps to a FIXED message: an exception message (for example a JSON parse error) can quote text of the secrets file and must never be recorded or printed.
+  let why = null;
   try {
-    const mode = statSync(dest).mode & 0o777; if (mode !== 0o600) throw new Error(`the copy has mode ${mode.toString(8)}, not 600`);
-    const back = JSON.parse(readFileSync(dest, 'utf8'));
-    if (secretsDigest(back) !== expectedDigest) throw new Error('the copy differs from the source');
-    const again = inspectSecrets(src.dir); if (again.digest !== expectedDigest) throw new Error('the source changed while it was copied');
-  } catch (e) { rmSync(dest, { force: true }); throw new AdoptRefused([`A6 the secrets copy failed its integrity check (${e.message}); the copy was removed and nothing was recorded`]); }
+    if ((statSync(dest).mode & 0o777) !== 0o600) why = 'the copy has the wrong file mode';
+    else {
+      let back = null; try { back = JSON.parse(readFileSync(dest, 'utf8')); } catch { why = 'the copy could not be read back as valid JSON'; }
+      if (!why && secretsDigest(back) !== expectedDigest) why = 'the copy differs from the source';
+      if (!why && inspectSecrets(src.dir).digest !== expectedDigest) why = 'the source changed while it was copied';
+    }
+  } catch { why = 'the copy could not be verified'; }
+  if (why) { rmSync(dest, { force: true }); throw new AdoptRefused([`A6 the secrets copy failed its integrity check (${why}); the copy was removed and nothing was recorded`]); }
   return { digest12: expectedDigest.slice(0, 12), users: Object.keys(now.parsed.users ?? {}).length };
 }
 
@@ -319,7 +325,7 @@ export async function runAdoptionS8({ ctx, run, flags, profile, git, repoRoot, e
     if (plan && !sourceUnchanged(src)) { plan = null; rmSync(path.join(run.dir, 'secrets.json'), { force: true }); problems.push('A1 the source run changed while it was being read'); }
   }
   const titles = { A1: 'the source run is a valid blocked run: S7 and S8 stages done through session-checks, worker-checks the only failed stage, nothing beyond it', A2: 'the same project and the same validated target binding',
-    A3: 'the migration files are unchanged since the source commit', A4: "the live migration ledger equals the repository and the source run's recorded ledger", A5: 'each fixture user is in its expected post-test state (b2 deleted, s-sess signed out, s-rm de-staffed, the staff fixtures still staffed)',
+    A3: 'the migration files are unchanged since the source commit', A4: "the live migration ledger equals the repository and the source run's recorded ledger", A5: "each fixture user's Auth presence, account status and active staff assignments match the expected post-test state (b2 absent and deleted, s-rm de-staffed, s-mfa and s-rev still staffed); that s-sess stays signed out is inherited evidence (H6), not freshly verified",
     A6: "the fixtures' private secrets were copied (mode 0600) and verified equal to the source by content digest" };
   for (const id of ['A1', 'A2', 'A3', 'A4', 'A5', 'A6']) {
     const mine = problems.filter((p) => p.startsWith(`${id} `));
