@@ -105,6 +105,10 @@ test('refused: the source run is bound to another profile', async () => {
   await refuses('profile', { state: st }, /bound to the selftest profile/, ['A2']);
 });
 test('refused: migration files changed since the source commit', async () => { await refuses('changed', { changed: ['supabase/migrations/20261019090100_x.sql'] }, /migration files changed since the source commit: supabase\/migrations\/20261019090100_x\.sql/, ['A3']); });
+test('a refusal names exactly the rule that failed: with changed migrations only A3 fails and A1, A2, A4 pass', async () => {
+  const a = await attempt({ changed: ['supabase/migrations/x.sql'] });
+  assert.deepEqual(a.newResults.filter((r: { id: string }) => /^A\d$/.test(r.id)).map((r: { id: string; status: string }) => `${r.id}:${r.status}`), ['A1:PASS', 'A2:PASS', 'A3:FAIL', 'A4:PASS']);
+});
 test('refused: the source commit is unknown or git fails', async () => { await refuses('git', { changed: new (adopt.AdoptRefused)(['the source commit aaaaaaaaaaaa is not in this repository']) }, /not in this repository/, ['A3']); });
 test('refused: the live ledger differs (count, versions or md5)', async () => {
   await refuses('count', { live: { count: 2, versions: VERSIONS.slice(0, 2), md5: MD5 } }, /not exactly the repository's 3 migrations/, ['A4']);

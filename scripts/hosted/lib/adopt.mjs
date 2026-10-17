@@ -127,7 +127,7 @@ export function planAdoption({ source, profile, targetsHash, head, projectRef, e
  */
 export async function runAdoption({ ctx, run, flags, profile, git, repoRoot, expectedRef, say, targetsHash, deps }) {
   const c = checker(run, say, { continueOnFail: true });
-  const problems = []; let plan = null; let src = null;
+  const problems = []; let plan = null; let src = null; let evaluated = false;
   const fromRun = flags['from-run'];
   if (typeof fromRun !== 'string') throw new Error('--from-run=<source run id> is required');
   if (fromRun === run.runId) problems.push('A1 the source run and the new run are the same run');
@@ -135,6 +135,7 @@ export async function runAdoption({ ctx, run, flags, profile, git, repoRoot, exp
   if (Object.keys(here.stages ?? {}).some((k) => k !== 'adopt') || (here.history ?? []).length) problems.push('A1 the new run is not fresh (it already has stages or history): adoption needs a new run id');
   try { src = deps.readSource(fromRun, profile); } catch (e) { if (e instanceof AdoptRefused) problems.push(...e.problems.map((p) => (/^A\d /.test(p) ? p : `A1 ${p}`))); else throw e; }
   if (src && !problems.length) {
+    evaluated = true; // from here every rule is evaluated, so a rule with no problem of its own passed
     let changed = null; let live = null;
     try { changed = deps.changes(repoRoot, src.state.binding?.commit); } catch (e) { problems.push(`A3 ${e instanceof AdoptRefused ? e.problems.join('; ') : `the migration comparison failed: ${e?.message ?? e}`}`); }
     try { live = await deps.queryLedger(ctx); } catch (e) { problems.push(`A4 the live ledger could not be read: ${e?.message ?? e}`); }
@@ -149,8 +150,8 @@ export async function runAdoption({ ctx, run, flags, profile, git, repoRoot, exp
     const mine = problems.filter((p) => p.startsWith(`${id} `));
     await c.check(id, titles[id], async () => {
       if (mine.length) throw new Error(mine.map((p) => p.slice(3)).join('; '));
-      if (!plan) throw new Error('not evaluated because an earlier step failed');
-      return id === 'A4' ? `live ledger ${deps.repoVersions().length} versions, md5 ${plan.facts.ledger_md5_after_migrate}` : id === 'A1' ? `source run ${plan.from.run} at ${plan.from.commit.slice(0, 12)}` : 'ok';
+      if (!evaluated) throw new Error('not evaluated because the source run could not be read');
+      return plan ? (id === 'A4' ? `live ledger ${deps.repoVersions().length} versions, md5 ${plan.facts.ledger_md5_after_migrate}` : id === 'A1' ? `source run ${plan.from.run} at ${plan.from.commit.slice(0, 12)}` : 'ok') : 'ok';
     });
   }
   if (!plan || problems.length) return c.out;
