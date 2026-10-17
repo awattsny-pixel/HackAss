@@ -2,7 +2,8 @@
 // Authorization S8 (MUTATING): `worker-checks` = H9 (worker authentication and privileges through the pooler; read-only queries and expected refusals) and H10 (the worker job
 // functions with an explicit, narrowly scoped synthetic job fixture). Needs the `fixtures` and `worker-marker` stages and the owner's worker password in the password file.
 // Usage: node scripts/hosted/checks-worker.mjs --run-id=... --authorized=S8@<sha> --confirm-mutating=worker-checks [--profile=...]
-import { runStage, checker, ok } from './lib/cli.mjs';
+import { runStage, checker, ok, EXCEPTED } from './lib/cli.mjs';
+import { judgeUniformRefusal } from './lib/findings.mjs';
 import { runSql, queryJson, queryText, wrongPasswordProbe } from './lib/pg.mjs';
 import { signIn, steppedUp, doc, submit, approve, publish, api, errMsg } from './lib/flows.mjs';
 import { PROBES, JOB_DUE_SQL } from './lib/sqlguard.mjs';
@@ -11,9 +12,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const tomorrowUtc = () => new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
 const SUBJECT_KEYS = ['hack_id', 'is_current', 'job_id', 'job_type', 'lease_epoch', 'next_rights_expiry', 'publication_id', 'version_id'];
 
-const code = await runStage('worker-checks', process.argv.slice(2), async ({ ctx, run, say }) => {
+const code = await runStage('worker-checks', process.argv.slice(2), async ({ ctx, run, flags, say }) => {
   const c = checker(run, say);
+  const knownFinding = flags['known-finding'] ?? null; // an explicit, narrowly scoped exception (lib/findings.mjs); null = every check is strict
   const state = run.state(); const sec = run.secrets();
+  let probed = null; const wrongPasswords = async () => (probed ??= await wrongPasswordProbe(ctx, run.dir));
   const ids = () => new Set(Object.values(state.fixtures.users).map((u) => u.id.toLowerCase()));
 
   await c.check('H9', 'the worker login authenticates through both pooler modes, has the documented defaults, can call healthcheck and is refused everything else', async () => {
@@ -31,14 +34,23 @@ const code = await runStage('worker-checks', process.argv.slice(2), async ({ ctx
       }
       notes.push(`${ep}: defaults ${st}/${idle}/empty search_path, healthcheck ok, ${PROBES.length} probes refused`);
     }
-    // a wrong password is refused, with the same error for the worker login and for a nonexistent login (no existence oracle). The probe has its own purpose-built function:
-    // it writes its own placeholder password file and can name only exactly those two logins.
-    const probe = await wrongPasswordProbe(ctx, run.dir);
-    const norm = (e) => e.replace(/user "[^"]*"/g, 'user "X"').split('\n').find((l) => /failed|FATAL|error/i.test(l)) ?? '';
+    // a wrong password is refused for the worker login and for a nonexistent login (H9b below compares the two refusals). The probe has its own purpose-built function: it writes its own
+    // placeholder password file and can name only exactly those two logins. It runs ONCE (2 failed connection attempts) and both checks use its result.
+    const probe = await wrongPasswords();
     ok(!probe.real.ok && !probe.fake.ok, 'a wrong password was accepted');
     ok(/authentication failed|password/i.test(probe.real.stderr), `unexpected refusal text for the wrong password: ${probe.real.stderr.split('\n')[0]}`);
-    ok(norm(probe.real.stderr).replace(/\(.*?\)/g, '') === norm(probe.fake.stderr).replace(/\(.*?\)/g, ''), 'the refusal for a nonexistent role differs from the one for the real role (existence oracle)');
-    return notes.join(' | ') + ' | wrong password refused identically for an existing and a nonexistent role';
+    return notes.join(' | ') + ' | wrong password refused for the real login and for a nonexistent login';
+  });
+
+  await c.check('H9b', 'the refusal of a wrong password is the same for the worker login and for a nonexistent login (no existence oracle)', async () => {
+    const probe = await wrongPasswords();
+    const v = judgeUniformRefusal({ real: probe.real, fake: probe.fake, knownFinding });
+    if (v.status === 'PASS') return 'the two refusals are identical after normalisation';
+    if (v.status === 'EXCEPTION') {
+      c.exception('H9b', 'the refusal of a wrong password is the same for the worker login and for a nonexistent login (no existence oracle)', { finding: knownFinding, error: `the refusals differ (open finding ${knownFinding}): real login: ${v.real} | nonexistent login: ${v.fake}`, facts: { real: v.real, fake: v.fake, endpoint: 'worker-txn' } });
+      return EXCEPTED;
+    }
+    throw new Error(`${v.error}${v.real || v.fake ? ` | real login: ${v.real} | nonexistent login: ${v.fake}` : ''}`);
   });
 
   await c.check('H10', 'a recheck job is made due by one scoped update and then claimed, read, extended and completed by the worker through transaction mode; replays are refused', async () => {

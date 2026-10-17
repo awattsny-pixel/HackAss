@@ -11,11 +11,12 @@ export const OWNER_ACTIONS = Object.freeze([
 ]);
 
 export function evaluateRun(state, results) {
-  const last = new Map(); const failed = new Set(); const stageErrors = [];
+  const last = new Map(); const failed = new Set(); const excepted = new Map(); const stageErrors = [];
   for (const r of results) {
     if (r.id === 'STAGE-ERROR') { stageErrors.push(r); continue; }
     last.set(r.id, r);
     if (r.status === 'FAIL') failed.add(r.id);
+    if (r.status === 'EXCEPTION') excepted.set(r.id, r);
   }
   const rows = [];
   for (const [stage, ids] of REQUIRED_CHECKS) {
@@ -37,6 +38,7 @@ export function evaluateRun(state, results) {
   const earlier = (state.history ?? []).filter((h) => h?.stage && h.stage !== 'evidence' && ['failed', 'interrupted', 'running'].includes(h.status));
   const failedReasons = [];
   if (fails.length) failedReasons.push(`failed checks: ${fails.join(', ')}`);
+  if (excepted.size) failedReasons.push(`open finding(s) carried by an exception, not passed: ${[...excepted.values()].map((r) => `${r.id} (${r.finding})`).join(', ')}`);
   if (unhealthy.length) failedReasons.push(`unhealthy stages: ${unhealthy.join(', ')}`);
   if (earlier.length) failedReasons.push(`earlier attempts that failed or were interrupted (kept although a retry followed): ${earlier.map((h) => `${h.stage} (${h.status})`).join(', ')}`);
   if (stageErrors.length) failedReasons.push(`${stageErrors.length} unexpected stage error(s): ${[...new Set(stageErrors.map((e) => e.stage))].join(', ')}`);
@@ -47,5 +49,5 @@ export function evaluateRun(state, results) {
   if (!dateOk) incompleteReasons.push(date === null ? 'the owner-confirmed deletion date is not recorded' : 'the recorded deletion date is not a valid calendar date');
   const outcome = failedReasons.length ? 'FAILED' : incompleteReasons.length ? 'INCOMPLETE' : 'COMPLETE';
   const inherited = rows.filter((r) => r.status === 'INHERITED');
-  return { outcome, reasons: [...failedReasons, ...incompleteReasons], rows, inherited, notRun, fails, unhealthy, earlier, stageErrors, scriptCleanupDone, ownerDate: dateOk ? date : null, ownerActions: OWNER_ACTIONS };
+  return { outcome, reasons: [...failedReasons, ...incompleteReasons], rows, inherited, excepted: [...excepted.values()], notRun, fails, unhealthy, earlier, stageErrors, scriptCleanupDone, ownerDate: dateOk ? date : null, ownerActions: OWNER_ACTIONS };
 }

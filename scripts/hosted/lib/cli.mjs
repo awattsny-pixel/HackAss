@@ -9,12 +9,13 @@ import { redact } from './redact.mjs';
 import { SqlRefused } from './sqlguard.mjs';
 import { RECOVERY, STAGES } from './stages.mjs';
 import { privateFileProblems } from './secretfile.mjs';
+import { KNOWN_FINDINGS } from './findings.mjs';
 import { validateOwnerDate, DateRefused } from './dates.mjs';
 import { readFileSync, writeSync } from 'node:fs';
 import { killActiveChildren } from './exec.mjs';
 import { reapInflightContainers } from './pg.mjs';
 
-const FLAGS = new Set(['profile', 'run-id', 'authorized', 'confirm-mutating', 'owner-confirmed', 'allow-existing-schemas', 'default-window', 'owner-deletion-date', 'out', 'delete-raw', 'from-run', 'retry-after-review']);
+const FLAGS = new Set(['profile', 'run-id', 'authorized', 'confirm-mutating', 'owner-confirmed', 'allow-existing-schemas', 'default-window', 'owner-deletion-date', 'out', 'delete-raw', 'from-run', 'through', 'known-finding', 'retry-after-review']);
 export function parseFlags(argv) {
   const flags = {};
   for (const a of argv) {
@@ -72,6 +73,11 @@ export async function runStage(stage, argv, fn, { env = process.env, git = gitSt
     const profile = flags.profile ?? 'staging';
     if (profile === 'selftest' && env.HOSTED_SELFTEST !== '1') throw new GateRefused('the selftest profile needs HOSTED_SELFTEST=1 (it is only for the disposable local stack)');
     const def = STAGES[stage];
+    if (flags['known-finding'] !== undefined) { // an exception is named exactly, and only the stage that carries it accepts it
+      const f = KNOWN_FINDINGS[flags['known-finding']];
+      if (!f) throw new GateRefused(`--known-finding must name a known finding exactly (${Object.keys(KNOWN_FINDINGS).join(', ')})`);
+      if (f.stage !== stage) throw new GateRefused(`--known-finding=${flags['known-finding']} is accepted only by the ${f.stage} stage`);
+    }
     if (flags['owner-deletion-date'] !== undefined) { try { validateOwnerDate(flags['owner-deletion-date']); } catch (e) { if (e instanceof DateRefused) throw new GateRefused(e.message); throw e; } }
     run = openRun({ runId: flags['run-id'], profile, repoRoot });
     // The lock comes FIRST: a process that is refused it changes nothing in the run, not even its redaction state. Redaction is initialised under the lock, before any secret is registered.
@@ -94,7 +100,7 @@ export async function runStage(stage, argv, fn, { env = process.env, git = gitSt
     for (const [sig, h] of Object.entries(handlers)) process.on(sig, h);
     const outcome = await fn({ ctx, run, state, flags, profile, git, say, def });
     const fresh = run.state();
-    fresh.stages[stage] = { status: outcome.failed === 0 ? 'done' : 'failed', at: new Date().toISOString(), commit: git.head, passed: outcome.passed, failed: outcome.failed };
+    fresh.stages[stage] = { status: outcome.failed === 0 ? 'done' : 'failed', at: new Date().toISOString(), commit: git.head, passed: outcome.passed, failed: outcome.failed, ...(outcome.exceptions?.length ? { exceptions: outcome.exceptions } : {}) };
     run.save(fresh);
     say(`stage ${stage}: ${outcome.passed} passed, ${outcome.failed} failed`);
     code = outcome.failed === 0 ? 0 : 1;
@@ -116,17 +122,24 @@ export async function runStage(stage, argv, fn, { env = process.env, git = gitSt
   return code;
 }
 
+/** Returned by a check function that has recorded itself with `exception(...)`: the checker then logs no PASS. */
+export const EXCEPTED = Symbol('excepted');
 /** Collects PASS/FAIL results of a stage; a thrown error inside a check is a FAIL with its (redacted) message. By default it stops after the first failure (the stop rule);
  *  `continueOnFail` is for cleanup only, where every independent step must be attempted. */
 export function checker(run, say, { continueOnFail = false } = {}) {
-  const out = { passed: 0, failed: 0, stopped: false };
+  const out = { passed: 0, failed: 0, stopped: false, exceptions: [] };
   return {
     out,
+    /** Record a check that FAILED but is covered by a named, narrowly scoped exception: status EXCEPTION (never PASS), kept in the results and in the stage's `exceptions`; it does not stop the stage and is not counted as passed or failed. */
+    exception(id, title, { finding, error, facts }) {
+      out.exceptions.push({ id, finding }); run.log({ id, status: 'EXCEPTION', title, finding, error, facts }); say(`EXCEPTION  ${id}  ${title}  -> ${error} [open finding ${finding}]`);
+    },
     async check(id, title, fn) {
       if (out.stopped) { run.log({ id, status: 'SKIP', title, reason: 'an earlier check failed' }); say(`SKIP  ${id}  ${title}`); return; }
       const t0 = Date.now();
       try {
         const facts = await fn();
+        if (facts === EXCEPTED) return; // the check recorded itself as an EXCEPTION (c.exception): it is not a pass
         out.passed++; run.log({ id, status: 'PASS', title, facts: facts ?? null, ms: Date.now() - t0 }); say(`PASS  ${id}  ${title}${facts ? `  [${facts}]` : ''}`);
       } catch (e) {
         out.failed++; if (!continueOnFail) out.stopped = true; run.log({ id, status: 'FAIL', title, error: String(e?.message ?? e), ms: Date.now() - t0 }); say(`FAIL  ${id}  ${title}  -> ${e?.message ?? e}`);

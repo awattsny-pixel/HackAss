@@ -102,7 +102,7 @@ test('the redaction salt is created exclusively and never replaced; redaction ca
 });
 
 // ---------- 2. earlier failed or interrupted attempts stay in the evidence outcome ----------
-const REQUIRED = ['H0', 'H1a', 'H1b', 'H2a', 'H2b', 'H2c', 'H3', 'H4', 'H5a', 'FX0', 'H5b', 'FX1', 'H6', 'H7', 'H8', 'H8-default', 'H9', 'H10', 'H11', 'H12a', 'H12b', 'H12c', 'H13a', 'H13b', 'H13c'];
+const REQUIRED = ['H0', 'H1a', 'H1b', 'H2a', 'H2b', 'H2c', 'H3', 'H4', 'H5a', 'FX0', 'H5b', 'FX1', 'H6', 'H7', 'H8', 'H8-default', 'H9', 'H9b', 'H10', 'H11', 'H12a', 'H12b', 'H12c', 'H13a', 'H13b', 'H13c'];
 const doneStages = () => Object.fromEntries(['preflight', 'identity', 'migrate', 'exposure', 'worker-marker', 'rerun', 'inventory', 'fixtures', 'session-checks', 'worker-checks', 'catalog-checks', 'isolation', 'cleanup'].map((s) => [s, { status: 'done', commit: SHA }]));
 const passes = (ids: string[]) => ids.map((id) => ({ id, status: 'PASS', ms: 1, facts: 'ok' }));
 test('an interrupted or failed earlier attempt is never forgotten: the outcome stays FAILED although every current state is done', () => {

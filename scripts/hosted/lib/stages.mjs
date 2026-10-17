@@ -27,6 +27,6 @@ export const RETRYABLE_AFTER_REVIEW = new Set(['preflight', 'exposure', 'invento
 /** Stage order for reporting, and the checks a complete run must have passed. H8-default is the hosted 15-minute MFA test. */
 export const REQUIRED_CHECKS = Object.freeze([
   ['preflight', ['H0', 'H1a']], ['identity', ['H1b']], ['migrate', ['H2a']], ['exposure', ['H2b']], ['worker-marker', ['H2c']], ['rerun', ['H3']], ['inventory', ['H4', 'H5a']],
-  ['fixtures', ['FX0', 'H5b', 'FX1']], ['session-checks', ['H6', 'H7', 'H8', 'H8-default']], ['worker-checks', ['H9', 'H10']], ['catalog-checks', ['H11']],
+  ['fixtures', ['FX0', 'H5b', 'FX1']], ['session-checks', ['H6', 'H7', 'H8', 'H8-default']], ['worker-checks', ['H9', 'H9b', 'H10']], ['catalog-checks', ['H11']],
   ['isolation', ['H12a', 'H12b', 'H12c']], ['cleanup', ['H13a', 'H13b', 'H13c']],
 ]);
