@@ -1,5 +1,6 @@
-// The hosted Data API serves the OpenAPI description (GET /rest/v1/) to a SECRET key only: a publishable or member credential gets HTTP 401 (the S7 part B attempt recorded exactly that,
-// "OpenAPI description: HTTP 401"; self-hosted stacks and the local selftest are unaffected, which hid it). These tests run the exposure checks against a stub that behaves like the hosted
+// The hosted Data API serves the OpenAPI description (GET /rest/v1/) to a SECRET key only: a publishable or member credential gets HTTP 401 "Secret API key required" (the S7 part B attempt recorded
+// "OpenAPI description: HTTP 401"; the owner's diagnostic showed the body, and the secret key answered 200 listing all 19 api functions plus `/`; self-hosted stacks and the local selftest do not
+// restrict the root, which hid it). These tests run the exposure checks against a stub that behaves like the hosted
 // project and prove: the description is read with the secret key in `apikey` only; the public and isolation checks use real endpoints with their own credentials and never the root; and
 // a schema that IS exposed is still caught. Nothing here contacts a hosted system: the stub listens on 127.0.0.1 and the keys are fake, assembled at run time.
 import test from 'node:test';
@@ -23,7 +24,7 @@ type Seen = { method: string; path: string; apikey?: string; authorization?: str
 type Ctx = { keys: { publishable: string; secret: string } };
 async function withStub(opts: Opts, fn: (ctx: Ctx, seen: Seen[]) => Promise<void>) {
   const exposed = opts.exposed ?? ['api'];
-  const paths = opts.openApiPaths ?? ['/']; // measured locally: the secret key is the service role, which may execute no api function, so its description lists only the root
+  const paths = opts.openApiPaths ?? ['/', ...cfg.API_FUNCTIONS.map((n: string) => `/rpc/${n}`)]; // hosted: the secret-key description listed all 19 api functions plus the root (the local stack lists only the root)
   const seen: Seen[] = [];
   const send = (res: http.ServerResponse, status: number, body: unknown) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
   const refuse = (res: http.ServerResponse) => send(res, 406, { code: 'PGRST106', message: 'The schema must be one of the following: ' + exposed.join(', '), hint: `Only the following schemas are exposed: ${exposed.join(', ')}` });
@@ -33,7 +34,7 @@ async function withStub(opts: Opts, fn: (ctx: Ctx, seen: Seen[]) => Promise<void
     seen.push({ method: req.method ?? '', path: p, apikey: h.apikey as string | undefined, authorization: h.authorization as string | undefined, profile });
     req.resume();
     if (p === '/rest/v1/') { // the OpenAPI root
-      if (!opts.rootOpenToAll && h.apikey !== SEC) return send(res, 401, { message: 'Access to schema is forbidden', hint: 'Accessing the schema via the Data API is only allowed using a secret API key.' });
+      if (!opts.rootOpenToAll && h.apikey !== SEC) return send(res, 401, { message: 'Secret API key required' });
       if (profile && !exposed.includes(profile)) return refuse(res);
       return send(res, 200, { swagger: '2.0', paths: Object.fromEntries(paths.map((x) => [x, {}])) });
     }
@@ -79,7 +80,7 @@ test('H2b still fails when a non-exposed schema is exposed (the refusal checks a
   await withStub({ exposed: ['api', 'app'] }, async (ctx) => { await assert.rejects(() => expo.verifyExposure(ctx, { staging: true }), /private schema is exposed|app/); });
 });
 test('H2b still inspects the description and the anonymous public read: a table path, an extra function, a denied anonymous read or an unexposed api fails', async () => {
-  const base = ['/', ...cfg.API_FUNCTIONS.map((n: string) => `/rpc/${n}`)]; // a description that lists the documented functions is also fine (a different platform or grants)
+  const base = ['/', ...cfg.API_FUNCTIONS.map((n: string) => `/rpc/${n}`)];
   await withStub({ openApiPaths: [...base, '/hacks'] }, async (ctx) => { await assert.rejects(() => expo.verifyExposure(ctx, { staging: true }), /non-function paths/); });
   await withStub({ openApiPaths: [...base, '/rpc/not_in_the_allowlist'] }, async (ctx) => { await assert.rejects(() => expo.verifyExposure(ctx, { staging: true }), /outside the api allowlist/); });
   await withStub({ anonDenied: true }, async (ctx) => { await assert.rejects(() => expo.verifyExposure(ctx, { staging: true }), /anonymous list_public_hacks through api: HTTP 401 42501 \(is api exposed\?\)/); }); // api exposed but the anonymous read fails

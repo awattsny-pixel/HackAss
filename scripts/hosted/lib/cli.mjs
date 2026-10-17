@@ -14,7 +14,7 @@ import { readFileSync, writeSync } from 'node:fs';
 import { killActiveChildren } from './exec.mjs';
 import { reapInflightContainers } from './pg.mjs';
 
-const FLAGS = new Set(['profile', 'run-id', 'authorized', 'confirm-mutating', 'owner-confirmed', 'allow-existing-schemas', 'default-window', 'owner-deletion-date', 'out', 'delete-raw', 'retry-after-review']);
+const FLAGS = new Set(['profile', 'run-id', 'authorized', 'confirm-mutating', 'owner-confirmed', 'allow-existing-schemas', 'default-window', 'owner-deletion-date', 'out', 'delete-raw', 'from-run', 'retry-after-review']);
 export function parseFlags(argv) {
   const flags = {};
   for (const a of argv) {

@@ -46,5 +46,6 @@ export function evaluateRun(state, results) {
   if (!scriptCleanupDone) incompleteReasons.push('script cleanup (H13a to H13c) is not done');
   if (!dateOk) incompleteReasons.push(date === null ? 'the owner-confirmed deletion date is not recorded' : 'the recorded deletion date is not a valid calendar date');
   const outcome = failedReasons.length ? 'FAILED' : incompleteReasons.length ? 'INCOMPLETE' : 'COMPLETE';
-  return { outcome, reasons: [...failedReasons, ...incompleteReasons], rows, notRun, fails, unhealthy, earlier, stageErrors, scriptCleanupDone, ownerDate: dateOk ? date : null, ownerActions: OWNER_ACTIONS };
+  const inherited = rows.filter((r) => r.status === 'INHERITED');
+  return { outcome, reasons: [...failedReasons, ...incompleteReasons], rows, inherited, notRun, fails, unhealthy, earlier, stageErrors, scriptCleanupDone, ownerDate: dateOk ? date : null, ownerActions: OWNER_ACTIONS };
 }

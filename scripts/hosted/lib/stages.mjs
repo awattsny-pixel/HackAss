@@ -2,6 +2,7 @@
 // `isolation` is classed as mutating: it creates Auth sessions for the fixture users and POSTs to private functions that WOULD run if isolation were broken.
 export const STAGES = Object.freeze({
   preflight:        { group: 'S6', mutating: false, needs: [], checks: 'H0, H1a' },
+  adopt:            { group: 'S6', mutating: false, needs: [], checks: 'A1 to A4 (inherits preflight, identity and migrate from an earlier run; read-only)' },
   identity:         { group: 'S7', mutating: true,  needs: ['preflight'], checks: 'H1b' },
   migrate:          { group: 'S7', mutating: true,  needs: ['identity'], checks: 'H2a' },
   exposure:         { group: 'S7', mutating: false, needs: ['migrate'], owner: 'exposure', checks: 'H2b (after the owner exposes api only)' },

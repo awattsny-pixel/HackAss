@@ -55,7 +55,8 @@ export function checkGates(stage, flags, state, git, { profile, targetsHash = nu
   const done = (s) => stages[s]?.status === 'done';
   for (const need of def.needs) {
     if (!done(need)) throw new GateRefused(`stage ${need} must be completed in this run before ${stage}`);
-    if (def.local !== true && stages[need].commit !== git.head) throw new GateRefused(`stage ${need} was recorded under commit ${String(stages[need].commit).slice(0, 12)}, not the authorized ${String(git.head).slice(0, 12)}`);
+    const recordedAt = stages[need].inherited ? stages[need].inherited.adoptedAtCommit : stages[need].commit; // an adopted stage counts at the commit it was adopted at; its own `commit` stays the commit it truly ran under
+    if (def.local !== true && recordedAt !== git.head) throw new GateRefused(`stage ${need} was recorded under commit ${String(recordedAt).slice(0, 12)}, not the authorized ${String(git.head).slice(0, 12)}`);
   }
   if (done(stage) && !REREADABLE.has(stage)) throw new GateRefused(`stage ${stage} already ran in this run and is not repeatable`);
   if (def.owner) {

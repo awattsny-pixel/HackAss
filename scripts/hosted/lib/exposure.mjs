@@ -1,9 +1,9 @@
 // What the staging project exposes over the Data API, checked with the right credential for each question.
-//  * METADATA (what is listed): the OpenAPI description at GET /rest/v1/. Supabase serves that root only to a secret key (a publishable or member credential gets HTTP 401; self-hosted and the
-//    local stack are unaffected for the publishable key, which is why the local selftest could not show it). So the description is read with the SECRET key, in `apikey` only (never a Bearer header),
-//    and nothing else. PostgREST lists only what the calling role may execute, and the secret key is the service role, which has no EXECUTE on the api functions (measured on the local stack: the
-//    description lists only `/`). So this read proves that api is exposed and that no table, view or unexpected function is listed; it can NOT show the public functions, which is why the public
-//    catalog read is proved by an actual anonymous call instead.
+//  * METADATA (what is listed): the OpenAPI description at GET /rest/v1/. Supabase serves that root only to a secret key: on hosted staging a publishable key got HTTP 401 ("Secret API key
+//    required") and the secret key got HTTP 200 listing all 19 api functions plus `/` (diagnostic run by the owner). So the description is read with the SECRET key, in `apikey` only (never a
+//    Bearer header), and nothing else. What the listing contains depends on the platform: the LOCAL stack, reading the same root with its service role, lists only `/` (measured), the hosted
+//    project lists the 19. No execution privilege is inferred from either listing: this read proves that api is exposed and that no table, view or function outside the allowlist is listed.
+//    The public catalog read is proved by an actual anonymous call instead.
 //  * PUBLIC ACCESS AND ISOLATION (what a credential may reach): actual API endpoints with that credential. A non-exposed schema is probed with a function call (POST /rest/v1/rpc/<fn>, profile =
 //    the schema) and must answer HTTP 406 PGRST106 naming the exposed list; a table that must not exist in api is probed with GET /rest/v1/<table> and must be "not found". None of these touch the root.
 import { request, rpc } from './http.mjs';
