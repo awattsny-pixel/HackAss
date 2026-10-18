@@ -282,5 +282,5 @@ A run is bound to one commit and a failed or interrupted mutating stage is never
 
 Corrections made while executing (each reviewed and tested locally before use): container cleanup after an interrupt is verified and an unproved cleanup is recorded as NOT PROVEN; the migration route is direct-only with certificate verification (`verify-full`); the OpenAPI description is read with the secret key only, in `apikey`, never a Bearer header; `adopt` and `adopt --through=s8`; the single-finding exception. Fixture secrets were private to each run directory and are removed.
 
-**Not covered by this record:** deployment, GitHub CI, production readiness, F-H9-1 for session mode and the direct host, a second job type. Outstanding owner actions are listed in the evidence and in `docs/foundation/f2-closeout.md` section 7.
+**GitHub CI:** the first GitHub run of the workflow at commit `83aa3cc` passed all four jobs on 2026-10-18 (recorded in `docs/foundation/f2-closeout.md` section 7); it does not involve the hosted project. **Not covered by this record:** deployment, production readiness, F-H9-1 for session mode and the direct host, a second job type. Outstanding owner actions are listed in the evidence and in `docs/foundation/f2-closeout.md` section 7.
 
