@@ -1,0 +1,15 @@
+# Reviewed, exact Gitleaks findings (fingerprint = commit:file:rule:line for history, file:rule:line for the tree).
+# One entry per line; nothing here exempts a file, a commit or a rule as a whole. Review notes are in
+# docs/security/gitleaks.md. Any change to these lines re-surfaces the finding.
+
+# KNOWN REAL EXPOSURES in git history (the credentials must be retired by the owner; history is not rewritten here):
+1307cd05dee946353af37ed48495ae78cdf4e5d9:.env:jwt:5
+c25e78061ffd8ddda046f787d31a13bd68723daa:.env:jwt:2
+c25e78061ffd8ddda046f787d31a13bd68723daa:.env:generic-api-key:3
+# An anon-role key (public by design, but project-identifying) in a planning document:
+1307cd05dee946353af37ed48495ae78cdf4e5d9:SETUP_COMPLETE.md:jwt:104
+
+# DOCUMENTATION EXAMPLE, not a credential: a 39-character JWT-shaped "token" in a sample API response (too short to be a
+# signed token), as added in history. The working tree now holds an obvious placeholder, so there is NO tree exemption.
+c25e78061ffd8ddda046f787d31a13bd68723daa:API_SPECIFICATION.md:generic-api-key:71
+c25e78061ffd8ddda046f787d31a13bd68723daa:API_SPECIFICATION.md:generic-api-key:102

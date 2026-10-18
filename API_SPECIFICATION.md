@@ -68,7 +68,7 @@ Create new user account.
   "id": "user_123abc",
   "email": "user@example.com",
   "username": "johndoe",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token": "<JWT-PLACEHOLDER>",
   "expiresIn": "7d"
 }
 ```
@@ -99,7 +99,7 @@ Authenticate user and get JWT token.
   "id": "user_123abc",
   "email": "user@example.com",
   "username": "johndoe",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token": "<JWT-PLACEHOLDER>",
   "expiresIn": "7d"
 }
 ```

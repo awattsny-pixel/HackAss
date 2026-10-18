@@ -76,7 +76,9 @@ export default function BrowsePage() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount/tab change; moving to a data-loading pattern is deferred (M02/M03 page rebuilds)
     fetchHacks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchHacks reads selectedSort; effect intentionally keyed on filters
   }, [selectedCategory, selectedSort]);
 
   const filteredHacks =

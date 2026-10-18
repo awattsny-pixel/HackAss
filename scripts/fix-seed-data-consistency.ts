@@ -66,8 +66,6 @@ function fixSolution(solution: Solution): Solution {
     // Strategy: Adjust unique_validators to match total votes
     // Success rate stays the same
 
-    const successRate = worked_votes / totalVotes;
-
     return {
       ...solution,
       seed_signals: {

@@ -1,96 +1,16 @@
-import { createClient } from '@supabase/supabase-js';
-import { NextRequest, NextResponse } from 'next/server';
+import { serverDb } from '@/app/lib/supabase-server';
+import { getApprovedHackList } from '@/app/lib/public-reads';
 
-// Use service role key if available (server-side), otherwise fallback to anon key
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-// GET /api/hacks - Fetch approved hacks for the feed
-export async function GET(request: NextRequest) {
-  try {
-    const { data: hacks, error } = await supabase
-      .from('hacks')
-      .select('*')
-      .eq('status', 'approved')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ hacks });
-  } catch (err) {
-    return NextResponse.json(
-      { error: 'Failed to fetch hacks' },
-      { status: 500 }
-    );
-  }
+// GET /api/hacks - approved hacks only, explicit field allowlist
+export async function GET() {
+  return getApprovedHackList(serverDb());
 }
 
 // POST /api/hacks - Submit a new hack
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const {
-      title,
-      description,
-      category,
-      difficulty,
-      why_it_works,
-      content_type,
-      content_url,
-    } = body;
-
-    // Validate required fields
-    if (!title) return NextResponse.json({ error: 'Title is required' }, { status: 400 });
-    if (!description) return NextResponse.json({ error: 'Description is required' }, { status: 400 });
-    if (!category) return NextResponse.json({ error: 'Category is required' }, { status: 400 });
-    if (!why_it_works) return NextResponse.json({ error: 'Why It Works explanation is required' }, { status: 400 });
-
-    // For MVP: link-type content requires a URL; file uploads handled in Phase 2
-    if (content_type === 'link' && !content_url) {
-      return NextResponse.json(
-        { error: 'URL required for link submissions' },
-        { status: 400 }
-      );
-    }
-
-    // Insert hack with pending status
-    const { data, error } = await supabase
-      .from('hacks')
-      .insert({
-        title,
-        description,
-        category,
-        difficulty,
-        why_it_works,
-        content_type,
-        content_url: content_url || null,
-        status: 'pending',
-      })
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(
-      { message: 'Hack submitted successfully', hack: data },
-      { status: 201 }
-    );
-  } catch (err) {
-    return NextResponse.json(
-      { error: 'Failed to submit hack' },
-      { status: 500 }
-    );
-  }
+// M01-A containment: unauthenticated writes disabled (fails closed, before any DB access).
+export async function POST() {
+  return Response.json(
+    { error: 'temporarily_unavailable', message: 'This endpoint is temporarily unavailable.' },
+    { status: 503, headers: { 'Cache-Control': 'no-store' } }
+  );
 }

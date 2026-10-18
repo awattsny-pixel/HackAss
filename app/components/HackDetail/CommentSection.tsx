@@ -76,6 +76,7 @@ export default function CommentSection({ hackId }: CommentSectionProps) {
 
   // Initial fetch
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount/tab change; moving to a data-loading pattern is deferred (M02/M03 page rebuilds)
     fetchComments(0);
   }, [hackId, fetchComments]);
 

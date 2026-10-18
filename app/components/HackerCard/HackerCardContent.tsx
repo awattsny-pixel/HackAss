@@ -33,7 +33,6 @@ export function HackerCardContent({ data, onFollowChange }: HackerCardContentPro
               {data.is_verified && <VerificationBadge />}
             </h3>
           </Link>
-          <p className="text-gray-600 text-sm line-clamp-2">{data.bio || 'No bio'}</p>
         </div>
       </div>
 
@@ -83,7 +82,7 @@ export function HackerCardContent({ data, onFollowChange }: HackerCardContentPro
       {/* Follow Button */}
       <FollowButton
         userId={data.id}
-        isFollowing={data.isFollowing}
+        unavailable
         onFollowChange={onFollowChange}
         className="w-full"
       />

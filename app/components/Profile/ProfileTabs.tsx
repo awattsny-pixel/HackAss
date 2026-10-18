@@ -88,6 +88,7 @@ export default function ProfileTabs({ username }: ProfileTabsProps) {
 
   // Fetch initial hacks when tab changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount/tab change; moving to a data-loading pattern is deferred (M02/M03 page rebuilds)
     fetchHacks(activeTab);
   }, [activeTab, fetchHacks]);
 

@@ -85,7 +85,7 @@ export default function ValidationPrompt({ hackId, onClose, onVote }: Validation
             disabled={loading}
             className="w-full flex items-center justify-center gap-2 bg-red-600 text-white font-semibold py-3 rounded-lg hover:bg-red-700 disabled:opacity-50 transition"
           >
-            <span>✕</span> Didn't work
+            <span>✕</span> Didn&apos;t work
           </button>
         </div>
 

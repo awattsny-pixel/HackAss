@@ -23,7 +23,7 @@ export default function HowItWorks() {
     <section className="bg-black py-24">
       <div className="max-w-7xl mx-auto px-4">
         <div className="mb-16">
-          <p className="text-gray-500 text-sm font-mono uppercase tracking-widest mb-4">// HOW</p>
+          <p className="text-gray-500 text-sm font-mono uppercase tracking-widest mb-4">{'// HOW'}</p>
           <h2 className="text-5xl md:text-6xl font-bold">
             <span className="text-white">Curation by </span>
             <span className="bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">crowd</span>

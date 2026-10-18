@@ -101,7 +101,7 @@ NODE_PATH=./node_modules node -e "
 const { createClient } = require('@supabase/supabase-js');
 const client = createClient(
   'https://xquderctyjhpgvpnklww.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhxdWRlcmN0eWpocGd2cG5rbHd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0ODYyMjAsImV4cCI6MjA5MzA2MjIyMH0.NErQl9MQV87pBoNJxNQNPh1AtTHjgW6_saSvxFmU2Zg'
+  '<SUPABASE_ANON_KEY>'
 );
 client.from('hacks').select('count', { count: 'exact' }).limit(0).then(r => {
   console.log('✅ Database Connected');

@@ -10,8 +10,6 @@ import { DEFAULT_HACKER_AVATAR } from '@/app/lib/constants';
 interface UserStats {
   id: string;
   username: string;
-  real_name: string | null;
-  bio: string | null;
   is_verified: boolean;
   avatar: string | null;
   profile_image_url: string | null;
@@ -50,16 +48,6 @@ export default function ProfileHeader({ user }: ProfileHeaderProps) {
             {user.is_verified && <VerificationBadge />}
           </div>
 
-          {/* Real Name */}
-          {user.real_name && (
-            <p className="text-xl text-gray-400 mb-4">{user.real_name}</p>
-          )}
-
-          {/* Bio */}
-          {user.bio && (
-            <p className="text-base text-gray-300 mb-6 max-w-md">{user.bio}</p>
-          )}
-
           {/* Stats */}
           <div className="flex gap-8 mb-6">
             <div>
@@ -94,7 +82,7 @@ export default function ProfileHeader({ user }: ProfileHeaderProps) {
                 </Link>
               </>
             ) : (
-              <FollowButton userId={user.id} isFollowing={false} />
+              <FollowButton userId={user.id} unavailable />
             )}
           </div>
         </div>

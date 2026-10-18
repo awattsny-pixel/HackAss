@@ -1,0 +1,51 @@
+# F2-D2 — AI spending controls (database foundation)
+
+Branch `f2d2-ai-budgets`, from `e4d3213`. **This document is the contract and was written before the implementation.** Migrations `20261018090000…090100`. Rollback `supabase/rollbacks/20261018090000_f2d2_down.sql`.
+**Out of scope and not built:** provider calls or credentials, AI job types, automated decisions or publication, a worker process, a reconciliation scheduler, UI, any grant to `hackass_worker`, members, staff, anon or service_role. Everything here is **owner-only and internal**:
+tables have RLS on and no grants; functions live in the new schema `app_budget` (no USAGE for anyone but the owner) and are executable only by `hackass_owner`. A later slice wraps them for AI jobs.
+
+## Money
+Currency **USD**, recorded in the global budget row (a CHECK pins it). Amounts are **integers in micro-USD** (1 unit = 0.000001 USD, 1,000,000 units = 1 USD), `bigint`. Every amount is `0 … 1_000_000_000_000` (= 1,000,000 USD); a reservation's maximum is `1 …` that. No floating point anywhere.
+The budget day is the **UTC calendar day** `(clock_timestamp() at time zone 'UTC')::date`, read from the wall clock at the point of use (not `now()`).
+
+## Configuration (owner changes it by direct DML; absence means "refuse")
+* `ai_budget_global` — one row (`id = true`): `currency`, `enabled`, `daily_limit_micros`. **No row, or `enabled = false`, refuses every reservation.**
+* `ai_operation_types` — the allowlist: `op_type` (`^[a-z][a-z0-9_]{2,39}$`, and **never `global`**: that name is the scope of the global counter in `ai_budget_days`, so it is refused by a table constraint and again by `reserve` / `lock_scopes` with `PT422 invalid_content (op_type)`), `enabled`, `daily_limit_micros`, `max_charge_micros` (the most any single reservation of this type may hold). **An op type with no row, or disabled, is refused.**
+Changing a limit does not rewrite history; a limit lowered below what a day already used simply refuses further reservations that day.
+
+## Records (all owner-only, RLS on, no grants, TRUNCATE refused)
+| Table | One row is | Rules |
+|---|---|---|
+| `ai_reservations` | one logical operation | `idempotency_key` unique (`^[A-Za-z0-9._:-]{8,128}$`); `op_type`, target, `max_charge_micros`, `budget_day`, `reserved_at` **immutable**. Target for content operations = the exact frozen submission: `(submission_id, version_id, content_hash, canon_version)` composite foreign key to `submissions`. Status: `reserved` → `settled` / `cancelled` / `unknown`; `unknown` → `settled` / `cancelled`; `settled` and `cancelled` are terminal. Never deleted. |
+| `ai_ledger` | one accounting event | **append-only**. `kind` = `reserve` / `settle` / `cancel` / `unknown`, with `reserved_delta`, `spent_delta`, `overrun_micros`, `released_micros`, `budget_day`, `op_type`, `basis`, `occurred_at`. One `reserve` per reservation; **at most one terminal entry (`settle` or `cancel`) per reservation** (unique partial index): a double charge or double release is impossible by construction. |
+| `ai_budget_days` | the running totals per (UTC day, scope) where scope is `global` (the global counter, exclusively) or an op type | `reserved_micros`, `spent_micros`, `overrun_micros`. **Derived only from the ledger** by an AFTER INSERT trigger on `ai_ledger`; **a counter row is never deleted** (a delete guard raises `PT409 record_immutable`: deleting one would silently reset that day's budget; rolling the feature back drops the tables and does not delete rows); the trigger also refuses a `reserve` that would push `reserved + spent` over the scope's limit. They exist so a reservation can check and lock cheaply. |
+
+## Accounting rules
+1. **Used** of a scope on a day = `reserved_micros + spent_micros`. A reservation of `m` is allowed only if `used + m <= limit` for **both** the global scope and its operation scope (and `m <= op.max_charge_micros`). Both counter rows are locked `FOR UPDATE` (global first, then operation) before the check, so the two limits hold under any concurrency.
+2. **Reserve** writes the reservation and a `reserve` entry (`reserved_delta = +m`). Reserving only *holds*; nothing is spent.
+3. **Idempotency.** The same key with the same `(op_type, submission, content hash, canon version, max)` returns the existing reservation (`replayed: true`), **whatever its status**, without touching any budget. The same key with any different argument raises `PT409 idempotency_conflict`. The key is checked before and again after the locks, and the unique index is the final backstop.
+4. **Settle** records the **actual** cost: a `settle` entry with `reserved_delta = -m` (the whole hold ends), `spent_delta = +actual`, `released_micros = max(m - actual, 0)` (only the unused portion goes back to the budget), `overrun_micros = max(actual - m, 0)`. `settled_at` (`resolved_at`) records *when*; **`budget_day` stays the reservation's day** (a settlement after UTC midnight charges the day that reserved it). Repeating a settle with the same amount returns the existing result; a different amount raises `PT409 settlement_conflict`. Never charged twice.
+5. **Overrun.** If `actual > m`, the **full actual** is recorded as spent and `overrun_micros` is flagged on the ledger entry, the reservation and the day total. Nothing is clipped. An overrun does **not necessarily exhaust** a daily budget: usage simply includes the full cost, and a later reservation is refused only when it would take `used + m` past the applicable limit (rule 1). When the overrun itself pushes usage to or past a limit, every further reservation against that limit is refused.
+6. **Uncertain outcomes stay reserved.** A timeout, a retry, an expired lease or a process crash must call **`mark_unknown`**: the status becomes `unknown`, an `unknown` entry records the reason, and **the hold is kept** (a provider may still charge). Nothing in this slice releases money automatically.
+7. **Cancel releases only on confirmation.** `cancel` needs a basis from the allowlist `provider_confirmed_no_charge` or `never_dispatched`; anything else raises `PT422 charge_not_ruled_out`. It writes a `cancel` entry (`reserved_delta = -m`, `released_micros = m`). A cancelled reservation cannot be settled; a settled one cannot be cancelled (`PT409 invalid_state`); repeating a cancel is a no-op.
+8. **Reconciliation recovery path (manual; no scheduler here).** `outstanding()` lists every `reserved` and `unknown` reservation of every day. For each unknown one an operator checks the provider's usage/invoice: charged → `settle(id, actual)`; confirmed not charged → `cancel(id, basis)`. A reservation stays on its own day's books until then, so **UTC rollover never resets or loses an outstanding obligation**; new days start with their own counters.
+9. **Reconciliation invariant**, checked by `reconcile_report()` over the **complete set of scopes** (a full outer join of the counters and the ledger's (day, scope) groups): every (day, scope) that has ledger entries **has a counter row** (otherwise it is listed in `missing_counters` and `ok` is false); every counter equals the sums of the ledger's `reserved_delta`, `spent_delta`, `overrun_micros` (an extra nonzero counter with no ledger behind it, or any wrong balance, is listed in `counter_mismatches`); for every reservation the ledger's net `reserved_delta` is `max` while `reserved`/`unknown` and `0` when terminal, and net `spent_delta` is `actual` when settled and `0` otherwise.
+
+## Internal function contracts (schema `app_budget`; `hackass_owner` only; SECURITY DEFINER, `search_path = ''`)
+| Function | Contract |
+|---|---|
+| `reserve(key, op_type, submission_id, content_hash_hex, max_micros)` | rules 1–3 for the current UTC day. Errors: `PT422 invalid_content` (key/op/hash shape; the operation name `global` is refused) or `invalid_amount`; `PT404 not_found` (submission); `PT409 hash_mismatch` (the hash is not the frozen hash **and** the recomputed one); `PT409 budget_refused` with detail `global_unconfigured`, `global_disabled`, `operation_unconfigured`, `operation_disabled`, `amount_over_cap`, `global_budget_exhausted`, `operation_budget_exhausted`; `PT409 idempotency_conflict`. |
+| `reserve_for_day(…, day)` | the same for an explicit day, which must be within one day of today (used for rollover tests and by `reserve`). |
+| `settle(reservation_id, actual_micros)` | rules 4–5. `PT404`, `PT422 invalid_amount`, `PT409 settlement_conflict` / `invalid_state`. |
+| `mark_unknown(reservation_id, reason)` | rule 6; reasons `timeout`, `lease_expired`, `process_crash`, `provider_unreachable`, `other`. Idempotent. |
+| `cancel(reservation_id, basis)` | rule 7. |
+| `reconcile_report(day or null)` | rule 9; returns `{ok, missing_counters, counter_mismatches, reservation_mismatches, overruns}`; `ok` is false for any missing counter, counter mismatch or reservation mismatch. |
+| `outstanding()` | rule 8; returns the reservations still holding money. |
+**Lock order:** counter rows (global, then operation, for the reservation's day) → reservation row. `mark_unknown` takes only the reservation row (it moves no money). No function takes a submission lock (the target is an immutable row, read only).
+
+## Rollback and data loss
+`supabase/rollbacks/20261018090000_f2d2_down.sql` drops the schema `app_budget` and the five tables. **That destroys every reservation, every ledger entry and every budget total — the whole spend history.** Export them first if anything beyond test data exists, and do not roll back with unreconciled `unknown` reservations: their provider charges would no longer be tracked.
+Local: `supabase stop --no-backup`. Linked project afterwards: `supabase migration repair --status reverted 20261018090000 20261018090100`. The migrations are re-applicable after a committed rollback (rehearsed by check R7).
+
+## Remaining integration work (later slices)
+Wrap these functions for AI jobs (reserve before dispatch, `mark_unknown` on timeout/lease expiry/crash, settle on the provider's reported cost, cancel only on confirmation); the worker contract and grants; a reconciliation job and alerting on `unknown` age, overruns and exhausted budgets; budget configuration tooling and its audit trail; non-content targets; per-actor or per-hack limits; provider price tables.

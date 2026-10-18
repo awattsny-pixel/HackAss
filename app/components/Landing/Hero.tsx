@@ -22,11 +22,11 @@ export default function Hero() {
 
           <h1 className="text-6xl md:text-7xl font-bold leading-tight">
             <span className="text-white">Life hacks that </span>
-            <span className="bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">don't suck.</span>
+            <span className="bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">don&apos;t suck.</span>
           </h1>
 
           <p className="text-xl text-gray-400 max-w-md leading-relaxed">
-            The internet's best <em className="text-white">actually-works</em> hacks — voted up by people who tried them. Cooking, cleaning, money, travel. No filler. No 12-paragraph SEO intros.
+            The internet&apos;s best <em className="text-white">actually-works</em> hacks — voted up by people who tried them. Cooking, cleaning, money, travel. No filler. No 12-paragraph SEO intros.
           </p>
 
           <div className="flex gap-4 pt-4">
@@ -63,7 +63,7 @@ export default function Hero() {
 
           {/* Header */}
           <div className="relative z-10 p-6 border-b border-gray-800">
-            <div className="text-gray-600 text-xs font-mono tracking-wider">// HACK FEED PREVIEW</div>
+            <div className="text-gray-600 text-xs font-mono tracking-wider">{'// HACK FEED PREVIEW'}</div>
           </div>
 
           {/* Feed Cards */}
@@ -132,7 +132,7 @@ export default function Hero() {
                     Clean shower in 5 minutes
                   </h4>
                   <p className="text-xs text-gray-400 mb-2">
-                    Vinegar spray + squeegee. That's it.
+                    Vinegar spray + squeegee. That&apos;s it.
                   </p>
                 </div>
                 <div className="space-y-1">

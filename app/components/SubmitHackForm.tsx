@@ -44,7 +44,6 @@ export default function SubmitHackForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [extracting, setExtracting] = useState(false);
 
   // Validate file constraints
@@ -105,7 +104,7 @@ export default function SubmitHackForm() {
         title: data.title || prev.title,
         description: data.description || prev.description,
       }));
-    } catch (err) {
+    } catch {
       setError('Could not extract from URL. Please fill manually.');
     } finally {
       setExtracting(false);
@@ -275,7 +274,7 @@ export default function SubmitHackForm() {
                     name="difficulty"
                     value={level}
                     checked={form.difficulty === level}
-                    onChange={(e) => setForm({ ...form, difficulty: e.target.value as any })}
+                    onChange={(e) => setForm({ ...form, difficulty: e.target.value as FormState['difficulty'] })}
                     className="w-4 h-4 text-blue-600"
                   />
                   <span className="text-gray-700 capitalize">{level}</span>

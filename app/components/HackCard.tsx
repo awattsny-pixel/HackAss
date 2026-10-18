@@ -35,13 +35,13 @@ const decodeHtmlEntities = (text: string): string => {
 
 export default function HackCard({ hack, onVote }: HackCardProps) {
   const [showValidation, setShowValidation] = useState(false);
-  const [videoPlaying, setVideoPlaying] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
 
   // Check if user has already voted on this hack
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const votedHacks = JSON.parse(localStorage.getItem('votedHacks') || '[]');
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reads browser-only storage after mount (avoids hydration mismatch); useSyncExternalStore migration deferred
       setHasVoted(votedHacks.includes(hack.id));
     }
   }, [hack.id]);
@@ -49,7 +49,7 @@ export default function HackCard({ hack, onVote }: HackCardProps) {
   // Process Instagram embeds when component mounts
   useEffect(() => {
     if (hack.content_url?.includes('instagram.com') && typeof window !== 'undefined') {
-      const script = (window as any).instgrm;
+      const script = (window as unknown as { instgrm?: { Embed?: { process?: () => void } } }).instgrm;
       if (script?.Embed?.process) {
         script.Embed.process();
       }

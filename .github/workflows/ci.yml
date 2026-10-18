@@ -1,0 +1,150 @@
+name: CI
+
+# Verification only: no deployment, no secrets, no live-service credentials. All configuration used by the
+# build and the smoke run is dummy or generated locally by the test harness.
+# Triggers: pushes to `main` and to the one verification branch `mhost1-ci-first-run` (exact names, no wildcards; tag pushes and every other branch do not run),
+# and every pull request. Third-party actions are pinned to full commit SHAs (resolved and verified 2026-10-15 from the public repositories: the commit was fetched
+# by SHA and matched the tag or branch head); the comment after each SHA names the release. The runner image is pinned to ubuntu-24.04.
+on:
+  push:
+    branches: [main, mhost1-ci-first-run]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false # a failure on one supported Node version must not hide the result on the other
+      matrix:
+        node-version: ['22.23.3', '24.21.0'] # 22.23.3 is .nvmrc (a test keeps them equal); 24.21.0 is the second supported version
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the Gitleaks history scan needs every commit
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install (lockfile only, no lifecycle scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Install pinned Gitleaks (SHA-256 verified against scripts/gitleaks-pin.json)
+        run: node scripts/install-gitleaks.mjs
+
+      - name: Secret scan (Gitleaks, working tree and full history)
+        run: npm run scan:gitleaks
+
+      - name: Secret scan (in-repo scanner, supplementary)
+        run: npm run scan:secrets
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and containment tests
+        run: npm test
+        env:
+          REQUIRE_GITLEAKS: '1' # the real-binary Gitleaks tests must run, not skip
+
+      - name: Production build (dummy configuration)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:9
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
+          SUPABASE_URL: http://127.0.0.1:9
+          SUPABASE_SERVICE_KEY: dummy
+          SUPABASE_SERVICE_ROLE_KEY: dummy
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
+
+      - name: Isolated smoke checks (local fixture server only)
+        run: npm run smoke
+
+  # Real local Supabase stack (Auth, PostgREST, Storage, Postgres in containers), the pgTAP database tests and the local
+  # Auth/session/MFA checks. The same commands passed locally on an Intel Mac with Docker Desktop; this job's first GitHub
+  # run is still its own first verification.
+  database:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install (lockfile only, no lifecycle scripts)
+        run: npm ci --ignore-scripts
+
+      # The version must equal scripts/supabase-cli-pin.json (a test enforces it).
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3, the head of the v1 branch on 2026-10-15
+        with:
+          version: 2.120.0
+
+      - name: Start the local Supabase stack
+        run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor
+
+      - name: Database tests (pgTAP)
+        run: supabase test db
+
+      - name: Local Auth, session and MFA checks
+        run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-auth-spikes.mjs
+
+      - name: Local F2-A authority checks (direct JWT RPC, worker login, rollback rehearsal)
+        run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-f2a-checks.mjs
+
+      - name: Local F2-B content checks (JWT RPC, immutability, genuine concurrency)
+        run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-f2b-checks.mjs
+
+      - name: Local F2-C1 review checks (staff JWT RPC, self-review, concurrent decisions)
+        run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-f2c-checks.mjs
+
+      - name: Local F2-C2 checks (staff JWT RPC, withdrawal and review races, rollback rehearsal)
+        run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-f2c2-checks.mjs
+
+      - name: Local F2-D1 job checks (real worker login, parallel claims, lease epochs, recheck races, rollback rehearsal)
+        run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-f2d1-checks.mjs
+
+      - name: Local F2-D2 budget checks (fifty-way reservations, settlement races, rollover, access, committed rollback and re-application)
+        run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-f2d2-checks.mjs
+
+      - name: Local F2-E catalog checks (anon/member/staff reads, allowlist, replacement and withdrawal races, committed rollback and re-application)
+        run: node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-f2e-checks.mjs
+
+      - name: Stop the stack
+        if: always()
+        run: supabase stop --no-backup
+
+  # Real `next build` proofs of the server/client boundary: a server route importing the server-only platform surface
+  # must build; a Client Component importing it must fail with the server-only error. Runs in a throwaway copy.
+  server-boundary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Probe the build-time boundary
+        run: npm ci --ignore-scripts && npm run probe:server-boundary

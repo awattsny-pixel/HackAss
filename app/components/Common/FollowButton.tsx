@@ -5,14 +5,17 @@ import { useAuth } from '@/app/context/AuthContext';
 
 interface FollowButtonProps {
   userId: string;
-  isFollowing: boolean;
+  isFollowing?: boolean;
+  /** Follow state cannot be established (no verified identity); render a disabled control. */
+  unavailable?: boolean;
   onFollowChange?: (isFollowing: boolean) => void;
   className?: string;
 }
 
 export function FollowButton({
   userId,
-  isFollowing: initialIsFollowing,
+  isFollowing: initialIsFollowing = false,
+  unavailable = false,
   onFollowChange,
   className = '',
 }: FollowButtonProps) {
@@ -21,6 +24,7 @@ export function FollowButton({
   const [loading, setLoading] = useState(false);
 
   const handleClick = async () => {
+    if (unavailable) return;
     if (!user) {
       // Redirect to login or show login modal
       window.location.href = '/auth/login';
@@ -61,7 +65,9 @@ export function FollowButton({
   return (
     <button
       onClick={handleClick}
-      disabled={loading}
+      disabled={loading || unavailable}
+      aria-disabled={unavailable || undefined}
+      title={unavailable ? 'Following is temporarily unavailable' : undefined}
       className={`
         px-6 py-2 rounded-lg font-semibold transition
         ${isFollowing
@@ -72,7 +78,7 @@ export function FollowButton({
         ${className}
       `}
     >
-      {loading ? '...' : isFollowing ? 'Following' : 'Follow'}
+      {unavailable ? 'Follow (unavailable)' : loading ? '...' : isFollowing ? 'Following' : 'Follow'}
     </button>
   );
 }
