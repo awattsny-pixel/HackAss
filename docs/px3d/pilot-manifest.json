@@ -1,0 +1,228 @@
+{
+  "name": "hackass-pilot migration and inventory manifest",
+  "note": "The pilot database is the 21 F2 migrations plus the 4 PX-3a migrations. This manifest is pilot-specific. The historical staging records are preserved unchanged: docs/hosted/staging-plan.md (21 migrations) and docs/hosted/evidence/2026-10-17-staging-stg-20261017-tls3.md (committed unchanged in aee5287).",
+  "counts": {
+    "migrations": 25,
+    "functions": 120,
+    "tables": 28,
+    "inventoryLines": 187
+  },
+  "migrations": [
+    {
+      "order": 1,
+      "file": "20261013130000_f2a_roles_and_schemas.sql",
+      "version": "20261013130000",
+      "name": "f2a_roles_and_schemas",
+      "sha256": "b275afa3a6a84d90c43364d0b711d746792cdb8777c3e9902d738f33ebb3c3da"
+    },
+    {
+      "order": 2,
+      "file": "20261013130100_f2a_identity_and_staff.sql",
+      "version": "20261013130100",
+      "name": "f2a_identity_and_staff",
+      "sha256": "8f2c03033005c2f27eff3828cf3480532f7fea31f12ae0d176709bab2284cf20"
+    },
+    {
+      "order": 3,
+      "file": "20261013130200_f2a_authorization_guards.sql",
+      "version": "20261013130200",
+      "name": "f2a_authorization_guards",
+      "sha256": "08e84f59e4ff0c8bcfaebef6b3a9d361c1ced43b0c107bd52faafce9968acecd"
+    },
+    {
+      "order": 4,
+      "file": "20261014090000_f2b_content_tables.sql",
+      "version": "20261014090000",
+      "name": "f2b_content_tables",
+      "sha256": "967c3c253b02b9c9297cff006e367086b2f52be02fe5a340fb3e9378f8b81621"
+    },
+    {
+      "order": 5,
+      "file": "20261014090100_f2b_canonical_hash.sql",
+      "version": "20261014090100",
+      "name": "f2b_canonical_hash",
+      "sha256": "d8f4cd5d78932869abc3df5d32789d48bbed3fcc8d33c753ba52c83a9c2035b7"
+    },
+    {
+      "order": 6,
+      "file": "20261014090200_f2b_immutability.sql",
+      "version": "20261014090200",
+      "name": "f2b_immutability",
+      "sha256": "a74e3394d7b0c422d735440f7e68259ca62f31458343492bc11c34133cd6f5c5"
+    },
+    {
+      "order": 7,
+      "file": "20261014090300_f2b_content_rpc.sql",
+      "version": "20261014090300",
+      "name": "f2b_content_rpc",
+      "sha256": "d582d74401b92a761dc546811f9dea8f0f7a089d56024f75b11434cdde3ce827"
+    },
+    {
+      "order": 8,
+      "file": "20261015090000_f2c1_review_tables.sql",
+      "version": "20261015090000",
+      "name": "f2c1_review_tables",
+      "sha256": "6481604f11a3e41a9448ef3ba36df93b22cbc71484e67ac317f697736f67b9ae"
+    },
+    {
+      "order": 9,
+      "file": "20261015090100_f2c1_review_rules.sql",
+      "version": "20261015090100",
+      "name": "f2c1_review_rules",
+      "sha256": "61a1baea768ba200dba96a5a3caaa094d96b95f700cf36e66631e19137f94567"
+    },
+    {
+      "order": 10,
+      "file": "20261015090200_f2c1_review_rpc.sql",
+      "version": "20261015090200",
+      "name": "f2c1_review_rpc",
+      "sha256": "5a88ef96f73e2be9ebe504b203aaacb058f203336a703a8f8fd13b7b2b780e9b"
+    },
+    {
+      "order": 11,
+      "file": "20261016090000_f2c2_publication_tables.sql",
+      "version": "20261016090000",
+      "name": "f2c2_publication_tables",
+      "sha256": "442dab5c11fcb99b4040ce90d74268f5d88cd139596ddba0739e48c7c151a9e0"
+    },
+    {
+      "order": 12,
+      "file": "20261016090100_f2c2_publication_rules.sql",
+      "version": "20261016090100",
+      "name": "f2c2_publication_rules",
+      "sha256": "8cb1e00b1b8559d010a18baad76991927f9414d4d360b984f1a78dcc79bda29c"
+    },
+    {
+      "order": 13,
+      "file": "20261016090200_f2c2_publication_rpc.sql",
+      "version": "20261016090200",
+      "name": "f2c2_publication_rpc",
+      "sha256": "b9ac4a88e5a4febd689300bd321fbdf2cf8c0ab163a48eb45b04da67a0e52c00"
+    },
+    {
+      "order": 14,
+      "file": "20261017090000_f2d1_jobs_tables.sql",
+      "version": "20261017090000",
+      "name": "f2d1_jobs_tables",
+      "sha256": "5bb9ff4a142730009b3b5b9cff88f792ee1d062a6f521f43dc08922e874cd50e"
+    },
+    {
+      "order": 15,
+      "file": "20261017090100_f2d1_jobs_rules.sql",
+      "version": "20261017090100",
+      "name": "f2d1_jobs_rules",
+      "sha256": "f4212da7c989e9b2dc31baca5831bcbc10b4efb45e3007104288b2bcf66ff39d"
+    },
+    {
+      "order": 16,
+      "file": "20261017090200_f2d1_worker_rpc.sql",
+      "version": "20261017090200",
+      "name": "f2d1_worker_rpc",
+      "sha256": "a9eda85118497770b3291fd29cf6ec846059872aa8e0efce99ce53e437e8b201"
+    },
+    {
+      "order": 17,
+      "file": "20261017090300_f2d1_utc_boundary.sql",
+      "version": "20261017090300",
+      "name": "f2d1_utc_boundary",
+      "sha256": "b59c7d7a002ee0aefc4d96733712221c40949ac57fe5dc207521ce46cdb1136b"
+    },
+    {
+      "order": 18,
+      "file": "20261018090000_f2d2_budget_tables.sql",
+      "version": "20261018090000",
+      "name": "f2d2_budget_tables",
+      "sha256": "c7773019a9d931fce7944a4e83af199c981b32b27abd8e5f2ff3d273a8734aa4"
+    },
+    {
+      "order": 19,
+      "file": "20261018090100_f2d2_budget_functions.sql",
+      "version": "20261018090100",
+      "name": "f2d2_budget_functions",
+      "sha256": "7d0e45ac7cdf469081df0b30e04f01b532c6f4f23974509b5884b218d91ea96d"
+    },
+    {
+      "order": 20,
+      "file": "20261019090000_f2e_catalog_rules.sql",
+      "version": "20261019090000",
+      "name": "f2e_catalog_rules",
+      "sha256": "731ade8d2158493214c46c8b361e0146ce06b04d5e8e1e17568dcd00b21a7995"
+    },
+    {
+      "order": 21,
+      "file": "20261019090100_f2e_catalog_api.sql",
+      "version": "20261019090100",
+      "name": "f2e_catalog_api",
+      "sha256": "c25d558fa717d7b924f465f30f59237ad04d8ae23dba7ff2736676149d371f55"
+    },
+    {
+      "order": 22,
+      "file": "20261020090000_px3a_work_tables.sql",
+      "version": "20261020090000",
+      "name": "px3a_work_tables",
+      "sha256": "8a789efa740f218920b290a30d0fc6501c56c99c023e4f6b0ddd2e6762b48fab"
+    },
+    {
+      "order": 23,
+      "file": "20261020090100_px3a_work_helpers.sql",
+      "version": "20261020090100",
+      "name": "px3a_work_helpers",
+      "sha256": "7127a23a034a7ef987675e6da7486d5d55c371b4f8911e3aadbae9b4eec058cd"
+    },
+    {
+      "order": 24,
+      "file": "20261020090200_px3a_work_api.sql",
+      "version": "20261020090200",
+      "name": "px3a_work_api",
+      "sha256": "be55360bf06184ed67293db4611226df61f7b203677cf26af9e3b471a03cc7b8"
+    },
+    {
+      "order": 25,
+      "file": "20261020090300_px3a_work_erasure.sql",
+      "version": "20261020090300",
+      "name": "px3a_work_erasure",
+      "sha256": "f7da3841fa73d4e52a1d58cd5b0087142d36d39808b033ff79d0620ac379bf0f"
+    }
+  ],
+  "inventory": {
+    "sql": "docs/px3d/pilot-inventory.sql",
+    "sqlSha256": "009d768b1e7640853d1721a4ac506c9668e7456f467cfdaa7da8f47040900912",
+    "expected": "docs/px3d/pilot-inventory.expected.txt",
+    "expectedSha256": "23a4a44e075d29fde626518452e4ad4689175e77b2363032ea9178b5bab689ad",
+    "runner": "scripts/pilot-inventory.mjs"
+  },
+  "rollbacks": [
+    {
+      "file": "20261013130000_f2a_down.sql",
+      "sha256": "dba4e0db05001c311d650beea653e843b1bfb65e0ecba15af7fdf8b11a647aa7"
+    },
+    {
+      "file": "20261014090000_f2b_down.sql",
+      "sha256": "0b03b372e53b2ca25244f6b1a36440ca6c11bf01c19e1e1d445b6f12d2eb989c"
+    },
+    {
+      "file": "20261015090000_f2c1_down.sql",
+      "sha256": "a5abf3398f39b013ec2a8229b7a256481bea4ca9feb446b1a8a7383adf64b396"
+    },
+    {
+      "file": "20261016090000_f2c2_down.sql",
+      "sha256": "17687c9d2a832db39f4736427615faed6160cdd1a663677c138bcd956041cd45"
+    },
+    {
+      "file": "20261017090000_f2d1_down.sql",
+      "sha256": "2aaf9fe5a89a7daf223c8219d8c9bada8d01240f76a54138abcce9edc3b9f5c7"
+    },
+    {
+      "file": "20261018090000_f2d2_down.sql",
+      "sha256": "65eda04025312fe6ca0f787e7543608f480ff49c7accbf7a27ee2ab93c258936"
+    },
+    {
+      "file": "20261019090000_f2e_down.sql",
+      "sha256": "1d4d33bea7ce34be4c07c6645fa28fdba359969ef02c7181b762130e987af36a"
+    },
+    {
+      "file": "20261020090000_px3a_down.sql",
+      "sha256": "8dcfe6b106c3663de7149ca24fb24d5892d4f47db155d4eb40a4a6af8889337a"
+    }
+  ]
+}
