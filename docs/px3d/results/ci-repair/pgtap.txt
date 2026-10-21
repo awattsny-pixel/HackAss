@@ -1,0 +1,36 @@
+Connecting to local database...
+/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/000_platform.test.sql ........... ok
+/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/010_roles_and_grants.test.sql ... ok
+/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/020_authorization.test.sql ...... ok
+/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/030_hashcanon_vectors.test.sql .. ok
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "version_lifecycle"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "submissions"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "hack_steps"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "hack_materials"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "hack_requirements"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "version_tags"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "version_attributions"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "source_claims"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "version_assets"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "publications"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "hacks"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "version_assessments"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "rights_reviews"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "moderation_decisions"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "publication_rights"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "publication_withdrawals"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "jobs"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "ai_reservations"
+psql:/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql:180: NOTICE:  truncate cascades to table "ai_ledger"
+/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/040_content.test.sql ............ ok
+/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/050_review.test.sql ............. ok
+/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/060_publication.test.sql ........ ok
+/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/070_jobs.test.sql ............... ok
+/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/080_budgets.test.sql ............ ok
+/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/090_public_catalog.test.sql ..... ok
+/Users/AlanWatts 1/hackass-m00/wt-px2b/supabase/tests/database/100_my_work.test.sql ............ ok
+All tests successful.
+Files=11, Tests=1245, 19 wallclock secs ( 0.40 usr  0.05 sys +  0.30 cusr  0.31 csys =  1.06 CPU)
+Result: PASS
+A new version of Supabase CLI is available: v2.121.0 (currently installed v2.120.0)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

@@ -85,11 +85,14 @@ function fakeApi(opts: Fake) {
   });
   return { server, hits, aborted, created };
 }
+// The checker's local mode confirms erasure with a database subprocess (docker exec psql). These tests are fully isolated from Docker: DOCKER_BIN ALWAYS points at this stub, which reads the SQL
+// and answers from STUB_DOCKER_OUT / STUB_DOCKER_EXIT (default: a count of 0, success). The real checker's strict handling is exercised by making the stub report rows or fail.
+const dockerStub = () => { const f = join(scratch, 'docker-stub.sh'); writeFileSync(f, '#!/bin/sh\ncat > /dev/null\n[ -n "$STUB_DOCKER_ERR" ] && echo "$STUB_DOCKER_ERR" >&2\necho "${STUB_DOCKER_OUT-0}"\nexit "${STUB_DOCKER_EXIT-0}"\n'); chmodSync(f, 0o755); return f; };
 function runLocal(port: number, env: Record<string, string> = {}) {
   const bin = join(scratch, `fake-supabase-${port}.sh`);
   writeFileSync(bin, `#!/bin/sh\necho '{"API_URL":"http://127.0.0.1:${port}","PUBLISHABLE_KEY":"pk-fake","SECRET_KEY":"sk-fake"}'\n`); chmodSync(bin, 0o755);
   const recDir = mkdtempSync(join(scratch, 'rec-'));
-  return new Promise<{ code: number | null; out: string; recDir: string; ms: number }>((res) => { const t = Date.now(); let out = ''; const c = spawn(process.execPath, ['scripts/pilot-rpc-checks.mjs', '--local'], { cwd: root, env: { ...process.env, SUPABASE_BIN: bin, PILOT_RPC_RECORD_DIR: recDir, ...env } }); c.stdout.on('data', (d) => (out += d)); c.stderr.on('data', (d) => (out += d)); c.on('exit', (code) => res({ code, out, recDir, ms: Date.now() - t })); });
+  return new Promise<{ code: number | null; out: string; recDir: string; ms: number }>((res) => { const t = Date.now(); let out = ''; const c = spawn(process.execPath, ['scripts/pilot-rpc-checks.mjs', '--local'], { cwd: root, env: { ...process.env, SUPABASE_BIN: bin, DOCKER_BIN: dockerStub(), PILOT_RPC_RECORD_DIR: recDir, ...env } }); c.stdout.on('data', (d) => (out += d)); c.stderr.on('data', (d) => (out += d)); c.on('exit', (code) => res({ code, out, recDir, ms: Date.now() - t })); });
 }
 const listen = (s: ReturnType<typeof createServer>) => new Promise<number>((r) => s.listen(0, '127.0.0.1', () => r((s.address() as { port: number }).port)));
 const recordFiles = (dir: string) => readdirSync(dir).map((d) => join(dir, d, 'fixtures.jsonl'));
@@ -150,4 +153,19 @@ test('a creation the API definitively refused (4xx) is proven never created and 
 test('the cleanup allowance is bounded too: a lookup that never answers ends within it, as incomplete (exit 3)', async () => {
   const { server } = fakeApi({ create: 'delayed-before-create', listHangs: true }); const port = await listen(server);
   try { const r = await runLocal(port, { PILOT_RPC_RUN_MS: '600', PILOT_RPC_CLEANUP_MS: '1200' }); assert.equal(r.code, 3, r.out); assert.match(r.out, /CLEANUP INCOMPLETE/); assert.ok(r.ms < 12_000, `took ${r.ms} ms`); } finally { server.close(); }
+});
+
+test('ISOLATION: the fake-API tests never reach a real Docker: the subprocess is always the stub, never the default macOS path or a docker on PATH', () => {
+  const t = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  assert.match(t, /DOCKER_BIN: dockerStub\(\)/); assert.doesNotMatch(t.split('// --- a fake API')[1], /Docker\.app|\/usr\/local\/bin\/docker|spawn\('docker'/);
+});
+
+test('local-mode content check, three outcomes kept apart: confirmed rows remaining and verification unavailable BOTH fail the run (exit 3), with different wording; confirmed none passes', async () => {
+  const { server } = fakeApi({}); const port = await listen(server);
+  try {
+    const none = await runLocal(port); assert.equal(none.code, 1, none.out); assert.match(none.out, /cleanup verified/);                         // the stub says 0 rows
+    const remains = await runLocal(port, { STUB_DOCKER_OUT: '2' }); assert.equal(remains.code, 3, remains.out); assert.match(remains.out, /CONFIRMED remaining \(2 row/); assert.doesNotMatch(remains.out, /UNAVAILABLE/); assert.doesNotMatch(remains.out, /cleanup verified/);
+    const failed = await runLocal(port, { STUB_DOCKER_EXIT: '1', STUB_DOCKER_OUT: '', STUB_DOCKER_ERR: 'docker: not available' }); assert.equal(failed.code, 3, failed.out); assert.match(failed.out, /verification was UNAVAILABLE/); assert.doesNotMatch(failed.out, /CONFIRMED remaining/); assert.doesNotMatch(failed.out, /cleanup verified/);
+    const garbled = await runLocal(port, { STUB_DOCKER_OUT: 'not a number' }); assert.equal(garbled.code, 3, garbled.out); assert.match(garbled.out, /UNAVAILABLE/);
+  } finally { server.close(); }
 });

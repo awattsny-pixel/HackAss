@@ -184,16 +184,19 @@ try {
   if (mode === '--local' && withIds.length) {   // local only: also confirm the erasure trigger left no saved content behind
     const ids = withIds.map((m) => `'${m.id}'`).join(',');
     const q = spawnSync(process.env.DOCKER_BIN || '/Applications/Docker.app/Contents/Resources/bin/docker', ['exec', '-i', process.env.PX_DB_CONTAINER || 'supabase_db_hackass-px2', 'psql', '-U', 'postgres', '-d', 'postgres', '-X', '-q', '-At', '-v', 'ON_ERROR_STOP=1'], { input: `select (select count(*) from app.saved_prompts where owner_id in (${ids})) + (select count(*) from app.saved_reflections where owner_id in (${ids}));`, encoding: 'utf8', timeout: 30_000 });
-    members.content = q.status === 0 ? Number(q.stdout.trim()) : null;
+    // three outcomes, never conflated: a number (the count, 0 = none), or null = the check itself could not be run or read (UNAVAILABLE, which is not evidence either way)
+    const n = q.status === 0 && /^\d+$/.test(q.stdout.trim()) ? Number(q.stdout.trim()) : null;
+    members.content = n;
   }
 }
 const bad = members.filter((m) => m.state !== 'gone');
-const contentLeft = members.content === undefined ? false : members.content !== 0;
+// local-mode content check: undefined = not applicable (hosted mode, or no fixture with a known id); 0 = confirmed none; > 0 = CONFIRMED remaining; null = verification UNAVAILABLE. Both of the last two fail the run (exit 3).
+const contentLeft = typeof members.content === 'number' && members.content > 0, contentUnverified = members.content === null;
 for (const m of members) console.log(`cleanup  fixture ${m.n}: ${m.state === 'gone' ? (m.creation === 'refused' ? 'never created (refused)' : 'deleted and confirmed gone') : `NOT ESTABLISHED CLEAN (${m.state})`}`);
 const passed = results.filter((r) => r.ok).length, skipped = results.filter((r) => r.skipped).length;
 console.log(`\n${passed}/${results.length} passed, ${failed} failed, ${skipped} skipped`);
-if (bad.length || contentLeft) {
-  console.log(`CLEANUP INCOMPLETE: ${bad.length} fixture(s) not established clean${contentLeft ? '; saved content remains' : ''}. The operator must look them up and remove them before any further run.`);
+if (bad.length || contentLeft || contentUnverified) {
+  console.log(`CLEANUP INCOMPLETE: ${bad.length} fixture(s) not established clean${contentLeft ? `; saved content CONFIRMED remaining (${members.content} row(s))` : ''}${contentUnverified ? '; the saved-content verification was UNAVAILABLE (the check could not be run; this is not evidence that content remains, but cleanup is not verified)' : ''}. The operator must look them up and remove them before any further run.`);
   console.log(`  Identifying details are in a PRIVATE file (0600), not in this log: ${recFile}\n  Do not paste, upload or commit that file; delete it once the fixtures are confirmed gone.`);
   process.exit(3);
 }

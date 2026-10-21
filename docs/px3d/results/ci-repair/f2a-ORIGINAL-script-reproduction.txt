@@ -1,0 +1,98 @@
+== role / grant inventory (from the live catalog) ==
+role   hackass_owner login=false super=false createrole=false createdb=false replication=false bypassrls=false inherit=false connlimit=0
+role   hackass_worker login=true super=false createrole=false createdb=false replication=false bypassrls=false inherit=false connlimit=10
+schema api owner=hackass_owner acl={hackass_owner=UC/hackass_owner,anon=U/hackass_owner,authenticated=U/hackass_owner}
+schema app owner=hackass_owner acl={hackass_owner=UC/hackass_owner}
+schema app_bridge owner=postgres acl={postgres=UC/postgres,hackass_owner=U/postgres}
+schema app_guard owner=hackass_owner acl={hackass_owner=UC/hackass_owner,supabase_auth_admin=U/hackass_owner}
+schema worker owner=hackass_owner acl={hackass_owner=UC/hackass_owner,hackass_worker=U/hackass_owner}
+table  app.accounts owner=hackass_owner acl={hackass_owner=arwdDxtm/hackass_owner} rls=true
+table  app.ai_budget_days owner=hackass_owner acl=none rls=true
+table  app.ai_budget_global owner=hackass_owner acl=none rls=true
+table  app.ai_ledger owner=hackass_owner acl=none rls=true
+table  app.ai_operation_types owner=hackass_owner acl=none rls=true
+table  app.ai_reservations owner=hackass_owner acl=none rls=true
+table  app.categories owner=hackass_owner acl=none rls=true
+table  app.hack_materials owner=hackass_owner acl=none rls=true
+table  app.hack_requirements owner=hackass_owner acl=none rls=true
+table  app.hack_steps owner=hackass_owner acl=none rls=true
+table  app.hack_versions owner=hackass_owner acl=none rls=true
+table  app.hacks owner=hackass_owner acl=none rls=true
+table  app.jobs owner=hackass_owner acl=none rls=true
+table  app.moderation_decisions owner=hackass_owner acl=none rls=true
+table  app.publication_rights owner=hackass_owner acl=none rls=true
+table  app.publication_withdrawals owner=hackass_owner acl=none rls=true
+table  app.publications owner=hackass_owner acl=none rls=true
+table  app.rights_reviews owner=hackass_owner acl=none rls=true
+table  app.saved_prompts owner=hackass_owner acl={hackass_owner=arwdDxtm/hackass_owner} rls=true
+table  app.saved_reflections owner=hackass_owner acl={hackass_owner=arwdDxtm/hackass_owner} rls=true
+table  app.source_claims owner=hackass_owner acl=none rls=true
+table  app.staff_assignments owner=hackass_owner acl={hackass_owner=arwdDxtm/hackass_owner} rls=true
+table  app.submissions owner=hackass_owner acl=none rls=true
+table  app.version_assessments owner=hackass_owner acl=none rls=true
+table  app.version_assets owner=hackass_owner acl=none rls=true
+table  app.version_attributions owner=hackass_owner acl=none rls=true
+table  app.version_lifecycle owner=hackass_owner acl=none rls=true
+table  app.version_tags owner=hackass_owner acl=none rls=true
+func   api.create_draft(uuid) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.delete_draft(uuid) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.delete_my_prompt(uuid,integer) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.delete_my_reflection(uuid,integer) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.export_my_data(text,uuid,integer) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.get_my_prompt(uuid) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.get_my_result(uuid) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.get_public_hack(text) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,anon=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.get_publication(uuid) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.get_submission_for_review(uuid) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.get_version(uuid) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.list_my_prompts(integer,timestamp with time zone,uuid) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.list_my_results(integer,text,timestamp with time zone,uuid) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.list_my_versions() owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.list_public_hacks(integer,text,text,timestamp with time zone,text) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,anon=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.list_submissions_for_review(integer,text[],timestamp with time zone,uuid) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.publish_version(uuid,text,uuid,text) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.record_decision(uuid,text,text,text[],text,uuid) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.record_rights_review(uuid,text,integer,text,text,text,date) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.record_risk_assessment(uuid,text,text,text) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.save_draft(uuid,jsonb) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.save_prompt(uuid,jsonb,uuid,integer) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.save_prompt_and_result(uuid,jsonb,jsonb,uuid,integer) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.save_reflection(uuid,uuid,integer,jsonb) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.staff_probe(text,integer) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.start_review(uuid,text) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.submit_version(uuid,text) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.update_my_reflection(uuid,integer,jsonb) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.whoami() owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   api.withdraw_publication(uuid,text,text) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,authenticated=X/hackass_owner}
+func   app_bridge.session_valid(uuid,uuid) owner=postgres definer=true acl={postgres=X/postgres,hackass_owner=X/postgres}
+func   app_guard.on_auth_user_created() owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,supabase_auth_admin=X/hackass_owner}
+func   app_guard.on_auth_user_deleted() owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,supabase_auth_admin=X/hackass_owner}
+func   app_guard.on_auth_user_deleted_content() owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,supabase_auth_admin=X/hackass_owner}
+func   app_guard.require_member() owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner}
+func   app_guard.require_staff(text,interval) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner}
+func   worker.claim_job(text) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,hackass_worker=X/hackass_owner}
+func   worker.complete_job(uuid,bigint) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,hackass_worker=X/hackass_owner}
+func   worker.fail_job(uuid,bigint,text) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,hackass_worker=X/hackass_owner}
+func   worker.get_job_subject(uuid,bigint) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,hackass_worker=X/hackass_owner}
+func   worker.healthcheck() owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,hackass_worker=X/hackass_owner}
+func   worker.heartbeat_job(uuid,bigint) owner=hackass_owner definer=true acl={hackass_owner=X/hackass_owner,hackass_worker=X/hackass_owner}
+member hackass_owner <- postgres inherit=false set=false
+member hackass_owner <- postgres inherit=false set=true
+owner-on-auth  schema_usage=false sessions_select=false users_select=false
+
+PASS  F1  a live user session passes api.whoami through PostgREST with a real JWT  [HTTP 200, account created by the Auth trigger (status=active)]
+PASS  F2  no user token: the anon key (anon role) and the service key cannot execute the function  [anon key: HTTP 401 42501; service key: HTTP 401 42501; no header: HTTP 401]
+PASS  F3  a signed-out session whose access token is still unexpired and correctly signed is refused inside the database  [token signature valid and unexpired; database answered HTTP 403 session_invalid]
+PASS  F4  a session row that no longer exists is refused (missing session)  [HTTP 403 session_invalid]
+PASS  F5  a disabled account is refused although its session and token are valid; reactivating restores access at once  [disabled -> 403 account_inactive; active -> 200]
+PASS  F6  a banned user and a deleted user are refused (ban via the Auth admin API; deletion also marks the account and revokes staff)  [banned -> session_invalid; deleted -> session_invalid; account=deleted:0]
+PASS  F7  staff authority: not staff, aal1, aal2 and removal of the assignment are each enforced on the same JWT calls  [not_staff -> mfa_required (aal1) -> allowed (aal2) -> not_staff (removed) -> allowed as admin; no new token was needed]
+PASS  F8  stale MFA with a real aal2 token: the caller can shorten the window but never lengthen it  [fresh -> ok; 3.5 s old vs 2 s window -> mfa_stale (the 20-minute and future cases are in 020_authorization.test.sql)]
+PASS  F10  guard arguments fail closed through PostgREST: NULL or unknown role names are rejected; a NULL window means the 15-minute default, never unlimited  [NULL/unknown role -> HTTP 400 22023 invalid_argument; NULL window -> default 15-minute window]
+PASS  F9  nothing behind the functions is reachable through the REST API: the app schema is not exposed, even to the service key  [user token cannot read app/app_guard/worker through REST or call a guard directly (HTTP 4xx)]
+PASS  W1  the worker login authenticates with its password over a real connection, and fails with a wrong or empty password  [correct password connects; wrong and empty passwords are refused (scram-sha-256)]
+PASS  W2  the worker can execute worker.healthcheck() (and, since F2-D1, the five job functions: see local-f2d1-checks.mjs) and nothing else  [denied: 11 protected statements (tables, auth, api, guards, bridge, DDL, SET ROLE, pg_authid); visible app/auth tables=0; table grants=0; defaults setting=30s/""]
+FAIL  R1  rollback scripts (F2-E, then F2-D2, then F2-D1, then F2-C2, then F2-C1, then F2-B, then F2-A): remove every application object and role (rehearsed in a transaction that is rolled back), leave auth intact  -> before rollback: schemas=8 roles=2 triggers=3 ledger=21 auth_users_table=true default_acl=2
+
+F2-A authority checks: 1 FAILED
+NOT run here (hosted only): the same checks against the hosted pooler/staging project; hackass_worker through the hosted pooler; whether the platform permits the same grants on hosted Supabase.

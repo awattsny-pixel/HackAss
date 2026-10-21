@@ -426,6 +426,9 @@ select 'ledger=' || count(*) from supabase_migrations.schema_migrations where ve
   // 1. committed rollback (psql as postgres, begin ... commit)
   // Later slices sit above this one in the ledger (F2-D2 and anything after it), so a committed rollback goes in true reverse order: those first, then F2-D1.
   // (Rolling F2-D1 back alone would leave a gap that `supabase migration up` refuses to fill.) Everything is then re-applied by one `migration up`.
+  // PX-3a sits above every F2 slice in the ledger, so a COMMITTED rollback goes in true reverse order: PX-3a first (otherwise `supabase migration up` finds a gap and refuses). It is re-applied by the same `migration up`.
+  const downPX3a = psql(readFileSync(path.join(root, 'supabase/rollbacks/20261020090000_px3a_down.sql'), 'utf8'));
+  ok(!/ERROR/.test(downPX3a.out + (downPX3a.err ?? '')), `the PX-3a rollback failed: ${(downPX3a.out + (downPX3a.err ?? '')).slice(-300)}`);
   const downE = psql(readFileSync(path.join(root, 'supabase/rollbacks/20261019090000_f2e_down.sql'), 'utf8'));
   ok(!/ERROR/.test(downE.out), `the F2-E rollback failed: ${downE.out.slice(-300)}`);
   const downLater = existsSync(path.join(root, 'supabase/rollbacks/20261018090000_f2d2_down.sql')) ? psql(readFileSync(path.join(root, 'supabase/rollbacks/20261018090000_f2d2_down.sql'), 'utf8')) : { out: '' };
