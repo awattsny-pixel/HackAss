@@ -1,7 +1,5 @@
 import type { Metadata } from 'next';
-import Navigation from './components/Navigation';
-import Footer from './components/Landing/Footer';
-import { AuthProvider } from './context/AuthContext';
+import LegacyChrome from './components/LegacyChrome';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -16,17 +14,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <script async src="https://www.instagram.com/embed.js"></script>
-      </head>
       <body className="bg-black text-white flex flex-col min-h-screen">
-        <AuthProvider>
-          <Navigation />
-          <main className="flex-1">
-            {children}
-          </main>
-          <Footer />
-        </AuthProvider>
+        <LegacyChrome>{children}</LegacyChrome>
       </body>
     </html>
   );
