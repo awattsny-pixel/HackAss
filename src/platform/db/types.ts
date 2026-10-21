@@ -22,6 +22,9 @@ export interface SqlRunner {
   query(text: string, values: readonly unknown[]): Promise<{ rows: readonly Record<string, unknown>[] }>;
 }
 
+/** Optional client settings. `fetch` lets the composition root BOUND every network call the Auth client makes (including signing-key retrieval). */
+export interface DbClientOptions { readonly fetch?: typeof fetch }
+
 /** Cookie access supplied by the framework; the SSR client reads and writes the session through it. */
 export interface CookieAdapter {
   getAll(): { name: string; value: string }[];

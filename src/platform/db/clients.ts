@@ -7,19 +7,25 @@ import 'server-only'; // Next.js fails the build if a Client Component ever impo
 import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import type { PublicEnv } from '../env-validate.ts';
-import { WORKER_FUNCTIONS, type CookieAdapter, type PublicDb, type SqlRunner, type UserDb, type WorkerDb, type WorkerFunction } from './types.ts';
+import { WORKER_FUNCTIONS, type CookieAdapter, type DbClientOptions, type PublicDb, type SqlRunner, type UserDb, type WorkerDb, type WorkerFunction } from './types.ts';
 
-export function createPublicDb(env: Pick<PublicEnv, 'supabaseUrl' | 'supabasePublishableKey'>): PublicDb {
+export function createPublicDb(env: Pick<PublicEnv, 'supabaseUrl' | 'supabasePublishableKey'>, opts: DbClientOptions = {}): PublicDb {
   const client = createClient(env.supabaseUrl, env.supabasePublishableKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    ...(opts.fetch ? { global: { fetch: opts.fetch } } : {}),
   });
   return { kind: 'public', client };
 }
 
-export function createUserDb(env: PublicEnv, cookies: CookieAdapter): UserDb {
+/** Session cookie lifetime. PROVISIONAL: it matches the pilot's proposed 7-day overall session limit; enforcement of that limit is the Auth provider's and is not yet confirmed. */
+export const SESSION_COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+
+export function createUserDb(env: PublicEnv, cookies: CookieAdapter, opts: DbClientOptions = {}): UserDb {
   const client = createServerClient(env.supabaseUrl, env.supabasePublishableKey, {
-    cookies: { getAll: () => cookies.getAll(), setAll: (list) => cookies.setAll(list) },
-    cookieOptions: { httpOnly: true, secure: env.appEnv === 'staging' || env.appEnv === 'production', sameSite: 'lax', path: '/' },
+    // The library writes its own long default lifetime on the session cookies; cap every positive lifetime so the cookie never outlives the provisional session limit.
+    cookies: { getAll: () => cookies.getAll(), setAll: (list) => cookies.setAll(list.map((c) => (typeof c.options?.maxAge === 'number' && c.options.maxAge > SESSION_COOKIE_MAX_AGE_SECONDS ? { ...c, options: { ...c.options, maxAge: SESSION_COOKIE_MAX_AGE_SECONDS } } : c))) },
+    cookieOptions: { httpOnly: true, secure: env.appEnv === 'staging' || env.appEnv === 'production', sameSite: 'lax', path: '/', maxAge: SESSION_COOKIE_MAX_AGE_SECONDS },
+    ...(opts.fetch ? { global: { fetch: opts.fetch } } : {}),
   });
   return { kind: 'user', client };
 }

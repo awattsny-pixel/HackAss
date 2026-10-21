@@ -16,7 +16,8 @@
     "scan:gitleaks": "node scripts/scan-gitleaks.mjs",
     "install:gitleaks": "node scripts/install-gitleaks.mjs",
     "db:test:auth": "node scripts/db-test.mjs --auth-spikes",
-    "install:supabase-cli": "node scripts/install-supabase-cli.mjs"
+    "install:supabase-cli": "node scripts/install-supabase-cli.mjs",
+    "px2b:local": "node --conditions=react-server scripts/px2b-local-checks.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

@@ -16,3 +16,11 @@ build/
 
 # Locally installed tool binaries (scripts/install-gitleaks.mjs)
 .tools/
+
+# PX-2b pilot Auth stack: the migrations directory is a link to ../../supabase/migrations created by scripts/px2b-pilot.mjs (never a second copy)
+/supabase-pilot/supabase/migrations
+/supabase-pilot/supabase/.temp
+/supabase-pilot/supabase/.branches
+/supabase-pilot/supabase/tests
+.next-gate/
+.next-lock/
