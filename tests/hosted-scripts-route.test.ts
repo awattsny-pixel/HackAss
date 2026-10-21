@@ -156,8 +156,14 @@ test('7. a real stage process with the previous environment shape is refused at 
 test('8. the migration SQL is unchanged from the accepted commit', () => {
   const base = '0e1e2a139393f3017963e096fbbe438694e6446a';
   if (spawnSync('git', ['cat-file', '-e', `${base}^{commit}`], { cwd: root }).status !== 0) return; // a checkout without that commit cannot compare
-  const r = spawnSync('git', ['diff', '--stat', base, '--', 'supabase/migrations'], { cwd: root, encoding: 'utf8' });
-  assert.equal(r.status, 0); assert.equal(r.stdout.trim(), '', `supabase/migrations differs from ${base}`);
+  // The accepted migrations must be byte-identical: nothing modified, deleted or renamed since the accepted commit. Files ADDED since then are allowed only if they are the four PX-3a
+  // migrations (the pilot manifest and its test pin their hashes); any other addition still fails here.
+  const changed = spawnSync('git', ['diff', '--name-only', '--diff-filter=MDRTUXB', base, '--', 'supabase/migrations'], { cwd: root, encoding: 'utf8' });
+  assert.equal(changed.status, 0); assert.equal(changed.stdout.trim(), '', `supabase/migrations differs from ${base}`);
+  const added = spawnSync('git', ['diff', '--name-only', '--diff-filter=A', base, '--', 'supabase/migrations'], { cwd: root, encoding: 'utf8' });
+  assert.equal(added.status, 0);
+  const extra = added.stdout.trim().split('\n').filter(Boolean).filter((f) => !/\/2026102009\d{4}_px3a_[a-z_]+\.sql$/.test(f));
+  assert.deepEqual(extra, [], 'only the four PX-3a migrations may have been added');
   assert.ok(existsSync(join(root, 'supabase/migrations')));
 });
 
