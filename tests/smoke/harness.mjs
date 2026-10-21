@@ -21,6 +21,9 @@ export function buildTestEnv({ fakePort, netGuardPath, netGuardLog, home, tmp, n
     HOME: home,
     TMPDIR: tmp,
     NODE_ENV: 'production',
+    // The smoke run exercises the legacy API routes against a local fixture. The private-preview gate (next.config.js) blocks those routes in every mode except an explicit local/ci, and an unset APP_ENV fails
+    // CLOSED into the gated build; so this isolated harness, and only this harness, selects the existing open test mode. The preview/production build never sets it (scripts/check-env.mjs, tests/preview-gate.test.ts).
+    APP_ENV: 'ci',
     NEXT_TELEMETRY_DISABLED: '1',
     NODE_OPTIONS: `--require=${JSON.stringify(netGuardPath)}`,
     SMOKE_NETGUARD_LOG: netGuardLog,

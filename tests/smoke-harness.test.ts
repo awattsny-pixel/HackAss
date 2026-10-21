@@ -155,13 +155,15 @@ test('buildTestEnv ignores the caller environment entirely', async () => {
   const harness = await import(pathToFileURL(join(root, 'tests/smoke/harness.mjs')).href);
   const saved = { ...process.env };
   try {
-    Object.assign(process.env, CONTAMINATION);
+    Object.assign(process.env, CONTAMINATION, { APP_ENV: 'production', PREVIEW_GATE: 'on' });
     const env = harness.buildTestEnv({ fakePort: 4321, netGuardPath: '/g.cjs', netGuardLog: '/l', home: '/h', tmp: '/t' });
     assert.ok(!/evil\.invalid|LIVE-KEY-CANARY/.test(JSON.stringify(env)));
     assert.equal(env.VERCEL_URL, '127.0.0.1:4321');
     assert.equal(env.SUPABASE_SERVICE_ROLE_KEY, 'dummy-service');
+    assert.equal(env.APP_ENV, 'ci', 'the isolated smoke harness selects the open test mode explicitly (the gate fails closed when APP_ENV is unset)');
     for (const k of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'DATABASE_URL', 'NODE_EXTRA_CA_CERTS', 'GITHUB_TOKEN', 'AWS_SECRET_ACCESS_KEY']) assert.ok(!(k in env), k);
-  } finally { for (const k of Object.keys(CONTAMINATION)) { if (k in saved) process.env[k] = saved[k]; else delete process.env[k]; } }
+    assert.ok(!('PREVIEW_GATE' in env), 'the gate switch is never forwarded');
+  } finally { for (const k of ['APP_ENV', 'PREVIEW_GATE']) { if (k in saved) process.env[k] = saved[k]; else delete process.env[k]; } for (const k of Object.keys(CONTAMINATION)) { if (k in saved) process.env[k] = saved[k]; else delete process.env[k]; } }
 });
 
 test('cleanup failure: survivors after termination make the run fail (exit 8) and are named; success is never reported', async () => {
