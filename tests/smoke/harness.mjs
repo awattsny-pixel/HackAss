@@ -89,7 +89,11 @@ export class Managed {
       while ((await probe()) === 'alive' && Date.now() < until) await sleep(100);
     }
     if (!this.exited) return { ok: false, label: this.label, pid: this.pid, reason: 'process did not exit' };
-    const state = await probe();
+    // HARDENING (PX-3e; the mechanism of the observed exit-8 failure was NOT demonstrated, this is a bounded tolerance for a transient EPERM that outlives the leader's reaping, e.g. a late-reaped
+    // zombie descendant): retry EPERM for the same killWaitMs budget. A persistent EPERM still fails the cleanup below once the budget is spent.
+    let state = await probe();
+    const epermUntil = Date.now() + killWaitMs;
+    while (state === 'EPERM' && Date.now() < epermUntil) { await sleep(50); state = await probe(); }
     if (state === 'alive') return { ok: false, label: this.label, pid: this.pid, reason: 'process group still has live members' };
     if (state !== 'gone') return { ok: false, label: this.label, pid: this.pid, reason: `process group state unknown after the leader exited: kill ${state} (leader reaped=${this.exited}, exitCode=${this.exitCode}; a permission or system error is not a successful cleanup)` };
     return { ok: true };
