@@ -1,0 +1,792 @@
+node v24.21.0
+(node:39084) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/account-session-state.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ first results: member, anonymous, or unavailable (not a guess) (2.433103ms)
+✔ REGRESSION: an outage never signs a member out: they stay shown as signed in, degraded, with a "cant_check" notice (0.789294ms)
+✔ a definite anonymous answer after being a member (also after a degraded period) shows the signed-out notice once (0.221744ms)
+✔ an outage while anonymous or checking does not invent a session; explicit sign-in and sign-out are exact (0.209609ms)
+✔ the "cant_check" notice is not cleared by the toast event (the indicator keeps showing it) (0.160217ms)
+✔ focus re-check is throttled but never skipped the first time (0.265992ms)
+✔ responses are interpreted conservatively: anything unexpected is "unavailable", never "anonymous" or "member" (1.241273ms)
+✔ reducer: a result from an older generation is discarded after a sign-in, a sign-out or the start of an action (0.326837ms)
+✔ DELAYED RESPONSE, direction 1: a slow "anonymous" check that finishes after the sign-in cannot sign the member out again (7.169829ms)
+✔ DELAYED RESPONSE, direction 2: a slow "member" check that finishes after the sign-out cannot restore the signed-in state (2.312727ms)
+✔ the requests never overlap: the action waits for the cancelled check to settle; no check starts during an action; checks resume afterwards (0.958184ms)
+✔ only one check runs at a time; a failed action leaves the state as it was and checks resume (0.377618ms)
+(node:39085) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/account-ui-source.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the account UI talks only to this application's own auth endpoints, with same-origin credentials and no caching (2.670498ms)
+✔ no browser storage, cookies, raw HTML, Auth client, environment or token handling in the account UI (2.954704ms)
+✔ public registration is unavailable in the UI: no sign-up route, link or form; the sign-in screen says registration is closed (22.491067ms)
+✔ the unsaved prompt is out of reach: only the session provider touches the experience context, and only for the toast (1.514955ms)
+✔ REGRESSION (source): sign-in and sign-out go through the coordinator; the provider never dispatches a result of its own (0.431957ms)
+✔ after sign-in the member moves by client navigation (router.push), never a full page load; the return path comes from the server, already validated (0.462798ms)
+✔ the email-link pages carry the approved visual tokens and 44px controls, load nothing external and keep the strict security headers (0.680253ms)
+(node:39086) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/auth-routes-source.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ every new auth route is wrapped by authRoute (environment check, request context, same-origin check) and exports only GET/POST (1.822976ms)
+✔ mutating routes are POST only; read-only routes never call the provider to change anything (0.560359ms)
+✔ no sign-up anywhere in the auth handlers; the only registration words are refusals (5.689394ms)
+✔ the auth composition holds no service-level key and no browser client; the Auth client is built only through the platform (0.867772ms)
+✔ handlers log events by name with kinds only: no log call receives a request, header, cookie, body, token, email or password (0.915698ms)
+✔ responses that carry session state or tokens are never cacheable; the email-link pages send no referrer to other sites and cannot be framed (0.304581ms)
+✔ the redirects only ever use paths validated by safeReturnPath (relative Location, never a caller-supplied URL) (0.320638ms)
+✔ REGRESSIONS (source): recovery never reveals membership through provider rate limits; link exchange never replaces a session without confirmation; unknown failures are retryable (0.518427ms)
+(node:39087) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/ci-hardening.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ every action reference is a full commit SHA, the exact reviewed one, with its release named in a comment (2.033338ms)
+✔ the runner image is pinned, never a -latest label (1.06251ms)
+✔ push runs only for main and the verification branch (no tags, no other branches); pull requests are still checked (2.521625ms)
+✔ the application job runs on both supported Node versions, one of which is .nvmrc; the other jobs stay on .nvmrc (0.597208ms)
+✔ hardening kept the gates: permissions read-only, no secrets, no deployment, the same verification steps in the application job (0.44779ms)
+(node:39088) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/containment.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ disabled routes return 503 with zero database or outbound calls (263.253167ms)
+✔ demo credentials are gone and issue no token (3.291088ms)
+✔ no mutating export can fall through: every mutation is a disabled stub (1.449122ms)
+✔ .env is not tracked and ignore rules cover it (13.23941ms)
+(node:39089) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/db-test-runner.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ success: preflight, start, test, then stop, in that order, exit 0 (4.496804ms)
+✔ every command is bounded by a positive timeout (0.363457ms)
+✔ BLOCKED (exit 2, nothing started, nothing to clean up): Docker missing, Docker daemon unresponsive, CLI missing (0.454514ms)
+✔ failed startup: exit 3, no tests run, cleanup still attempted (a partial start can leave containers) (0.19086ms)
+✔ timed-out startup: exit 4, no tests run, cleanup attempted (0.207763ms)
+✔ failed database tests: exit 1 and cleanup attempted; a timed-out test run: exit 4 and cleanup attempted (27.534377ms)
+✔ failed cleanup: exit 8, and it outranks success, failed tests, failed or timed-out startup (4.026396ms)
+✔ process level: success runs start, test and stop and exits 0 (1089.720732ms)
+✔ process level: a failing start, failing tests and failing stop give exit 3, 1 and 8, each still attempting the stop (4587.60554ms)
+✔ process level: a hung start is killed at its timeout (exit 4) and cleanup still runs; a hung stop is cut off (exit 8) (3101.231919ms)
+✔ process level: missing Docker is BLOCKED (exit 2) and starts nothing (453.658885ms)
+✔ resolveTools: prefers the pinned local CLI, then Docker Desktop's own docker and per-user socket when PATH/var-run lack them (0.669504ms)
+✔ a Supabase CLI that is not the pinned version is BLOCKED before anything starts (0.330794ms)
+✔ follow-up steps run only after passing tests, share the cleanup guarantee, and map failure/timeout to exit 1/4 (0.306011ms)
+✔ the Supabase CLI installer follows the same rules as the Gitleaks one: pinned URL, digest checked before extraction, version verified (10.333394ms)
+✔ the local Auth check script prints facts only: it never logs keys, tokens or passwords, and it removes its probe functions (0.900221ms)
+✔ probeCommand is bounded: a hung `docker --version` is killed at the timeout and counts as unavailable (regression: the probe used to have no timeout) (1264.870367ms)
+✔ the CLI wires the bounded probe: no unbounded spawnSync(..., --version) remains in the runner (0.304214ms)
+(node:39090) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/f2a-migrations.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ F2-A, F2-B, F2-C1, F2-C2 and F2-D1, F2-D2, F2-E and PX-3a migrations: twenty-five timestamped, ordered files, no stray files (2.721404ms)
+✔ no secret in SQL: the worker role is created without a password and no migration sets one (1.180534ms)
+✔ every function created by a migration is SECURITY DEFINER with an empty search_path (2.142033ms)
+✔ no grant to PUBLIC, anon or service_role beyond the api schema USAGE, and EXECUTE is never granted broadly (2.484024ms)
+✔ every function has its PUBLIC execute revoked before any grant, and every api function begins with a guard call (2.261146ms)
+✔ the staff guard has no MFA switch, no clock-skew allowance, and validates NULL/out-of-range arguments inside the guard (0.702097ms)
+✔ every function in an application schema has PUBLIC execute revoked, and no table is ever granted to anyone (1.694128ms)
+✔ every application table has RLS enabled and is covered by the immutability / append-only / truncate triggers where it holds content (7.754013ms)
+✔ lock order and the freeze: child guards lock parents FOR NO KEY UPDATE (one mode, so no upgrades) in ascending id order; the freeze locks FOR UPDATE and hashes after the lock (0.650371ms)
+✔ no contributor-editable content column is privileged: classification and approval fields do not exist in the content tables (2.802411ms)
+✔ the schemas that PostgREST exposes are exactly public, graphql_public and api; the application schemas are not exposed (0.442701ms)
+✔ the rollback scripts remove every schema, table, role and trigger the migrations create, and un-ledger exactly their versions (2.996967ms)
+✔ PX-3a rollback removes everything the four PX-3a migrations create (in dependency order) and un-ledgers exactly their versions (3.356996ms)
+✔ the pgTAP files exist and keep their no-drift inventory assertions (0.576788ms)
+✔ G-3 in the F2 acceptance contract records the exact bridge ownership exception instead of a blanket owner rule (0.663548ms)
+✔ F2-B correction round: identifier format, list caps and the quota/category guards are defined consistently in SQL, TypeScript and the docs (1.504285ms)
+✔ F2-C1: the review functions take no caller identity, require the reviewed hash, start with the staff guard, and lock the submission first (1.297736ms)
+✔ F2-C1 rollback removes everything it created, in order, and un-ledgers exactly its three versions (2.134606ms)
+✔ F2-C2: one lock protocol (submission row, then hack row, then lifecycle rows in ascending id order) is followed by publish, withdraw and every review write (0.756992ms)
+✔ F2-C2 rollback removes everything it created, in order, restores the F2-C1 lock_submission, and un-ledgers exactly its three versions (0.512209ms)
+✔ F2-D1: worker functions check the worker login first, take only a job id and an epoch, and grant nothing else; the job row is locked last (1.577389ms)
+✔ F2-D1 rollback drops the functions over the row type before the table, restores the F2-C2 definitions, and un-ledgers exactly its three versions (1.049816ms)
+✔ F2-D1 correction: lease and expiry logic use the wall clock and the UTC day, never now() or current_date; the migration can be re-applied over its retained constraints (0.56733ms)
+✔ F2-D2: the budget objects are owner-only (no grant, no capability wiring), the ledger is the only source of totals, and money-moving functions lock counters before the reservation (1.033378ms)
+(node:39091) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/foundation-docs.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ CI: verify job runs the secret scan before lint and every gate in order; database job uses the real local stack with a pinned CLI (12.443469ms)
+✔ the CLI version is pinned identically in CI and in scripts/supabase-cli-pin.json, and CI runs the local Auth checks between the pgTAP tests and the stop step (1.511636ms)
+✔ local Supabase config carries the settings the design depends on (1.482401ms)
+✔ pgTAP platform test exists and checks the real stack (roles, Auth sessions table, extensions); the F2-A schema is applied only through migrations (1.427863ms)
+✔ db:test reports BLOCKED (exit 2) with an actionable message when Docker is unavailable, never a silent pass (92.811073ms)
+✔ the ADR records the five F2 invariants and the F2 acceptance contract has a test row for each (3.4883ms)
+✔ the in-repo secret scanner is labelled supplementary in CI, and Gitleaks (pinned) is the primary scan (0.903192ms)
+✔ docs/db/hashcanon-1.md names every hashed field in the order the implementation uses, and the golden-vector count matches (1.394834ms)
+✔ docs/db/f2c1-review.md names every approval blocker the SQL can return, and every review function (0.859004ms)
+✔ docs/db/f2c2-publication.md names every publication blocker, function, error and snapshot line the SQL can produce, states the lock protocol and the rollback (1.111703ms)
+✔ docs/db/f2d1-jobs.md documents every worker function, the lock order with the job row last, the allowlisted subject, the fail-closed error, the rollback and the read-time expiry gate (0.627672ms)
+✔ docs/db/f2d2-ai-budgets.md states the accounting contract: units, rules, every refusal reason, every function, the unknown-outcome recovery path, and the data loss of the rollback (3.904966ms)
+✔ docs/db/f2e-public-catalog.md states the contract: every blocker code, the response allowlist, the pagination order and limits, and the rollback (1.526047ms)
+✔ F2-E migrations: the reads are STABLE and write nothing, the allowlist is built field by field, and only the two catalog functions are granted to anon (9.730882ms)
+✔ docs/db/f2e-public-catalog.md does not promise duplicate-free traversal: it states the start-time key, skips, repeats and the exact guarantees (0.356276ms)
+✔ docs/foundation/f2-closeout.md reconciles every F2 acceptance row and names the milestone for what remains (5.734682ms)
+✔ docs/foundation/f2-closeout.md records the harness diagnosis: the original failure, the established cause, and what was not established (0.720165ms)
+(node:39092) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/gitleaks.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ pin: exact version, official release URL, one 64-hex SHA-256 per platform asset, file names carry the version (2.456569ms)
+✔ CI installs the pinned version with the repository script and runs the scan; nothing downloads "latest" or uses a third-party action (23.210063ms)
+✔ installer: a wrong digest is refused before anything is written or extracted (11.184274ms)
+✔ installer: a matching digest installs only from the pinned URL; a reported version other than the pin is removed again; a present binary is not re-downloaded (42.194532ms)
+✔ installer: an unsupported platform is a distinct BLOCKED error, never a download (7.806558ms)
+✔ wrapper: clean scans exit 0; scans use the config, the fingerprint list, redaction, no inline allow, and write reports outside the repository (1413.816513ms)
+✔ wrapper: findings exit 1 and are listed by rule/file/commit/line; tool failure exits 3; inconsistent output exits 3; a missing binary is BLOCKED (2) (3006.099352ms)
+✔ wrapper: temporary reports and the staged tree are removed afterwards (766.213733ms)
+✔ resolveBinary: only the pinned version is accepted (2.227726ms)
+✔ reviewed fingerprints: exactly the six reviewed historic findings, and no working-tree exemption, each a full exact fingerprint, no wildcards; the config has no allowlists (1.111349ms)
+﹣ real binary: this repository is clean in the working tree and in full history (only the six reviewed historic findings are suppressed) (0.158337ms) # pinned Gitleaks not installed (Gitleaks 8.30.1 (pinned) was not found. Run `node scripts/install-gitleaks.mjs`.)
+﹣ real binary: a newly introduced synthetic secret fails BOTH the tree scan and the history scan, and is never printed (0.07337ms) # pinned Gitleaks not installed (Gitleaks 8.30.1 (pinned) was not found. Run `node scripts/install-gitleaks.mjs`.)
+﹣ real binary: a secret deleted from the tree still fails the history scan, and the tree scan alone is clean (0.056099ms) # pinned Gitleaks not installed (Gitleaks 8.30.1 (pinned) was not found. Run `node scripts/install-gitleaks.mjs`.)
+﹣ real binary: the reviewed list is exact, not broad (a new secret in a reviewed FILE, at a new commit, is still found; inline gitleaks:allow does not hide a secret) (0.051461ms) # pinned Gitleaks not installed (Gitleaks 8.30.1 (pinned) was not found. Run `node scripts/install-gitleaks.mjs`.)
+﹣ real binary: a new synthetic secret at the exact former documentation-example locations fails the tree scan BEFORE it is committed (0.26551ms) # pinned Gitleaks not installed (Gitleaks 8.30.1 (pinned) was not found. Run `node scripts/install-gitleaks.mjs`.)
+(node:39097) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/hashcanon.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ there are at least thirty golden vectors, with unique names and 64-hex digests (1.276482ms)
+✔ every golden vector: canonical text and SHA-256 match the stored expectation (28.146033ms)
+✔ every rejection vector (uppercase or alternate UUID spellings, bad digests) is rejected, naming the field (3.254256ms)
+✔ the fixture files are exactly what the generator produces (nobody edited them by hand) (6.961729ms)
+✔ HAND-WRITTEN expectations (independent of the implementation): the empty document, a small document, and a multi-byte document (0.373966ms)
+✔ equivalent inputs give the same text: NFC, CRLF/CR, null vs absent vs empty list, input order of sorted lists (0.593263ms)
+✔ different inputs give different text: empty vs null, case, whitespace, step order, field forgery (0.501825ms)
+✔ rejections: non-integers, wrong types, huge integers, non-objects (11.300174ms)
+✔ constants and idempotence (12.887991ms)
+✔ fuzz: the encoding is injective over single-field documents with hostile characters (no two different inputs share a text) (345.040675ms)
+(node:39118) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/hosted-docs.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ docs/hosted holds the preparation documents and says nothing was executed (4.236072ms)
+✔ no hosted preparation document contains a secret, a connection string with a password, a JWT, or a live project reference (5.650933ms)
+✔ the staging plan lists exactly the F2 migration files, in filename order; the PX-3a migrations are deliberately NOT in any hosted plan (hosted changes are held until separately authorized) (1.239674ms)
+✔ the staging plan fixes the database major version, the worker connection method and the Auth values from the repository configuration (2.18983ms)
+✔ the exposed schema is configured AFTER the migrations create it: the plan and the procedure agree on the order (3.705021ms)
+✔ database secrets never appear in an argument: a verified password-file method, with the forbidden forms listed only as "never" (3.341998ms)
+✔ H0 validates the API URL, the database login, BOTH pooler endpoints, the worker login and the password file, and H1b/H2c prove the live targets match (3.487513ms)
+✔ every hosted check is classified read-only or mutating, and the forbidden-against-staging list names the local destructive tooling (3.006577ms)
+✔ the hosted procedure never instructs a local destructive command against staging: such commands appear only in the forbidden list or in "never" text (2.395715ms)
+✔ the fixture sequence is executable: dedicated users for sign-out, staff removal and MFA; every later check signs in afresh (1.281865ms)
+✔ H10 builds a due job with an explicit, narrowly scoped procedure (an expiry date, one scoped update, exactly one due job) (0.665444ms)
+✔ H11 keeps enough eligible publications for multiple pages after hiding two (0.292484ms)
+✔ H12 separates forbidden data access from permitted metadata, checks the metadata against the function allowlist, and proves credentials work first (0.991145ms)
+✔ raw output is disposable and redacted evidence is retained: the three documents say the same thing (0.56425ms)
+✔ the CI review matches the hardened workflow: triggers, permissions, pinned actions, pinned runner, Node legs, and the absence of secrets and deployment steps (0.807539ms)
+✔ the pin-verification record in the CI review names what each old reference was, including that supabase/setup-cli@v1 is a branch (0.351047ms)
+✔ Node 24 is run in CI although package.json engines excludes it: the discrepancy is documented, not hidden (0.325361ms)
+✔ looking up the commit behind a public action tag needs no special permission, in the CI review and the approval summary (1.051802ms)
+✔ only S6 is read-only: H1b (a created and deleted Auth user) is inside an explicitly mutating authorization (0.527997ms)
+✔ the permitted direct-SQL exceptions include the narrowly scoped staff-assignment setup and revocation, and every check that uses them points to the list (0.712559ms)
+✔ the same three push prerequisites (deployment controls, credential-retirement evidence, final workflow commit reviewed) appear in every document that gates a push (0.479405ms)
+✔ the deployment-trigger evidence quoted in the CI review still exists in the repository (0.781058ms)
+✔ the credential-retirement document covers every baselined finding without containing a value, and ties R3 to an exposed secret or established compromise (0.635162ms)
+✔ the approval summary names the base commit, the proposed remote branch, the unresolved dependencies, cost, cleanup and per-step authorization (0.271686ms)
+✔ the three documentation corrections from the F2-F review are applied to the closeout (0.237202ms)
+(node:39122) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/hosted-scripts-adopt-s8.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a blocked S8 run is adopted: 9 stages inherited, provenance preserved, both failed attempts kept, the MFA evidence INHERITED, fixtures and intents carried, secrets copied privately with integrity (65.89209ms)
+✔ the adopted run continues: worker-checks, catalog-checks and isolation are allowed at the new commit, the inherited stages are not repeatable, nothing is skipped silently (20.706949ms)
+✔ refused: mismatched target binding, project, changed migrations, git failure and every ledger difference (38.225763ms)
+✔ refused: invalid source-run state (259.400662ms)
+✔ fixtures: accepted in the expected post-test state; refused when a user is not (b2 present, s-rm still staffed, a staff fixture missing or unstaffed); nothing is recreated or reset (172.280286ms)
+✔ secrets: missing, group-readable, invalid JSON, a missing password or TOTP material are refused; a source that changes during the adoption is refused and the copy removed (38.406226ms)
+✔ safety by construction: the adopt files never import the migration runner, run no SQL but reads, and call the Auth admin API with GET only (1.396186ms)
+✔ copySecrets verifies its own copy: a corrupted copy or a wrong mode is refused and removed; a faithful copy is accepted (3.325901ms)
+✔ inspectSecrets rejects null, arrays and primitives explicitly (and says so without quoting the file) (3.331606ms)
+✔ a source secrets file that is JSON null (or another non-object) stops the adoption at A6 before anything is copied (21.993674ms)
+✔ copySecrets errors are FIXED messages: malformed copied JSON containing a fake secret, an unwritable copy and an unreadable copy never quote any text (3.861124ms)
+✔ A5 is worded as what it checks: Auth presence, account status and assignments; the s-sess sign-out is inherited evidence, not freshly verified (0.523687ms)
+(node:39123) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/hosted-scripts-adopt.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a valid source run is adopted: stages inherited (not re-executed), results INHERITED, facts copied, the failed exposure attempt kept, the source untouched (30.052726ms)
+✔ adoption without a failed exposure attempt (a source that stopped after migrate) is also accepted, with an empty history (9.651116ms)
+✔ refused: a different validated target configuration (target binding mismatch) (8.12847ms)
+✔ refused: a different project reference (23.412866ms)
+✔ refused: the source run is bound to another profile (13.910442ms)
+✔ refused: migration files changed since the source commit (14.246044ms)
+✔ a refusal names exactly the rule that failed: with changed migrations only A3 fails and A1, A2, A4 pass (28.637602ms)
+✔ refused: the source commit is unknown or git fails (19.674927ms)
+✔ refused: the live ledger differs (count, versions or md5) (36.3426ms)
+✔ refused: the repository has a different migration list than the live ledger (10.824915ms)
+✔ refused: invalid source-run state (82.122941ms)
+✔ refused: the source run is missing, malformed, locked or named like the new run (11.439177ms)
+✔ refused: a new run that is not fresh (9.15389ms)
+✔ the source run changing during the read stops the adoption (20.917733ms)
+✔ gates: the adopted run may continue with exposure at the new commit, at no other commit, and may not repeat identity or migrate (76.066457ms)
+✔ evidence: inherited checks are INHERITED, not PASS; the kept failure keeps the outcome FAILED; nothing is reported as executed at the new commit (28.360835ms)
+✔ safety by construction: adopt never imports the migration runner and its only database calls are read queries (6.28386ms)
+✔ migrationChanges uses real git: unchanged -> empty, changed -> names, unknown commit -> refused (263.13104ms)
+(node:39125) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/hosted-scripts-correction.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a stage left running (or interrupted) is never restarted automatically, by itself or by any other stage (3.099874ms)
+✔ a failed stage blocks later stages: worker checks after failed session checks are refused; only cleanup and evidence continue the run (0.491612ms)
+✔ a read-only stage may be re-attempted after its own failure only with --retry-after-review; a mutating stage never (0.378777ms)
+✔ prerequisites recorded under another commit, and a run bound to another commit, profile or target configuration, are refused (0.703038ms)
+✔ cleanup closes the run: no stage except cleanup and evidence may run afterwards (0.707748ms)
+✔ isolation is a mutating stage and needs its confirmation (0.486109ms)
+✔ flags: unknown flags are refused (15.753608ms)
+✔ a run is locked against concurrent stages; a lock left by a dead process is taken over only by the recovery stages (119.188891ms)
+✔ two processes cannot execute stages against the same run at once (110.13808ms)
+✔ an unexpected exception inside a stage is persisted as a failure and blocks the run; cleanup then closes it (26.158051ms)
+✔ a killed process leaves the stage interrupted: it is not restarted; only recovery stages continue, and they record it as interrupted (115.326493ms)
+✔ the fixture path has no unrestricted SELECT/WITH fallback: a data-changing CTE is refused (4.018579ms)
+✔ reads cannot carry transaction control that would leave the read-only transaction (0.632386ms)
+✔ the executor wraps each kind in the transaction its kind requires, so the DATABASE refuses writes in a read (0.465563ms)
+✔ worker mutations have their own reviewed path: fixed calls on worker endpoints only, naming only the registered job (3.177808ms)
+✔ runSql has no password-file or login override (2.305518ms)
+✔ cleanup attempts every independent step even when one fails, and still reports failure (6.847909ms)
+✔ cleanup deletes every recorded user even when one deletion fails, and works before application tables or the worker role exist (7.700733ms)
+✔ an interrupted creation is recovered by its exact recorded e-mail, page by page, and no unrelated user is ever touched (12.942761ms)
+✔ creation intents are persisted before the Auth request (identity check and every fixture user) (2.60124ms)
+✔ a bounded child is killed with its whole process group at the deadline (911.233468ms)
+✔ git subprocesses are bounded and never prompt (402.405621ms)
+✔ a database call past its deadline: the client is killed, the NAMED container is removed and its absence verified (3722.120982ms)
+✔ if the container cannot be proved gone the failure says so (5629.378514ms)
+✔ a container the daemon creates AFTER the first removal is still removed (deadline path) (2358.148147ms)
+✔ a container the daemon creates AFTER the interrupt handler started is still removed (signal path) (2285.280415ms)
+✔ a creation delayed beyond the quiet period is a KNOWN LIMIT of the observation; a longer quiet period catches it (8138.846598ms)
+✔ deadline expiry distinguishes "absent, quiet period incomplete" from "absence not established" (signal path and deadline path) (35735.172633ms)
+✔ slow docker calls cannot outlast the window: a hanging `docker ps` is "not established" and bounded (3319.384852ms)
+✔ an interrupted stage whose container cleanup is NOT PROVEN stays interrupted, records and prints the names, and exits 130 (4850.64984ms)
+✔ truncated or timed-out migration output is rejected, never trusted (0.467227ms)
+✔ a generic 4xx is not isolation evidence: only the expected schema-exclusion refusal is accepted (1.105432ms)
+✔ the isolation and exposure stages use the strict checks, including public and graphql_public (0.304882ms)
+✔ the inventory covers row-level security and effective column and sequence privileges (0.163654ms)
+✔ evidence distinguishes COMPLETE, INCOMPLETE and FAILED; "no check failed" never means complete (1.623309ms)
+✔ the owner deletion date must be a real, current calendar date (0.311996ms)
+✔ evidence is produced for a failed run, in a separate process, and still removes secrets after the secrets file is deleted (123.810668ms)
+✔ evidence refuses to delete the raw run before script cleanup is done (112.115297ms)
+✔ credential files must be private regular files outside the checkout, wherever they are read or mounted (1.869772ms)
+✔ API-key files are validated before they are read (2.262117ms)
+✔ the wrong-password probe can name only the exact worker login and the exact nonexistent login, with its own password file (307.250889ms)
+✔ the common entry validates the deletion date before touching the run (2.378787ms)
+✔ hash-based redaction survives the secrets file (2.868263ms)
+(node:39158) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/hosted-scripts-known-finding.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ without the exception the observed difference FAILS exactly as before (nothing is normalised away) (1.335598ms)
+✔ with --known-finding=F-H9-1 the observed pair, and only that pair, is an EXCEPTION (never PASS) (0.428816ms)
+✔ the exception does not cover anything else: success, wrong exit code, other messages, swapped or partial matches all FAIL (3.131695ms)
+✔ a fixed pooler (identical refusals) PASSES with or without the exception; an unknown finding name fails (0.237519ms)
+✔ the finding table is exactly one finding, for check H9b of worker-checks (1.121868ms)
+✔ the flag is accepted only by worker-checks and only with the exact finding name (4.537075ms)
+✔ checker.exception records EXCEPTION (no PASS, not counted as passed or failed) and returns the stage exception list (0.600696ms)
+✔ evidence: an EXCEPTION row is listed, is not a pass, makes the outcome FAILED and is never COMPLETE (2.380009ms)
+✔ H9 is split without weakening: H9 keeps every strict step, H9b uses the shared single probe, and the probe runs once (1.420575ms)
+(node:39198) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/hosted-scripts-openapi.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ hosted restriction: the OpenAPI root refuses the publishable key (HTTP 401) and serves the secret key (78.685304ms)
+✔ H2b: the description is read with the secret key in apikey only; the isolation probes use real endpoints with the publishable key; the root never sees the publishable key (42.073632ms)
+✔ H2b still fails when a non-exposed schema is exposed (the refusal checks are retained) (45.567756ms)
+✔ H2b still inspects the description and the anonymous public read: a table path, an extra function, a denied anonymous read or an unexposed api fails (43.687609ms)
+✔ a secret key that is refused at the root is reported with its status, never hidden (6.424948ms)
+✔ public access: private tables are "not found" in api for each credential; a served table fails; other statuses are not accepted (9.899602ms)
+✔ non-exposed schemas are refused for each credential through POST /rpc, member token as a Bearer header, publishable key as apikey (6.020401ms)
+✔ source guard: the only request to the OpenAPI root in the hosted scripts is the secret-key read in lib/exposure.mjs (7.050484ms)
+(node:39204) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/hosted-scripts-review2.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a refused contender cannot create or alter the redaction salt or hashes, and later redaction still works (two real processes, deterministic) (273.552085ms)
+✔ the redaction salt is created exclusively and never replaced; redaction cannot be initialised without the lock (4.094003ms)
+✔ an interrupted or failed earlier attempt is never forgotten: the outcome stays FAILED although every current state is done (1.122632ms)
+Warning: Detected unsettled top-level await at file:///private/var/folders/70/sf8p_49n3w11rfbp8rvr4l1c0000gn/T/hs-rev2-M3otM6/hang.mjs:2
+await runStage('preflight', process.argv.slice(2), async () => { console.log('STARTED'); await new Promise(() => {}); }, { env: process.env, git: { head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", clean: true } });
+^
+
+
+
+✔ SIGKILL, recovery and an approved retry: the retry may succeed but the interrupted attempt stays in the evidence, which is FAILED (424.863593ms)
+✔ the CLI url carries the documented server-side limits as startup options, and a staging run cannot change them (9.481434ms)
+✔ the migration-session statements are fixed: only the CLI's own session of the migration login, started after the server-clock mark, on the migration endpoint (5.13627ms)
+✔ a deadline: the mark is read first, the CLI is started with the limits, then the session is cancelled and its end is PROVEN; the error says the run cannot be retried (5004.663168ms)
+✔ the server ending the session by itself is recognised; a session that survives cancel is terminated; one that survives everything is NOT PROVEN (70160.535019ms)
+✔ a CLI failure is verified too; a success needs no cancellation; no server clock means the CLI is never started; staging gets the documented deadline (5007.612343ms)
+✔ after a migration timeout the stage is failed and not retryable; the stage runs the CLI only through the bounded function (13.523624ms)
+(node:39218) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/hosted-scripts-route.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 1. the split: the migration target is the direct host as postgres, the pooler checks keep postgres.<ref>, the worker keeps its own login (13.297712ms)
+✔ 1b. the psql client for each endpoint is built with that endpoint's own host, port and login and never a password; the migration endpoint verifies the certificate, the pooler endpoints still only encrypt (5.386206ms)
+✔ 2. a pooler migration target is refused by target validation (H0), whichever pooler host, port or login is given (11.728375ms)
+✔ 2b. the previous environment shape (migration on the pooler as postgres.<ref>) is refused with the reason (3.342719ms)
+✔ 3. the pooler login is required and exact; the logins cannot be swapped (6.014809ms)
+✔ 4. the password file must now hold an entry for the direct host AND for the pooler logins (8.19198ms)
+✔ 5. the migration invocation itself refuses a pooler (or any non-direct) target BEFORE reading the server clock, connecting or starting the CLI (2.577626ms)
+✔ 5b. control: the direct target passes the guard and then proceeds to its first database step (0.499842ms)
+✔ 5c. the CLI url builder refuses a pooler too, and the selftest profile accepts only the local container host (0.847356ms)
+✔ 6. the only code that builds a `db push` command line is lib/migrate.mjs, behind the guard (2.963049ms)
+✔ 7. a real stage process with the previous environment shape is refused at H0: no docker, no Supabase CLI, no network was touched (181.246946ms)
+✔ 8. the migration SQL is unchanged from the accepted commit (28.548439ms)
+✔ 9. the S7 command block runs every stage in order when all succeed, and stops at the first failing one (5507.695922ms)
+✔ 9a. paths containing spaces survive the block: the working directory and every private-file path reach the stage intact (550.436411ms)
+✔ 9b. the block refuses an unknown or missing part, runs nothing then, and every node call goes through the stopping function (23.778652ms)
+✔ 10. the documentation makes no stale or overstated safety claim: pooled execution is not "safe" and does not fail closed, and fingerprint equality is not proof (0.670511ms)
+(node:39348) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/hosted-scripts-tls.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 1. a public root certificate file is accepted: spaces in the path, mode 0644, parseable, currently valid (9.340227ms)
+✔ 2. a root certificate file that is not exactly valid, current, unshared PEM certificates is refused (13.487781ms)
+✔ 3. target validation: the staging profile requires a good root certificate, the selftest profile (no TLS) refuses one (13.88671ms)
+✔ 4. the psql connection string verifies certificate AND host name when asked, never weakens, and the selftest profile has no TLS (0.823614ms)
+✔ 5. the CLI url carries verify-full and the root certificate path (spaces encoded); staging without a root certificate cannot build one (1.678774ms)
+✔ 6. the actual migration invocation hands the CLI verify-full and the root certificate (1.77617ms)
+✔ 7. CA status is recorded, not enforced: a non-CA (leaf) certificate is accepted and reported as ca = false (2.823082ms)
+(node:39352) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/hosted-scripts.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ H0 accepts a fully consistent staging target set (7.132605ms)
+✔ H0 rejects a wrong or forbidden project reference, and a missing forbidden list (6.099565ms)
+✔ H0 rejects an API reference that does not match the database endpoints (each endpoint is validated on its own) (8.254848ms)
+✔ H0 rejects loopback, private, address-literal and container hosts for a hosted profile (8.035439ms)
+✔ H0 validates the password file: presence, mode, location, entries, and forbidden references (13.147119ms)
+✔ H0 rejects keys of another project and unset keys (3.9708ms)
+✔ the staging profile never accepts selftest targets and the selftest profile never accepts hosted ones (4.49614ms)
+✔ the password file reader never returns a password (1.066289ms)
+✔ connection strings carry no password (0.640947ms)
+✔ redaction removes tokens, keys, passwords, connection strings and non-synthetic e-mail; registered secrets in any position (0.854761ms)
+✔ SQL guard: reads stay reads; every write kind is confined (3.055521ms)
+✔ SQL guard: role administration is only the marker, only as postgres, never after SET ROLE (0.652339ms)
+✔ SQL guard: fixture DML needs SET ROLE first and names only fixture users, the registered job, or the category (0.585388ms)
+✔ SQL guard: the worker probes are a fixed list (0.342619ms)
+✔ gates: authorization names the group and the exact HEAD; the tree must be clean for staging (0.764729ms)
+✔ gates: mutating stages need their own confirmation, their prerequisites, the owner confirmations, and run once (0.606203ms)
+✔ gates: a failed stage blocks the run, except that cleanup may always be repeated; cleanup needs only preflight (0.333514ms)
+✔ flags: unknown shapes are refused (0.324518ms)
+✔ the OpenAPI surface separates functions from everything else (0.206242ms)
+✔ no script links a project, logs in, pushes, deploys, or passes a password in an argument or URL (4.480959ms)
+✔ read-only stages import nothing that can change hosted state (0.294584ms)
+✔ no real project reference of the legacy project or a key-shaped string is committed in the scripts (0.549361ms)
+(node:39362) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/identity-misc.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ password: 12 code points minimum, 72 bytes maximum, no composition rules, not the email (3.259623ms)
+✔ failures are uniform: unknown email, wrong password, banned and unconfirmed read the same; provider text never leaks (0.611476ms)
+✔ callback parsing: valid invite/recovery/email_change links; everything else refused before anything is exchanged (0.966169ms)
+✔ the module has no Auth or database client, no environment access and no browser storage (0.396287ms)
+✔ invite-only pilot: the module has no sign-up capability (a hidden button is not the control) (0.538042ms)
+(node:39367) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/identity-px2b.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ provider failures: only explicit credential verdicts are "revoked"; network, timeout, 5xx, 429 and unknowns are "unavailable" (1.885593ms)
+✔ claims from the provider: valid claims; signing-key failure is unavailable; no session is no_session; expired vs invalid; garbage is unavailable (0.404208ms)
+✔ user check from the provider: ok needs a real id; empty answers are unavailable; 401 is revoked; 5xx is unavailable (0.207859ms)
+✔ setup marker: valid for the bound user and session; absent, tampered, malformed, expired and mismatched never block; it is documented as a UX rule (1.42411ms)
+✔ bounded fetch: a call is aborted after the per-call timeout; the request budget caps the total; success passes through (102.59312ms)
+✔ env: the new auth variables are optional, validated, and never required to be public (2.281366ms)
+✔ session cookie lifetime is the provisional 7 days; password wording (0.405291ms)
+(node:39384) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/identity-redirect.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ good paths are kept (1.277096ms)
+✔ open-redirect and injection corpus all fall back (0.839739ms)
+✔ a bad query is dropped but a good path is kept; control characters in the query drop it too (0.232825ms)
+✔ the fallback and allowed areas are configurable but still validated (0.178016ms)
+✔ the result is always a path that starts with a single slash and contains no scheme, host or backslash (0.407187ms)
+(node:39387) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/identity-resolver.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ T0: anonymous is allowed; a signed-in member is recognised at claims level; the server is never asked (3.97363ms)
+✔ T1: claims only, no server call (0.283027ms)
+✔ DEFINITE credential verdicts (no session, expired, invalid, expired by the clock) are 401 for T1 and T2, anonymous for T0, and never ask the server (0.662091ms)
+✔ a verification SERVICE failure is NOT a bad credential: unavailable reason, thrown error, malformed or uninterpretable claims all give 503 for T1 and T2 (never 401, never a member); T0 stays anonymous (1.235198ms)
+✔ T2: confirmed by the Auth server -> member with verification "server" (0.621123ms)
+✔ T2: no usable session is refused WITHOUT asking the server (0.910084ms)
+✔ T2: a session the server says is revoked or gone is refused (401), although the claims still verify (0.456127ms)
+✔ T2: the server confirming a DIFFERENT user than the claims names is refused (0.776258ms)
+✔ T2 never downgrades to T1: outage, timeout, thrown error, malformed or unknown answers all give auth_unavailable (503), not a member (41.123197ms)
+✔ documented T1 limitation: a session revoked by sign-out still passes T1 (claims valid) and is refused at T2 (0.44659ms)
+✔ private reads are T2, exactly like private writes; only the signed-in indicator is T1 (0.209522ms)
+✔ authorize("read-private") during an Auth outage is refused with 503 and never returns a member (0.256801ms)
+(node:39397) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/identity-throttle.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ client address: only a trusted source is used (5.868084ms)
+✔ IPv6 is reduced to its /64 (one subscriber cannot rotate addresses); IPv4-mapped is IPv4 (0.445857ms)
+✔ keyed hashes: stable, secret-dependent, purpose-separated, email-normalized; the secret must be long enough (1.255623ms)
+✔ stored keys never contain the address or the email (0.594654ms)
+✔ limits: per address, per address+email, per email (where set), global; a window expires (0.864593ms)
+✔ per-email limit (recovery) caps email bombing across addresses but sign-in has none (no lock-out lever) (0.71402ms)
+✔ unknown address: the SAME action limit applies to the shared unknown bucket (never a looser one); an extra restriction is additive (7.151567ms)
+✔ REGRESSION capacity pressure: 6,000 distinct requests in one frozen window with a global limit of 300 approve at most 300 (default store capacity) (144.988211ms)
+✔ REGRESSION capacity pressure, small store: active counters are never evicted; new keys are refused (denied), and the global limit still holds (13.862028ms)
+✔ the store reports capacity with a retry time; expired entries are reclaimed so service resumes after the window (0.726395ms)
+✔ the memory store is bounded (size never exceeds maxKeys) (62.860189ms)
+✔ a failing store always DENIES (fail closed); there is no option to allow (0.387182ms)
+✔ the throttle runs BEFORE the provider call: a denied request never reaches it (0.227783ms)
+(node:39406) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/lint-boundaries.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ app/: database packages are forbidden (the legacy read path is the single pinned exception) (1794.932506ms)
+✔ no browser-side Supabase client anywhere (119.365252ms)
+✔ src/ui: no database clients and no environment configuration (23.184093ms)
+✔ src/modules: isolated from siblings, routes, clients and parent directories (57.604736ms)
+✔ src/platform: depends on no module and no route (13.379436ms)
+✔ process.env is read only in src/platform/env.ts (37.431883ms)
+✔ type-only imports must use `import type` in src/ and tests/ (Node strips types and cannot import a type at runtime) (10.164496ms)
+✔ module directories are exactly the planned set; only submissions (HashCanon-1) and identity (PX-2a/2b) have implementation so far (1.717848ms)
+✔ the submissions module is pure: no environment, no database, no server-only marker, no Node built-in (0.333813ms)
+(node:39457) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/mywork.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ request bodies are strict: unknown keys (including any owner) are refused, and problems name the field only (9.501514ms)
+✔ prompt fields: length limits, the output-format allowlist, and origin rules (8.299178ms)
+✔ versions, results and the combined save (6.222943ms)
+✔ list and export queries are bounded (7.246606ms)
+✔ database errors map to fixed kinds; no database text, request value or id survives (0.916174ms)
+✔ availability takes precedence: transport failures and HTTP 5xx/408 are retryable unavailable whatever database code or text came with them (0.307711ms)
+✔ the receipt contract keeps replay and superseded, so a stale acknowledgment can be reconciled (3.729293ms)
+✔ responses are parsed against allowlists: unknown fields are dropped, malformed answers are invalid_response, outages are unavailable (4.317882ms)
+✔ a malformed id never reaches the database and answers exactly like a missing one (2.166969ms)
+✔ arguments sent to the database: no owner anywhere, optional parts become null, undefined keys are not sent (2.569883ms)
+✔ the module source: pure (no environment, database client, Node built-in or server-only marker), eleven functions only (0.794851ms)
+✔ write throttle: per member, per address, global; counted together; fails closed (14.015418ms)
+(node:39465) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/net-guard.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ control (no guard): every refused case really reaches Socket#connect, so the cases are not vacuous (1.015828ms)
+✔ the reported bypass: an external IPv4 address in Node's normalized [options, cb] array is refused, not forwarded (0.245114ms)
+✔ external numeric IPv4 (public, private, link-local metadata, unspecified) is refused in every call shape (0.17194ms)
+✔ IPv6 (documentation range, IPv4-mapped external, link-local) is refused (0.976376ms)
+✔ hostnames are refused: plain, look-alikes of localhost/127.0.0.1, numeric shorthand, and localhost with a custom lookup (0.335992ms)
+✔ higher-level clients that end in Socket#connect (tls, http, fetch over IPv4 and IPv6) are refused (0.151668ms)
+✔ permitted loopback destinations are forwarded in every call shape (127/8, ::1 in several spellings, mapped, localhost, unix paths, normalized array) (0.145214ms)
+✔ every refused attempt is recorded, and nothing permitted is (0.16562ms)
+(node:39482) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/pilot-apply.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ planner: an empty ledger needs all 25; a prefix needs the rest; a complete ledger needs nothing (1.397537ms)
+✔ planner REFUSES: a changed file, a missing file, an extra file, an unknown ledger version, a gap, a renamed row, a duplicate, a ledger beyond the manifest (0.545821ms)
+✔ hosted target safety: only the direct host of one project, port 5432, login postgres, verify-full with a root certificate; poolers and mismatches are refused (1.172087ms)
+✔ apply tool source: dry run by default, --apply and --confirm-pilot for a hosted write, one transaction per file with the ledger row inside it, stop at the first failure, limits set, no password handling (1.32118ms)
+(node:39485) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/pilot-manifest.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the manifest lists exactly the 25 migrations of the repository, in order, with their SHA-256 (4.806827ms)
+✔ counts: 25 migrations, 120 functions, 28 tables; the inventory files fingerprints match (1.813971ms)
+✔ the ledger section equals the manifest (version and name) and every migration appears once (0.239456ms)
+✔ the FUNCTION lines of the expected inventory are exactly the golden inventory of 010_roles_and_grants.test.sql (120 lines), so the hosted check uses the same reviewed truth (0.460571ms)
+✔ the inventory SQL is read-only and covers the application schemas only (0.379767ms)
+✔ the HISTORICAL staging records are preserved: the staging plan still lists exactly the 21 F2 migrations, and the 2026-10-17 evidence is committed unchanged in aee5287, already an ancestor of the branch (40.86118ms)
+(node:39503) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/pilot-rpc-checks.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the API target: only https://<ref>.supabase.co, confirmed by reference, never staging; refused before any key file is read (2.180999ms)
+✔ the database target shares the binding: database name, staging, and connection overrides are refused (0.641031ms)
+✔ the apply and inventory tools both use the shared database binding; the RPC checker binds before reading a key file (0.684429ms)
+✔ hosted mode refuses a non-pilot URL without reading any key file or sending a request (121.065968ms)
+✔ a failed check stops the run: later checks are SKIPPED (none runs, none mutates), cleanup still runs and is verified; exit 1 (602.037978ms)
+✔ an incomplete cleanup (the deletion error is returned, the user remains) is reported and fails the run with exit 3, never as success (538.560769ms)
+(node:39508) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/platform-actor.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ user ids must be UUIDs (1.827178ms)
+✔ the anonymous actor is frozen and recognised by the guards (0.328744ms)
+✔ tiers: T0 anyone; T1 members/staff; T2 requires server verification; T3 requires staff, aal2, server verification and fresh MFA (0.245104ms)
+✔ T3 rejects claims-only verification, aal1, stale or missing MFA, a future MFA timestamp, and an empty role set (0.223356ms)
+(node:39515) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/platform-body.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a normal small body is read in full; no body is an empty string (31.693779ms)
+✔ exactly the limit is accepted, one byte more is refused (1.81027ms)
+✔ REGRESSION: the limit is enforced WHILE STREAMING: an oversize chunked upload is cancelled after the limit, not read to the end (23.720649ms)
+✔ a declared Content-Length above the limit is refused without reading a byte; a malformed one is 400 (2.478141ms)
+✔ REGRESSION: a deadline ends a stalled upload and a slow drip (408), and the stream is abandoned (372.425973ms)
+✔ granularity, stated plainly: the limit is checked per chunk the platform delivers, so a single oversize chunk is read once and then refused (a 64 KiB chunk costs 64 KiB, never more) (1.40262ms)
+✔ invalid UTF-8 is a 400, not a crash or a replacement-character decode (0.604354ms)
+✔ a stream that errors is a 400 (0.493838ms)
+(node:39525) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/platform-db.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ there is no way to obtain a service-level client from the database module (1.874563ms)
+✔ worker calls: allow-listed functions only, always parameterized, argument count bounded (1.033606ms)
+✔ the worker function allow-list is exactly the documented set (and each name is a plain identifier) (0.30206ms)
+✔ public and user clients are constructed without any network access, and never persist sessions in the public case (29.718582ms)
+✔ user-client cookie policy is server-side and HttpOnly (experiment: pinned in source until the real Auth spike validates it) (0.699844ms)
+(node:39529) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/platform-env.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a complete local environment loads and is typed (2.615093ms)
+✔ every required variable is reported by name when missing (0.407835ms)
+✔ error output carries names and problems only, never values (0.827413ms)
+✔ staging and production require https; local allows http only for loopback (0.898339ms)
+✔ URLs must not embed credentials; APP_ORIGIN must be an origin only (0.445471ms)
+✔ service-level variable names are forbidden; legacy names are tolerated only as warnings while legacy routes exist (0.591569ms)
+✔ the legacy tolerance flag tracks reality: true exactly while the legacy service-role read path exists (10.622638ms)
+✔ NEXT_PUBLIC_ variables must not look like secrets (0.678984ms)
+✔ the public key may be a publishable/anon key (new or legacy name) but never a service-level key (0.490853ms)
+✔ server secrets need at least 32 characters; the job endpoint secret is optional but validated when present (0.430966ms)
+✔ worker database URL: optional for web, required for worker, and only the dedicated hackass_worker role is accepted (1.35803ms)
+✔ getEnv validates process.env lazily and caches; importing the module never throws (1.025695ms)
+✔ getEnv caches per scope: a prior web call must not satisfy the worker scope, in either order (0.945681ms)
+✔ both public key names are validated: a valid preferred key does not hide a service-level legacy key (and vice versa) (0.732619ms)
+(node:39534) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/platform-http.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ request ids: safe inbound ids are kept; short, long, or unsafe ones (incl. newlines) are replaced (56.1249ms)
+✔ errors: AppError maps to its status and public message; unknown errors are a generic 500 with no detail (8.380056ms)
+✔ internal errors: an AppError with code internal (or any 5xx) is the fixed generic 500; its message and fields are never sent (6.413287ms)
+✔ internal errors thrown through the request wrapper are generic in the response and keep detail out of the info log (5.075745ms)
+✔ JSON bodies: valid parses; wrong media type, bad JSON, and oversize are rejected with the right codes (4.779955ms)
+✔ strict schemas reject unknown (privileged) fields; failures list field paths and codes, never submitted values (1.937387ms)
+✔ origin check: safe methods pass; mutations need an Origin equal to the application origin (1.544789ms)
+✔ request wrapper: id echoed, no-store default, explicit cache-control preserved (1.043199ms)
+✔ request wrapper: unexpected errors become a generic 500; the log has the request id and no leaked detail (0.799726ms)
+✔ request wrapper: AppErrors are mapped (info log), and mutations are origin-checked before the handler runs (0.911029ms)
+✔ logger redaction: sensitive keys, credential-shaped values, emails, depth and size are all handled (10.032292ms)
+✔ logger: errors are logged by name/code and a redacted message, with no stack (0.3097ms)
+✔ logger: error name and code are redacted like the message (a driver or caller controls both) (0.262241ms)
+(node:39538) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/preview-gate.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ gate mode: only an explicit local/ci environment is open; everything else fails closed; PREVIEW_GATE can force the gate on but can never switch it off outside local/ci (1.421142ms)
+✔ allowlist: every route the preview serves is allowed (each method) and nothing else is (1.83317ms)
+✔ the root redirects to /spark for GET/HEAD only; the image optimizer serves only the preview's own artwork (no outbound fetch) (3.050547ms)
+✔ query strings never influence the decision (an emailed-link token is not read): the same path is decided identically with any query (0.244838ms)
+✔ headers: noindex, nosniff, no framing, same-origin referrer and resource policy, a CSP that forbids framing/plugins/third-party connections; HSTS and upgrade-insecure-requests only over HTTPS (0.853164ms)
+✔ private-preview environment: a clean configuration loads; each forbidden name (service-level key, worker URL, database URL, legacy URL) is refused BY NAME, never by value (6.88124ms)
+✔ private-preview requirements: the throttle and marker secrets and a declared client-address source are mandatory; PREVIEW_GATE is validated (1.920913ms)
+✔ NO proxy.ts / middleware.ts: Next.js buffers every request body in memory when one exists, which would defeat the streaming body limit and the 3-second deadline of the Auth and saved-work handlers (0.643236ms)
+✔ built rules: the rewrite allowlist is generated from the SAME sources as decidePath (so they cannot drift), the image rule is limited to the preview's artwork, `/` redirects (307), headers exclude /auth/** for the page-only set (1.191081ms)
+✔ next.config.js, loaded the way Next loads it, builds the preview rules only in preview mode and keeps the open-mode headers otherwise (5.402621ms)
+✔ /gate-blocked answers every method with the same uniform 404 (48.679521ms)
+✔ public/: exactly the files the preview serves are allowlisted, and every static asset the new UI references is allowed (4.857362ms)
+✔ health and robots: /health touches no database or user data and reports only readiness and a process id; /robots.txt disallows everything (1.48829ms)
+✔ the email-link and same-origin protections are untouched: the Auth routes still go through authRoute, the callback GET still never calls the provider, the Origin check is unchanged (1.857766ms)
+✔ ORIGIN LOCK: with a secret the first rewrite refuses everything (except /health) that does not carry the exact edge header; without one the rules are unchanged; a malformed secret is refused at build time (0.898071ms)
+✔ ORIGIN LOCK in the environment: mandatory and well-formed in staging/production (the value is only checked, never printed); optional for a local gate; /health also requires the built lock (1.275316ms)
+(node:39539) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/public-reads.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ hack-by-ID: approved returns allowlisted public fields only (32.817959ms)
+✔ hack-by-ID: pending, rejected, missing and malformed IDs give the identical response (1.707967ms)
+✔ hack list: approved only, explicit allowlist, no private fields, newest first (1.193531ms)
+✔ comments: unpublished and missing hacks reveal nothing and match hack-not-found (1.929654ms)
+✔ comments: approved hack, deterministic order (created_at desc, id desc), no private fields (6.712124ms)
+✔ comments: invalid pagination is rejected with 400 and no comment query (1.351774ms)
+✔ comments: oversized limit is capped at the maximum; boundary offset allowed (0.631197ms)
+✔ profile: email and credentials are never returned (0.661507ms)
+✔ user hacks: bookmarks tab is never served; only approved; limit validated and capped (1.212602ms)
+✔ card data: no bespoke-token lookup; follow state is explicitly unavailable (not false); no private fields (0.794541ms)
+✔ wiring: read routes hold no queries (all DB access is in the tested library) and no route uses auth_tokens (5.436615ms)
+✔ retained POST stubs in read routes: executing the handler source makes no outbound call (0.89114ms)
+✔ server-rendered page loaders: ok / not_found / error are distinct (0.503073ms)
+✔ page loaders: a required query failure is "error", never "not_found", and carries no details (0.283198ms)
+✔ required query failures: generic 500, never an empty list, missing user or zero count; no database details (2.010483ms)
+✔ failure handling does not disturb not-found semantics when queries succeed (0.442385ms)
+✔ library never reads the unverified user_stats aggregate (0.198558ms)
+✔ no page or component queries the database directly; archive page makes no DB access (7.670311ms)
+✔ follow UI: unavailable state is a disabled control and makes no request (0.388231ms)
+(node:39544) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/scan-secrets.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ every rule detects its synthetic credential, reports a fingerprint, and never echoes the value (4.073679ms)
+✔ placeholders, variable references and loopback database URLs are not findings (0.424964ms)
+✔ an allowlist entry suppresses exactly its rule, file and fingerprint (1.266549ms)
+✔ the committed allowlist has a written reason for every entry (0.375556ms)
+✔ working-tree scan covers tracked and untracked-but-not-ignored files, and skips ignored files and node_modules (71.200576ms)
+✔ history scan finds a credential that was committed and later deleted, and keeps known historic exposures apart (106.061868ms)
+✔ this repository: working tree is clean, and the history scan recognises the known .env exposure without printing it (908.194881ms)
+✔ long lines are scanned: a credential after 5,000 and 50,000 characters, and one straddling a window edge, is found (22.446657ms)
+✔ scanning pathological long lines stays fast (no quadratic regex behaviour) (660.883571ms)
+✔ long lowercase credentials are findings; only whole-value placeholder forms are exempt (0.539585ms)
+✔ database URLs: a real-looking password is a finding even when it contains "password", "example" or "project"; documentation forms are not (0.519202ms)
+✔ working-tree scan has no silent skips: large files and NUL-containing files are scanned, the lockfile is scanned, unreadable files are reported (108.373279ms)
+✔ the CLI exits nonzero when a file could not be scanned (102.784987ms)
+(node:39547) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/server-boundary.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the server-only entry points carry the marker, and the pure modules do not (1.620934ms)
+✔ any platform file that reads process.env, imports a database package, or imports a server-only module must itself be marked (1.943907ms)
+✔ outside the server condition the marker throws; with it the module loads (so the build-time boundary is real) (388.072741ms)
+✔ the server-only package is a pinned exact dependency, and the test script runs with the react-server condition (0.384075ms)
+(node:39548) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/smoke-cleanup.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ an unreaped (zombie) group leader does not make terminate() fail: the termination had succeeded (658.624954ms)
+✔ EPERM while the leader is unreaped is waited out (retried after the exit is observed); the run is not failed (307.410601ms)
+✔ EPERM that persists after the leader was reaped is a genuine failure and is NEVER reported as success (1829.54442ms)
+✔ a genuine error other than ESRCH/EPERM is reported as a failure, not thrown past the cleanup report (306.979401ms)
+✔ only processes the harness started are signalled: an unrelated process group is untouched by terminate() (305.56196ms)
+✔ request timeout with a transient zombie EPERM during cleanup still exits 4 (the timeout), nothing left running (1991.118516ms)
+✔ request timeout with an EPERM that persists exits 8, names the permission error AND still reports the timeout (4994.586987ms)
+✔ HARDENING: EPERM that outlives the leader's reaping but ends within the existing budget does not fail the cleanup; a persistent one still does (2046.767571ms)
+(node:39606) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/smoke-harness.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ startup failure: app exits immediately -> exit 3, nothing left running (482.04997ms)
+✔ startup timeout: app never listens -> exit 3 within the deadline, process tree terminated (2224.281071ms)
+✔ request timeout: app answers readiness but hangs on a check request -> exit 4, nothing left running (1987.678839ms)
+✔ build timeout: build never finishes -> exit 2 within the deadline, process tree terminated (1625.290763ms)
+✔ build failure: nonzero build exit -> exit 2, app never started (177.702859ms)
+✔ total deadline: whole run bounded -> exit 5, nothing left running (2104.15743ms)
+✔ SIGTERM during the run: harness cleans up before exiting (819.170281ms)
+✔ usage errors exit 7 without starting anything (123.652439ms)
+✔ egress: a non-loopback connection attempt is blocked, recorded and fails the run (exit 6) (603.517442ms)
+✔ contaminated environment: children receive only the constructed environment (488.882626ms)
+✔ buildTestEnv ignores the caller environment entirely (0.673855ms)
+✔ cleanup failure: survivors after termination make the run fail (exit 8) and are named; success is never reported (2846.646428ms)
+✔ cleanup failure is also reported when the run would otherwise exit with another code (startup timeout, exit 3 -> 8) (1945.761235ms)
+✔ Managed.terminate resolves ok only when the process and its group are gone (713.218681ms)
+(node:39649) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/tooling.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ scripts: lint is ESLint (next lint was removed in Next 16), typecheck is explicit (1.064886ms)
+✔ runtime: .nvmrc is a full version that satisfies engines.node; CI reads .nvmrc (0.464896ms)
+✔ CI: verification only, read-only permissions, no secrets, no deployment, npm ci, every gate present (0.454572ms)
+✔ smoke harness: environment is constructed, never spread from process.env (1.02738ms)
+(node:39651) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/ux-catalog.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ empty catalog is ok with zero items (not a failure, not demo content) (3.186266ms)
+✔ a page parses, maps arguments to p_* names and exposes the cursor (3.671232ms)
+✔ failures are reported with a kind and never carry items (0.688516ms)
+✔ arguments are validated before any call (0.308627ms)
+✔ detail: not found, bad slug, invalid response (1.600535ms)
+✔ classifyFailure (0.147548ms)
+(node:39653) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/ux-experience.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Detail navigation is disabled until a hack is selected, and after Create a Prompt (1.706242ms)
+✔ adapting a hack seeds the draft; no confirmation while it is untouched, confirmation once edited (0.321638ms)
+✔ regenerate confirms whenever it would replace a non-empty prompt, and composes deterministically (0.217532ms)
+✔ reset returns to the origin hack, or to blank for a scratch draft (0.172987ms)
+✔ reflection edits are tracked as unsaved work and reset on a new draft (0.168323ms)
+✔ demo hacks are labelled, local and distinct from catalog hacks (0.498273ms)
+✔ reflection text and safeHref (0.264231ms)
+✔ a new server result resets items, cursor, busy and pagination error; the same result changes nothing (0.939603ms)
+✔ a Load more answer for an older result is discarded (no cards or cursor from the previous category) (0.251005ms)
+✔ a current Load more answer appends without duplicates and clears busy (0.290536ms)
+(node:39659) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/ux-security.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ experience UI uses no storage, cookies, raw HTML, network, database or env (6.76019ms)
+✔ experience routes contain no write path and no AI call (2.130626ms)
+✔ the only server action is the read-only loadMore (1.627551ms)
+✔ server composition calls only the two anonymous read functions through the public client (0.449503ms)
+✔ no demo content is imported by the catalog path (no silent substitution) (0.373284ms)
+✔ experience routes are noindex, and the legacy chrome (auth, third-party script) is not loaded on them (0.304096ms)
+✔ disabled legacy routes stay disabled (this branch does not touch them) (2.163736ms)
+(node:39663) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/work-lists-edit.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ CORRECTION 1: a held "Load more" answer from the OLD filter never enters the new view (rows and cursor are dropped whole) (1.808404ms)
+✔ list: normal paging appends without duplicates; a failed "more" is retryable; one "more" at a time (0.27417ms)
+✔ CORRECTION 1: nothing loaded under another account epoch is ever shown; sign-out, sign-in and a signed-out check advance the epoch (0.423529ms)
+✔ CORRECTION 4: TYPING DURING A SAVE keeps the form open with the newer words, unsaved; the saved copy is exactly what was submitted (0.411545ms)
+✔ editor: failures keep everything; foreign or stale answers are ignored; only one save at a time; conflicts need an explicit choice (0.371743ms)
+✔ editor: cancel and reset discard; a reload of the same result keeps an open editor's edits; another account clears everything (0.233278ms)
+✔ source: lists, details and export are scoped to the account epoch; stale list answers are dropped by generation; the editor is guarded (1.320257ms)
+✔ BACK → FORWARD: unsaved result edits live in shared memory keyed by account epoch and result id, so a re-mounted screen finds them; other results and other epochs are separate (0.360747ms)
+✔ the shared editor state is CLEARED on sign-out / account change and on an explicit discard; unchanged actions keep identity (0.516171ms)
+✔ source: the result editor uses the shared store (no component-local editor state), is cleared by the account boundary, and nothing touches browser storage (0.885304ms)
+✔ CONCURRENCY ON RETURN: unsaved edits made against version 1 keep version 1 when the saved result has moved to version 2; Save is therefore a conflict until the member chooses (0.330983ms)
+(node:39664) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/work-routes-source.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the route set and methods are exactly the planned ones, each wrapped by workRoute (2.582055ms)
+✔ EVERY handler verifies the member (gate = T2) first, and writes are throttled; reads are not skipped (2.677988ms)
+✔ no owner or service shortcut: handlers never read an owner/user id from the request and the application holds no service key (1.458702ms)
+✔ bodies: JSON only, bounded while streaming, never request.json()/text()/formData() (0.744765ms)
+✔ logs carry the operation name and outcome kind only: no request, body, header, cookie, id, title, prompt text, token or email (0.806763ms)
+✔ every response is no-store; failures use the fixed contract; cookies are applied only after a definite outcome (0.274246ms)
+(node:39671) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/work-save.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ TYPING DURING A SAVE: the response marks only the submitted revision; the draft stays "changed since last save" and the leave-page warning stays on (2.689335ms)
+✔ a save with no typing in between marks the draft saved and clears the warning (0.307665ms)
+✔ only one save is in flight; a second request is refused as busy and sends nothing (0.302939ms)
+✔ out-of-order and foreign responses are ignored (a saveDone that is not for the save in flight changes nothing) (0.290313ms)
+✔ a response for a draft that was replaced meanwhile is ignored (no saved link to a prompt the member left) (0.26679ms)
+✔ FAILURE keeps the draft and everything unsaved; the retry reuses the request id while the content is unchanged, and a new one once it changed (0.513453ms)
+✔ failure kinds map to a calm problem and never alter the draft: sign-in, quota, rate limit, invalid, too large (0.752461ms)
+✔ incomplete drafts are refused before anything is sent (no title / no prompt / no outcome) (1.121203ms)
+✔ UPDATE with a lost response: the retry meets a version conflict; if the saved copy equals what was submitted the save counts as done at the saved version (0.571786ms)
+✔ UPDATE conflict where the saved copy DIFFERS: nothing is marked saved; the member chooses; the draft is intact (0.560634ms)
+✔ CONFLICT CHOICES: load the saved version / save mine as a copy / overwrite (builds on the saved version) (0.823492ms)
+✔ SUPERSEDED RECEIPT: a retried create answered with the original version-1 receipt is reconciled, never trusted as current (0.400042ms)
+✔ RESULTS: prompt saved and unchanged → attach to it at the version tried; otherwise ONE combined operation (0.49291ms)
+✔ a changed prompt is never attached to a result as if it were the saved one: unsaved edits → the combined operation updates the prompt at its version (0.266019ms)
+✔ RESULT conflicts: a stale prompt version with different saved content asks the member; same content adopts the version and retries once (0.543449ms)
+✔ RESULT superseded replay: the stored result was edited since; saved words are fetched and compared, never reported as saved blindly (0.558083ms)
+✔ updating a saved result sends its version; a conflict is reconciled; a deleted result is reported (0.731069ms)
+✔ deleting the saved item elsewhere: unlink leaves the draft intact and unsaved again; loading a saved prompt starts clean and linked (0.53938ms)
+✔ documents: origin is preserved (catalog slug / demo title / scratch), the scratch placeholder is not stored as a starting prompt, and a stored copy is compared field by field (0.303836ms)
+✔ resetting a saved draft keeps the link and makes it newer than the saved copy; starting from a hack or blank clears the saved link (0.16308ms)
+✔ CORRECTION 2: RESET (or replacing the draft) during a save drops the pending acknowledgment; the answer for text A can never mark the starter text saved (1.173971ms)
+✔ CORRECTION 3a: a superseded COMBINED save checks BOTH halves: both equal → both saved at the saved versions; prompt differs → prompt conflict; only the result differs → prompt saved + a conflict on that result (2.358281ms)
+✔ CORRECTION 3b: after a superseded FIRST create, "Overwrite" updates the conflicting prompt at its saved version (never another create) and ends saved (0.618151ms)
+✔ CORRECTION 3c: "Save as copy" / "as a new result" always start a FRESH intent, so the original receipt is not replayed into the same conflict (0.392837ms)
+✔ CORRECTION 1 (draft side): an account change drops pending answers, conflict copies, messages and saved links; the draft text stays, unsaved (0.310288ms)
+✔ LATE RECONCILIATION (exact sequence): save a prompt, begin saving a result, hold the conflict-reconciliation read, RESET the draft, release the read → the starter text is NOT marked saved, no link changes, and no second save starts (0.777441ms)
+✔ adoptVersion from another draft generation changes nothing; reconciliation reads that fail or finish late never mark anything (0.212365ms)
+(node:39678) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/work-ui.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ responses are interpreted into a closed set of outcomes; unexpected answers are retryable "unavailable", never a guess (1.896011ms)
+✔ messages: every failure says the draft is still there; the privacy note never overclaims (67.009365ms)
+✔ the delete confirmation states the cascade with the real count (0.194549ms)
+✔ export: bounded pages (≤50), complete, with progress; a wrong-kind page, a failure and a never-ending server all fail instead of producing a wrong file (1.346079ms)
+✔ the saved-work UI reaches only this application's /work endpoints, through one module, with same-origin credentials and no caching (2.128809ms)
+✔ no browser storage, cookies, raw HTML, database/Auth client, environment or token handling in the saved-work UI (2.157695ms)
+✔ private content is rendered as text only and never placed in URLs or the page title (1.173756ms)
+✔ the pages: list/detail reads never edit the draft, and sign-in links keep the return path (0.750393ms)
+✔ destructive actions are confirmed with Cancel as the default, delete states the cascade, and overwrite/load need explicit confirmation (0.690107ms)
+✔ Save is explicit: no autosave timers, and every save call sits in a click handler (2.649182ms)
+ℹ tests 576
+ℹ suites 0
+ℹ pass 571
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 5
+ℹ todo 0
+ℹ duration_ms 83299.701802
+exit=0

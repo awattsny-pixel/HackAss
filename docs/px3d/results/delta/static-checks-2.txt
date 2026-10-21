@@ -1,0 +1,5 @@
+tsc clean
+✖ 5 problems (0 errors, 5 warnings)
+
+working tree: 0 finding(s)
+manifest matches the repository

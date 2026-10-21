@@ -1,0 +1,17 @@
+(node:37956) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/src/platform/preview-gate.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS  G1  the legacy pages, legacy API, registration page and everything else outside the allowlist are refused with ONE uniform 404 that carries the headers and no detail  [25 paths × 3 methods: identical 404]
+PASS  G2  every route the preview serves is reachable: pages 200, JSON routes answer for themselves (401 without a session), the same-origin check still refuses foreign and missing Origin  [pages 200; private routes 401; foreign and missing Origin 403]
+PASS  G3  / redirects (307) to /spark on the same host; the redirect is a config rule, not a request-reading proxy  [307 → /spark → 200]
+PASS  G4  headers: exact single values on a page, a JSON route, a refusal, a static chunk, the artwork and the optimizer; the email-link pages keep their OWN stricter CSP/framing/referrer (not replaced, not duplicated); no HSTS over HTTP  [one value per header everywhere; the email-link page keeps default-src none]
+PASS  G5  the image optimizer serves only the preview's own artwork: remote, internal and traversal URLs are refused  [own artwork 200; 6 other URLs 404]
+PASS  G6  robots.txt disallows everything; /health reports readiness, the built gate mode and a stable process id without any variable name or value; an invalid environment, or a preview environment on a build without the gate, is "not ready" (503)  [ready:true, one boot id; invalid env → 503; preview env on an open build → 503]
+PASS  G7  the gate never reads or logs the emailed-link token: a callback request carrying a token in the query (allowed path and refused path) leaves it out of the app's output  [token absent from the log]
+PASS  G8  path tricks never reach a legacy page or leak content: case variants (matching is case-insensitive in Next.js, so an allowed path in another case is a plain Next 404), double slash, encoded slashes and dots, trailing slash  [no variant reached a legacy page]
+PASS  G9  local development is unchanged: with the gate open the legacy routes are reachable and no preview headers are added  [open mode: legacy reachable, no headers]
+PASS  G10  scripts/check-env.mjs: a valid private-preview environment passes; each forbidden name, a missing secret and an unset APP_ENV fail by NAME, never by value  [valid → 0; 5 forbidden names, a malformed lock and 5 missing values → 1, names only]
+PASS  G11  ORIGIN LOCK (a build with the edge secret): without the exact edge header EVERYTHING except /health answers the uniform 404 (any method); with it the app works; a wrong, partial, extended or empty value is refused; the secret is never logged  [no header → 404 on 10 paths × methods; header → works; 6 wrong values → 404; /health exempt; secret not logged]
+
+11/11 passed, 0 failed

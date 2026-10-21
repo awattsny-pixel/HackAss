@@ -47,11 +47,14 @@ test('no hosted preparation document contains a secret, a connection string with
   }
 });
 
-test('the staging plan lists exactly the migration files, in filename order', () => {
-  const files = readdirSync(join(root, 'supabase/migrations')).filter((f) => f.endsWith('.sql')).sort();
+test('the staging plan lists exactly the F2 migration files, in filename order; the PX-3a migrations are deliberately NOT in any hosted plan (hosted changes are held until separately authorized)', () => {
+  const all = readdirSync(join(root, 'supabase/migrations')).filter((f) => f.endsWith('.sql')).sort();
+  const files = all.filter((f) => !f.includes('_px3a_'));
   const listed = [...read('docs/hosted/staging-plan.md').matchAll(/^\d+\. `(\d{14}_[a-z0-9_]+\.sql)`$/gm)].map((m) => m[1]);
   assert.deepEqual(listed, files);
   assert.equal(files.length, 21);
+  assert.equal(all.length - files.length, 4, 'the four PX-3a migrations exist locally');
+  assert.ok(!listed.some((f) => f.includes('px3a')), 'the staging plan must not list a PX-3a migration until its application is authorized');
 });
 
 test('the staging plan fixes the database major version, the worker connection method and the Auth values from the repository configuration', () => {
@@ -182,7 +185,9 @@ test('H12 separates forbidden data access from permitted metadata, checks the me
   assert.doesNotMatch(h12, /never 200 with rows/);
   // the 19-function allowlist in the document equals the api functions in the golden inventory
   const golden = read('supabase/tests/database/010_roles_and_grants.test.sql');
-  const apiGolden = [...new Set([...golden.matchAll(/(?:^|\$golden\$)api\.([a-z_]+)\(/gm)].map((m) => m[1]))].sort();
+  // the hosted verification covers the F2 surface; the eleven PX-3a member functions are local-only until a hosted application is authorized
+  const PX3A_API = new Set(['save_prompt', 'get_my_prompt', 'list_my_prompts', 'delete_my_prompt', 'save_reflection', 'save_prompt_and_result', 'update_my_reflection', 'delete_my_reflection', 'list_my_results', 'get_my_result', 'export_my_data']);
+  const apiGolden = [...new Set([...golden.matchAll(/(?:^|\$golden\$)api\.([a-z_]+)\(/gm)].map((m) => m[1]))].filter((n) => !PX3A_API.has(n)).sort();
   const listText = h12.slice(h12.indexOf('subset of the 19'), h12.indexOf('for the anonymous credential'));
   const inDoc = [...listText.matchAll(/`([a-z_]+)`/g)].map((m) => m[1]).filter((n) => n !== 'api').sort();
   assert.deepEqual(inDoc, apiGolden);

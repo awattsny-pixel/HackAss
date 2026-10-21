@@ -121,3 +121,27 @@ test('request timeout with an EPERM that persists exits 8, names the permission 
   const state = JSON.parse(readFileSync(r.stateFile, 'utf8'));
   for (const c of state.children) assert.ok(gone(c.pid), `pid ${c.pid} still running (the test double kills the real group)`);
 });
+
+test('HARDENING: EPERM that outlives the leader\'s reaping but ends within the existing budget does not fail the cleanup; a persistent one still does', async () => {
+  const { Managed } = await import(harnessUrl);
+  const t0 = Date.now();
+  let killedAt = 0;
+  // transient: every group call reports EPERM for 600 ms after the real group was killed (the leader is reaped by then), then the real answer (ESRCH)
+  const transient = (pid: number, sig: string | number) => {
+    if (pid < 0) {
+      if (!killedAt) { killedAt = Date.now(); try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } }
+      if (Date.now() - killedAt < 600) throw eperm();
+    }
+    return process.kill(pid, sig as NodeJS.Signals);
+  };
+  const m = new Managed('late-eperm', process.execPath, SPIN, { cwd: root, env: { PATH: process.env.PATH ?? '' }, killFn: transient });
+  await sleep(300);
+  assert.deepEqual(await m.terminate({ graceMs: 300, killWaitMs: 3000 }), { ok: true });
+  assert.ok(gone(m.pid)); assert.ok(Date.now() - t0 < 6000, 'bounded by the existing budget');
+  // persistent: never explained; fails once the same budget is spent, and the time spent stays within it
+  const always = (pid: number, sig: string | number) => { if (pid < 0) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } throw eperm(); } return process.kill(pid, sig as NodeJS.Signals); };
+  const p = new Managed('persistent-eperm', process.execPath, SPIN, { cwd: root, env: { PATH: process.env.PATH ?? '' }, killFn: always });
+  await sleep(300);
+  const t1 = Date.now(); const r = await p.terminate({ graceMs: 300, killWaitMs: 800 });
+  assert.equal(r.ok, false); assert.match(r.reason, /kill EPERM/); assert.ok(Date.now() - t1 < 800 * 5, 'the retries stayed within the budget');
+});

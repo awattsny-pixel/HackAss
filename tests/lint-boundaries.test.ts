@@ -60,13 +60,14 @@ test('type-only imports must use `import type` in src/ and tests/ (Node strips t
   assert.ok(!(await rules('src/modules/catalog/x.ts', "import type { Actor } from '@/src/platform';\nexport const a: Actor | null = null;\n")).includes(TYPE_IMPORT));
 });
 
-test('module directories are exactly the planned set; only submissions has implementation so far (the pure HashCanon-1 module)', () => {
-  const planned = ['ai', 'catalog', 'collections', 'extension-points', 'identity', 'jobs', 'moderation', 'provenance', 'submissions'];
+test('module directories are exactly the planned set; only submissions (HashCanon-1) and identity (PX-2a/2b) have implementation so far', () => {
+  const planned = ['ai', 'catalog', 'collections', 'extension-points', 'identity', 'jobs', 'moderation', 'mywork', 'provenance', 'submissions'];
   const dirs = readdirSync(join(root, 'src/modules')).filter((n) => statSync(join(root, 'src/modules', n)).isDirectory()).sort();
   assert.deepEqual(dirs, planned);
   for (const d of dirs) {
     const files = readdirSync(join(root, 'src/modules', d)).sort();
-    assert.deepEqual(files, d === 'submissions' ? ['hashcanon.ts', 'index.ts'] : ['index.ts'], `${d} should hold only index.ts until its slice lands`);
+    const expected = d === 'submissions' ? ['hashcanon.ts', 'index.ts'] : d === 'identity' ? ['callback.ts', 'errors.ts', 'index.ts', 'password.ts', 'provider.ts', 'redirect.ts', 'resolver.ts', 'setup-marker.ts', 'throttle.ts'] : ['index.ts']; // identity: PX-2a (pure rules, no Auth client)
+    assert.deepEqual(files, expected, `${d} should hold only its planned files until its slice lands`);
     assert.match(readFileSync(join(root, 'src/modules', d, 'index.ts'), 'utf8'), new RegExp(`MODULE_NAME = '${d}'`));
   }
 });

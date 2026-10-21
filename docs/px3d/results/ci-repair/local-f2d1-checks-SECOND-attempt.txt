@@ -1,0 +1,14 @@
+FAIL  W6  the real worker login: EXECUTE on the five job functions and the health check, nothing else (no table, no api/guard/internal function, no role change)  -> the worker could not call its documented functions: health=ok / ERROR:  function worker.claim_job(unknown) does not exist
+FAIL  J1  parallel real workers cannot claim the same active lease: 8 workers racing for 1 job, then 12 workers for 6 jobs  -> psql failed: ERROR:  relation "app.jobs" does not exist
+FAIL  J2  a reclaimed job rejects every operation from the earlier epoch; an expired lease fails closed; concurrent duplicate completions apply once  -> psql failed: ERROR:  relation "app.jobs" does not exist
+FAIL  J3  end to end with real tokens: rights lapse by the calendar, the worker rechecks and withdraws, history is kept, nothing restores the pointer  -> psql failed: ERROR:  relation "app.jobs" does not exist
+FAIL  J4  the recheck racing review writes, a superseding publish and a manual withdrawal (both orders): always consistent, never a second withdrawal, never an ineligible current publication  -> psql failed: ERROR:  relation "app.jobs" does not exist
+FAIL  J5  mixed stress: real workers, rechecks, staff review writes, withdrawals and republishing at once: no deadlock, every publication current-and-eligible or withdrawn exactly once  -> psql failed: ERROR:  relation "app.jobs" does not exist
+FAIL  T1  a session time zone cannot move the UTC rights-expiry boundary: input check, approval rule and the commit-time check all agree (zone chosen from the wall clock so the session date really differs from the UTC date)  -> an expiry of tomorrow (UTC) must be accepted from a UTC+14 session: ERROR:  invalid_content SET
+SET
+RESET
+FAIL  R5  F2-D1 rollback script: removes the jobs table and the worker functions, restores the F2-C2 definitions, leaves F2-C2 and earlier intact; recheck withdrawal history is kept (rehearsed in a rolled-back transaction)  -> before: jobs=0 workerfns=healthcheck jobfns=0 schedtrigger=0 after_has_jobs=false children_has_evidence=false ledger=0 c2=true,true,true
+FAIL  R6  rollback COMMITTED, then the migrations re-applied (supabase migration up) over the retained withdrawal history, then the recheck works again  -> psql failed: ERROR:  relation "app.jobs" does not exist
+
+F2-D1 job checks: 9 FAILED
+NOT run here (hosted only): the same checks against the hosted project and the pooler (worker login through Supavisor); a worker process (none exists yet: these calls are the worker contract); read-time expiry for public reads (a gate for the catalog slice).

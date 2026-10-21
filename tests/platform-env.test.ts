@@ -47,7 +47,7 @@ test('staging and production require https; local allows http only for loopback'
   assert.ok(problems(() => loadEnv(base({ APP_ENV: 'production' }))).includes('NEXT_PUBLIC_SUPABASE_URL'));
   assert.ok(problems(() => loadEnv(base({ APP_ENV: 'staging', APP_ORIGIN: 'http://localhost:3000', NEXT_PUBLIC_SUPABASE_URL: 'https://x.example.test' }))).includes('APP_ORIGIN'));
   assert.ok(problems(() => loadEnv(base({ NEXT_PUBLIC_SUPABASE_URL: 'http://db.example.test' }))).includes('NEXT_PUBLIC_SUPABASE_URL'));
-  assert.doesNotThrow(() => loadEnv(base({ APP_ENV: 'production', NEXT_PUBLIC_SUPABASE_URL: 'https://proj.example.test', APP_ORIGIN: 'https://hackass.example.test' })));
+  assert.doesNotThrow(() => loadEnv(base({ APP_ENV: 'production', NEXT_PUBLIC_SUPABASE_URL: 'https://proj.example.test', APP_ORIGIN: 'https://hackass.example.test', AUTH_THROTTLE_SECRET: SECRET, AUTH_SETUP_MARKER_SECRET: SECRET, TRUSTED_PROXY_HOPS: '1', EDGE_LOCK_SECRET: SECRET })));
 });
 
 test('URLs must not embed credentials; APP_ORIGIN must be an origin only', () => {

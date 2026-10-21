@@ -2,14 +2,17 @@
 // handlers and the composition root (app/**). UI code and modules are forbidden from importing it (ESLint), and the
 // client-safe barrel (./index.ts) never re-exports it.
 import 'server-only'; // Next.js fails the build if a Client Component ever imports this module
-export { loadEnv, getEnv, EnvError, LEGACY_SERVICE_ENV_TOLERATED } from './env.ts';
-export type { AppEnvName, EnvScope, LoadedEnv, PublicEnv, ServerEnv } from './env.ts';
+export { loadEnv, getEnv, builtGateMode, builtEdgeLock, edgeLockRequired, runtimeGateMode, EnvError, LEGACY_SERVICE_ENV_TOLERATED } from './env.ts';
+export type { AppEnvName, EnvScope, LoadedEnv, PublicEnv, ServerEnv, TrustedClientIp } from './env.ts';
 export { createPublicDb, createUserDb, createWorkerDb, WORKER_FUNCTIONS } from './db/index.ts';
-export type { CookieAdapter, PublicDb, SqlRunner, UserDb, WorkerDb, WorkerFunction } from './db/index.ts';
+export type { CookieAdapter, DbClientOptions, PublicDb, SqlRunner, UserDb, WorkerDb, WorkerFunction } from './db/index.ts';
 export { toErrorResponse } from './http/errors.ts';
 export { withRequestContext } from './http/handler.ts';
 export type { HandlerOptions, RequestContext } from './http/handler.ts';
 export { assertSameOrigin } from './http/origin.ts';
+export { BODY_READ_DEADLINE_MS, MAX_FORM_BODY_BYTES, readBodyBounded } from './http/body.ts';
+export type { BodyRead } from './http/body.ts';
+export { AUTH_CALL_TIMEOUT_MS, AUTH_REQUEST_BUDGET_MS, createBoundedFetch } from './http/bounded-fetch.ts';
 export { REQUEST_ID_HEADER, resolveRequestId } from './http/request-id.ts';
 export { DEFAULT_MAX_BODY_BYTES, parseJsonBody, parseWith } from './http/validate.ts';
 export { consoleSink } from './log.ts';

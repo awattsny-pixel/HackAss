@@ -1,0 +1,57 @@
+NOTICE:  PASS  A creates a prompt (version 1)
+NOTICE:  PASS  B cannot read A's prompt  [PT404]
+NOTICE:  PASS  a nonexistent id gives the identical error  [PT404]
+NOTICE:  PASS  B cannot update A's prompt  [PT404]
+NOTICE:  PASS  B cannot delete A's prompt  [PT404]
+NOTICE:  PASS  B cannot attach a result to A's prompt  [PT404]
+NOTICE:  PASS  B cannot use the combined save on A's prompt  [PT404]
+NOTICE:  PASS  B's lists are empty (A's rows never appear)
+NOTICE:  PASS  wrong expected version -> conflict  [PT409]
+NOTICE:  PASS  update without an expected version is refused  [PT422]
+NOTICE:  PASS  update with the right version -> 2
+NOTICE:  PASS  an unknown key (owner_id) is rejected  [PT422]
+NOTICE:  PASS  a title over 120 characters is rejected  [PT422]
+NOTICE:  PASS  catalog origin without a slug is rejected  [PT422]
+NOTICE:  PASS  keyset pagination: pages do not overlap
+NOTICE:  PASS  an IDENTICAL create retry returns the stored row (no duplicate)
+NOTICE:  PASS  the SAME request id with DIFFERENT content is refused (not silently answered)  [PT409]
+NOTICE:  PASS  an identical result retry returns the stored result
+NOTICE:  PASS  a result id reused with different content is refused  [PT409]
+NOTICE:  PASS  a result id reused for a DIFFERENT parent prompt is refused  [PT409]
+NOTICE:  PASS  a result id reused with a different expected version is refused  [PT409]
+NOTICE:  PASS  a result against a STALE prompt version is refused (the member tried an older text)  [PT409]
+NOTICE:  PASS  the expected prompt version is required  [PT422]
+NOTICE:  PASS  a result keeps the prompt text, the STARTING prompt, the title and the version it was saved against (the parent changed to v3 and was renamed)
+NOTICE:  PASS  My results lists the SNAPSHOT title, not the parent's current title
+NOTICE:  PASS  B cannot read A's result  [PT404]
+NOTICE:  PASS  the combined save creates the prompt AND the result
+NOTICE:  PASS  an invalid result makes the whole combined save fail  [PT422]
+NOTICE:  PASS  ...and no prompt was created
+NOTICE:  PASS  the combined save fails when the result quota trips  [PT429]
+NOTICE:  PASS  ...and the prompt update was ROLLED BACK (title and version unchanged): no partial save
+NOTICE:  PASS  a stale expected version fails the combined save  [PT409]
+NOTICE:  PASS  an identical retry of a combined UPDATE (after the prompt moved on) returns the stored outcome
+NOTICE:  PASS  the same request id with different prompt content is refused  [PT409]
+NOTICE:  PASS  the same request id with a different result is refused  [PT409]
+NOTICE:  PASS  editing a result changes only the member's words; the snapshot is untouched
+NOTICE:  PASS  a stale result version is refused  [PT409]
+NOTICE:  PASS  B cannot edit A's result  [PT404]
+NOTICE:  PASS  B cannot delete A's result  [PT404]
+NOTICE:  PASS  a deleted result is gone  [PT404]
+NOTICE:  PASS  export: summary counts, pages of at most N without overlap, no owner_id or request_hash in the output
+NOTICE:  PASS  an export page over 50 rows is refused  [PT422]
+NOTICE:  PASS  an unknown export kind is refused  [PT422]
+NOTICE:  PASS  B's export contains none of A's rows
+NOTICE:  PASS  deleting a prompt reports and removes its results (50) for the confirmation warning
+NOTICE:  PASS  authenticated has no table privilege  [42501]
+NOTICE:  PASS  anon cannot execute the functions  [42501]
+NOTICE:  PASS  anon cannot export  [42501]
+NOTICE:  PASS  service_role cannot execute the functions  [42501]
+NOTICE:  PASS  service_role has no table privilege  [42501]
+NOTICE:  PASS  a result cannot point at another owner's prompt  [23503]
+NOTICE:  PASS  the 101st prompt is refused (quota 100)  [PT429]
+NOTICE:  PASS  a revoked session is refused inside the database  [28000]
+NOTICE:  PASS  a disabled account is refused  [42501]
+NOTICE:  PASS  deleting the Auth user erases the member's saved work (the account row stays, marked deleted)
+NOTICE:  REHEARSAL COMPLETE
+ROLLBACK

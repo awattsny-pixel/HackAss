@@ -295,7 +295,8 @@ await check('Y4', 'mixed stress over many hacks (publish, rights revocation, ass
 
 await check('R4', 'F2-C2 rollback script (run after the F2-D1 rollback): removes the publication tables, the pointer, the functions and the added keys, restores the F2-C1 lock_submission, leaves F2-C1/F2-B/F2-A intact (rehearsed in a rolled-back transaction)', async () => {
   // F2-D1's jobs reference publications, so its rollback runs first inside the same rehearsal transaction
-  const downD1 = readFileSync(path.join(root, 'supabase/rollbacks/20261019090000_f2e_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '') + readFileSync(path.join(root, 'supabase/rollbacks/20261017090000_f2d1_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
+  const downPX3a = readFileSync(path.join(root, 'supabase/rollbacks/20261020090000_px3a_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');   // PX-3a sits on top of F2-E: rolled back FIRST
+  const downD1 = downPX3a + readFileSync(path.join(root, 'supabase/rollbacks/20261019090000_f2e_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '') + readFileSync(path.join(root, 'supabase/rollbacks/20261017090000_f2d1_down.sql'), 'utf8').replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
   const down = readFileSync(path.join(root, 'supabase/rollbacks/20261016090000_f2c2_down.sql'), 'utf8').replace(/^begin;\s*$/m, () => `begin;\n${downD1}`);
   const probe = `
 select 'tables=' || count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r' and c.relname in ('publications', 'publication_rights', 'publication_withdrawals');

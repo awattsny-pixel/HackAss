@@ -21,6 +21,9 @@ export function buildTestEnv({ fakePort, netGuardPath, netGuardLog, home, tmp, n
     HOME: home,
     TMPDIR: tmp,
     NODE_ENV: 'production',
+    // The smoke run exercises the legacy API routes against a local fixture. The private-preview gate (next.config.js) blocks those routes in every mode except an explicit local/ci, and an unset APP_ENV fails
+    // CLOSED into the gated build; so this isolated harness, and only this harness, selects the existing open test mode. The preview/production build never sets it (scripts/check-env.mjs, tests/preview-gate.test.ts).
+    APP_ENV: 'ci',
     NEXT_TELEMETRY_DISABLED: '1',
     NODE_OPTIONS: `--require=${JSON.stringify(netGuardPath)}`,
     SMOKE_NETGUARD_LOG: netGuardLog,
@@ -89,7 +92,11 @@ export class Managed {
       while ((await probe()) === 'alive' && Date.now() < until) await sleep(100);
     }
     if (!this.exited) return { ok: false, label: this.label, pid: this.pid, reason: 'process did not exit' };
-    const state = await probe();
+    // HARDENING (PX-3e; the mechanism of the observed exit-8 failure was NOT demonstrated, this is a bounded tolerance for a transient EPERM that outlives the leader's reaping, e.g. a late-reaped
+    // zombie descendant): retry EPERM for the same killWaitMs budget. A persistent EPERM still fails the cleanup below once the budget is spent.
+    let state = await probe();
+    const epermUntil = Date.now() + killWaitMs;
+    while (state === 'EPERM' && Date.now() < epermUntil) { await sleep(50); state = await probe(); }
     if (state === 'alive') return { ok: false, label: this.label, pid: this.pid, reason: 'process group still has live members' };
     if (state !== 'gone') return { ok: false, label: this.label, pid: this.pid, reason: `process group state unknown after the leader exited: kill ${state} (leader reaped=${this.exited}, exitCode=${this.exitCode}; a permission or system error is not a successful cleanup)` };
     return { ok: true };

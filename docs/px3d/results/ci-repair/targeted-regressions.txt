@@ -1,0 +1,616 @@
+TAP version 13
+# (node:70445) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/f2a-migrations.test.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: F2-A, F2-B, F2-C1, F2-C2 and F2-D1, F2-D2, F2-E and PX-3a migrations: twenty-five timestamped, ordered files, no stray files
+ok 1 - F2-A, F2-B, F2-C1, F2-C2 and F2-D1, F2-D2, F2-E and PX-3a migrations: twenty-five timestamped, ordered files, no stray files
+  ---
+  duration_ms: 2.399445
+  type: 'test'
+  ...
+# Subtest: no secret in SQL: the worker role is created without a password and no migration sets one
+ok 2 - no secret in SQL: the worker role is created without a password and no migration sets one
+  ---
+  duration_ms: 0.903888
+  type: 'test'
+  ...
+# Subtest: every function created by a migration is SECURITY DEFINER with an empty search_path
+ok 3 - every function created by a migration is SECURITY DEFINER with an empty search_path
+  ---
+  duration_ms: 18.899049
+  type: 'test'
+  ...
+# Subtest: no grant to PUBLIC, anon or service_role beyond the api schema USAGE, and EXECUTE is never granted broadly
+ok 4 - no grant to PUBLIC, anon or service_role beyond the api schema USAGE, and EXECUTE is never granted broadly
+  ---
+  duration_ms: 3.634599
+  type: 'test'
+  ...
+# Subtest: every function has its PUBLIC execute revoked before any grant, and every api function begins with a guard call
+ok 5 - every function has its PUBLIC execute revoked before any grant, and every api function begins with a guard call
+  ---
+  duration_ms: 3.3818
+  type: 'test'
+  ...
+# Subtest: the staff guard has no MFA switch, no clock-skew allowance, and validates NULL/out-of-range arguments inside the guard
+ok 6 - the staff guard has no MFA switch, no clock-skew allowance, and validates NULL/out-of-range arguments inside the guard
+  ---
+  duration_ms: 0.740481
+  type: 'test'
+  ...
+# Subtest: every function in an application schema has PUBLIC execute revoked, and no table is ever granted to anyone
+ok 7 - every function in an application schema has PUBLIC execute revoked, and no table is ever granted to anyone
+  ---
+  duration_ms: 5.927627
+  type: 'test'
+  ...
+# Subtest: every application table has RLS enabled and is covered by the immutability / append-only / truncate triggers where it holds content
+ok 8 - every application table has RLS enabled and is covered by the immutability / append-only / truncate triggers where it holds content
+  ---
+  duration_ms: 6.42847
+  type: 'test'
+  ...
+# Subtest: lock order and the freeze: child guards lock parents FOR NO KEY UPDATE (one mode, so no upgrades) in ascending id order; the freeze locks FOR UPDATE and hashes after the lock
+ok 9 - lock order and the freeze: child guards lock parents FOR NO KEY UPDATE (one mode, so no upgrades) in ascending id order; the freeze locks FOR UPDATE and hashes after the lock
+  ---
+  duration_ms: 1.755079
+  type: 'test'
+  ...
+# Subtest: no contributor-editable content column is privileged: classification and approval fields do not exist in the content tables
+ok 10 - no contributor-editable content column is privileged: classification and approval fields do not exist in the content tables
+  ---
+  duration_ms: 6.034758
+  type: 'test'
+  ...
+# Subtest: the schemas that PostgREST exposes are exactly public, graphql_public and api; the application schemas are not exposed
+ok 11 - the schemas that PostgREST exposes are exactly public, graphql_public and api; the application schemas are not exposed
+  ---
+  duration_ms: 0.627478
+  type: 'test'
+  ...
+# Subtest: the rollback scripts remove every schema, table, role and trigger the migrations create, and un-ledger exactly their versions
+ok 12 - the rollback scripts remove every schema, table, role and trigger the migrations create, and un-ledger exactly their versions
+  ---
+  duration_ms: 12.090487
+  type: 'test'
+  ...
+# Subtest: PX-3a rollback removes everything the four PX-3a migrations create (in dependency order) and un-ledgers exactly their versions
+ok 13 - PX-3a rollback removes everything the four PX-3a migrations create (in dependency order) and un-ledgers exactly their versions
+  ---
+  duration_ms: 2.613134
+  type: 'test'
+  ...
+# Subtest: the pgTAP files exist and keep their no-drift inventory assertions
+ok 14 - the pgTAP files exist and keep their no-drift inventory assertions
+  ---
+  duration_ms: 0.973656
+  type: 'test'
+  ...
+# Subtest: G-3 in the F2 acceptance contract records the exact bridge ownership exception instead of a blanket owner rule
+ok 15 - G-3 in the F2 acceptance contract records the exact bridge ownership exception instead of a blanket owner rule
+  ---
+  duration_ms: 1.218526
+  type: 'test'
+  ...
+# Subtest: F2-B correction round: identifier format, list caps and the quota/category guards are defined consistently in SQL, TypeScript and the docs
+ok 16 - F2-B correction round: identifier format, list caps and the quota/category guards are defined consistently in SQL, TypeScript and the docs
+  ---
+  duration_ms: 1.284424
+  type: 'test'
+  ...
+# Subtest: F2-C1: the review functions take no caller identity, require the reviewed hash, start with the staff guard, and lock the submission first
+ok 17 - F2-C1: the review functions take no caller identity, require the reviewed hash, start with the staff guard, and lock the submission first
+  ---
+  duration_ms: 0.82279
+  type: 'test'
+  ...
+# Subtest: F2-C1 rollback removes everything it created, in order, and un-ledgers exactly its three versions
+ok 18 - F2-C1 rollback removes everything it created, in order, and un-ledgers exactly its three versions
+  ---
+  duration_ms: 0.252403
+  type: 'test'
+  ...
+# Subtest: F2-C2: one lock protocol (submission row, then hack row, then lifecycle rows in ascending id order) is followed by publish, withdraw and every review write
+ok 19 - F2-C2: one lock protocol (submission row, then hack row, then lifecycle rows in ascending id order) is followed by publish, withdraw and every review write
+  ---
+  duration_ms: 0.936362
+  type: 'test'
+  ...
+# Subtest: F2-C2 rollback removes everything it created, in order, restores the F2-C1 lock_submission, and un-ledgers exactly its three versions
+ok 20 - F2-C2 rollback removes everything it created, in order, restores the F2-C1 lock_submission, and un-ledgers exactly its three versions
+  ---
+  duration_ms: 0.548606
+  type: 'test'
+  ...
+# Subtest: F2-D1: worker functions check the worker login first, take only a job id and an epoch, and grant nothing else; the job row is locked last
+ok 21 - F2-D1: worker functions check the worker login first, take only a job id and an epoch, and grant nothing else; the job row is locked last
+  ---
+  duration_ms: 1.001807
+  type: 'test'
+  ...
+# Subtest: F2-D1 rollback drops the functions over the row type before the table, restores the F2-C2 definitions, and un-ledgers exactly its three versions
+ok 22 - F2-D1 rollback drops the functions over the row type before the table, restores the F2-C2 definitions, and un-ledgers exactly its three versions
+  ---
+  duration_ms: 0.695476
+  type: 'test'
+  ...
+# Subtest: F2-D1 correction: lease and expiry logic use the wall clock and the UTC day, never now() or current_date; the migration can be re-applied over its retained constraints
+ok 23 - F2-D1 correction: lease and expiry logic use the wall clock and the UTC day, never now() or current_date; the migration can be re-applied over its retained constraints
+  ---
+  duration_ms: 0.48691
+  type: 'test'
+  ...
+# Subtest: F2-D2: the budget objects are owner-only (no grant, no capability wiring), the ledger is the only source of totals, and money-moving functions lock counters before the reservation
+ok 24 - F2-D2: the budget objects are owner-only (no grant, no capability wiring), the ledger is the only source of totals, and money-moving functions lock counters before the reservation
+  ---
+  duration_ms: 0.826837
+  type: 'test'
+  ...
+# (node:70446) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/foundation-docs.test.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: CI: verify job runs the secret scan before lint and every gate in order; database job uses the real local stack with a pinned CLI
+ok 25 - CI: verify job runs the secret scan before lint and every gate in order; database job uses the real local stack with a pinned CLI
+  ---
+  duration_ms: 1.978472
+  type: 'test'
+  ...
+# Subtest: the CLI version is pinned identically in CI and in scripts/supabase-cli-pin.json, and CI runs the local Auth checks between the pgTAP tests and the stop step
+ok 26 - the CLI version is pinned identically in CI and in scripts/supabase-cli-pin.json, and CI runs the local Auth checks between the pgTAP tests and the stop step
+  ---
+  duration_ms: 0.435913
+  type: 'test'
+  ...
+# Subtest: local Supabase config carries the settings the design depends on
+ok 27 - local Supabase config carries the settings the design depends on
+  ---
+  duration_ms: 0.310445
+  type: 'test'
+  ...
+# Subtest: pgTAP platform test exists and checks the real stack (roles, Auth sessions table, extensions); the F2-A schema is applied only through migrations
+ok 28 - pgTAP platform test exists and checks the real stack (roles, Auth sessions table, extensions); the F2-A schema is applied only through migrations
+  ---
+  duration_ms: 1.483204
+  type: 'test'
+  ...
+# Subtest: db:test reports BLOCKED (exit 2) with an actionable message when Docker is unavailable, never a silent pass
+ok 29 - db:test reports BLOCKED (exit 2) with an actionable message when Docker is unavailable, never a silent pass
+  ---
+  duration_ms: 81.756707
+  type: 'test'
+  ...
+# Subtest: the ADR records the five F2 invariants and the F2 acceptance contract has a test row for each
+ok 30 - the ADR records the five F2 invariants and the F2 acceptance contract has a test row for each
+  ---
+  duration_ms: 2.10106
+  type: 'test'
+  ...
+# Subtest: the in-repo secret scanner is labelled supplementary in CI, and Gitleaks (pinned) is the primary scan
+ok 31 - the in-repo secret scanner is labelled supplementary in CI, and Gitleaks (pinned) is the primary scan
+  ---
+  duration_ms: 0.376391
+  type: 'test'
+  ...
+# Subtest: docs/db/hashcanon-1.md names every hashed field in the order the implementation uses, and the golden-vector count matches
+ok 32 - docs/db/hashcanon-1.md names every hashed field in the order the implementation uses, and the golden-vector count matches
+  ---
+  duration_ms: 1.02754
+  type: 'test'
+  ...
+# Subtest: docs/db/f2c1-review.md names every approval blocker the SQL can return, and every review function
+ok 33 - docs/db/f2c1-review.md names every approval blocker the SQL can return, and every review function
+  ---
+  duration_ms: 1.008594
+  type: 'test'
+  ...
+# Subtest: docs/db/f2c2-publication.md names every publication blocker, function, error and snapshot line the SQL can produce, states the lock protocol and the rollback
+ok 34 - docs/db/f2c2-publication.md names every publication blocker, function, error and snapshot line the SQL can produce, states the lock protocol and the rollback
+  ---
+  duration_ms: 1.287501
+  type: 'test'
+  ...
+# Subtest: docs/db/f2d1-jobs.md documents every worker function, the lock order with the job row last, the allowlisted subject, the fail-closed error, the rollback and the read-time expiry gate
+ok 35 - docs/db/f2d1-jobs.md documents every worker function, the lock order with the job row last, the allowlisted subject, the fail-closed error, the rollback and the read-time expiry gate
+  ---
+  duration_ms: 1.110778
+  type: 'test'
+  ...
+# Subtest: docs/db/f2d2-ai-budgets.md states the accounting contract: units, rules, every refusal reason, every function, the unknown-outcome recovery path, and the data loss of the rollback
+ok 36 - docs/db/f2d2-ai-budgets.md states the accounting contract: units, rules, every refusal reason, every function, the unknown-outcome recovery path, and the data loss of the rollback
+  ---
+  duration_ms: 1.141783
+  type: 'test'
+  ...
+# Subtest: docs/db/f2e-public-catalog.md states the contract: every blocker code, the response allowlist, the pagination order and limits, and the rollback
+ok 37 - docs/db/f2e-public-catalog.md states the contract: every blocker code, the response allowlist, the pagination order and limits, and the rollback
+  ---
+  duration_ms: 1.103336
+  type: 'test'
+  ...
+# Subtest: F2-E migrations: the reads are STABLE and write nothing, the allowlist is built field by field, and only the two catalog functions are granted to anon
+ok 38 - F2-E migrations: the reads are STABLE and write nothing, the allowlist is built field by field, and only the two catalog functions are granted to anon
+  ---
+  duration_ms: 0.953574
+  type: 'test'
+  ...
+# Subtest: docs/db/f2e-public-catalog.md does not promise duplicate-free traversal: it states the start-time key, skips, repeats and the exact guarantees
+ok 39 - docs/db/f2e-public-catalog.md does not promise duplicate-free traversal: it states the start-time key, skips, repeats and the exact guarantees
+  ---
+  duration_ms: 0.397682
+  type: 'test'
+  ...
+# Subtest: docs/foundation/f2-closeout.md reconciles every F2 acceptance row and names the milestone for what remains
+ok 40 - docs/foundation/f2-closeout.md reconciles every F2 acceptance row and names the milestone for what remains
+  ---
+  duration_ms: 0.866433
+  type: 'test'
+  ...
+# Subtest: docs/foundation/f2-closeout.md records the harness diagnosis: the original failure, the established cause, and what was not established
+ok 41 - docs/foundation/f2-closeout.md records the harness diagnosis: the original failure, the established cause, and what was not established
+  ---
+  duration_ms: 0.267968
+  type: 'test'
+  ...
+# (node:70447) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/hosted-docs.test.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: docs/hosted holds the preparation documents and says nothing was executed
+ok 42 - docs/hosted holds the preparation documents and says nothing was executed
+  ---
+  duration_ms: 19.254656
+  type: 'test'
+  ...
+# Subtest: no hosted preparation document contains a secret, a connection string with a password, a JWT, or a live project reference
+ok 43 - no hosted preparation document contains a secret, a connection string with a password, a JWT, or a live project reference
+  ---
+  duration_ms: 6.834385
+  type: 'test'
+  ...
+# Subtest: the staging plan lists exactly the F2 migration files, in filename order; the PX-3a migrations are deliberately NOT in any hosted plan (hosted changes are held until separately authorized)
+ok 44 - the staging plan lists exactly the F2 migration files, in filename order; the PX-3a migrations are deliberately NOT in any hosted plan (hosted changes are held until separately authorized)
+  ---
+  duration_ms: 0.687812
+  type: 'test'
+  ...
+# Subtest: the staging plan fixes the database major version, the worker connection method and the Auth values from the repository configuration
+ok 45 - the staging plan fixes the database major version, the worker connection method and the Auth values from the repository configuration
+  ---
+  duration_ms: 0.349224
+  type: 'test'
+  ...
+# Subtest: the exposed schema is configured AFTER the migrations create it: the plan and the procedure agree on the order
+ok 46 - the exposed schema is configured AFTER the migrations create it: the plan and the procedure agree on the order
+  ---
+  duration_ms: 1.727461
+  type: 'test'
+  ...
+# Subtest: database secrets never appear in an argument: a verified password-file method, with the forbidden forms listed only as "never"
+ok 47 - database secrets never appear in an argument: a verified password-file method, with the forbidden forms listed only as "never"
+  ---
+  duration_ms: 0.964359
+  type: 'test'
+  ...
+# Subtest: H0 validates the API URL, the database login, BOTH pooler endpoints, the worker login and the password file, and H1b/H2c prove the live targets match
+ok 48 - H0 validates the API URL, the database login, BOTH pooler endpoints, the worker login and the password file, and H1b/H2c prove the live targets match
+  ---
+  duration_ms: 0.676008
+  type: 'test'
+  ...
+# Subtest: every hosted check is classified read-only or mutating, and the forbidden-against-staging list names the local destructive tooling
+ok 49 - every hosted check is classified read-only or mutating, and the forbidden-against-staging list names the local destructive tooling
+  ---
+  duration_ms: 3.519054
+  type: 'test'
+  ...
+# Subtest: the hosted procedure never instructs a local destructive command against staging: such commands appear only in the forbidden list or in "never" text
+ok 50 - the hosted procedure never instructs a local destructive command against staging: such commands appear only in the forbidden list or in "never" text
+  ---
+  duration_ms: 1.094318
+  type: 'test'
+  ...
+# Subtest: the fixture sequence is executable: dedicated users for sign-out, staff removal and MFA; every later check signs in afresh
+ok 51 - the fixture sequence is executable: dedicated users for sign-out, staff removal and MFA; every later check signs in afresh
+  ---
+  duration_ms: 2.509774
+  type: 'test'
+  ...
+# Subtest: H10 builds a due job with an explicit, narrowly scoped procedure (an expiry date, one scoped update, exactly one due job)
+ok 52 - H10 builds a due job with an explicit, narrowly scoped procedure (an expiry date, one scoped update, exactly one due job)
+  ---
+  duration_ms: 0.547358
+  type: 'test'
+  ...
+# Subtest: H11 keeps enough eligible publications for multiple pages after hiding two
+ok 53 - H11 keeps enough eligible publications for multiple pages after hiding two
+  ---
+  duration_ms: 0.461183
+  type: 'test'
+  ...
+# Subtest: H12 separates forbidden data access from permitted metadata, checks the metadata against the function allowlist, and proves credentials work first
+ok 54 - H12 separates forbidden data access from permitted metadata, checks the metadata against the function allowlist, and proves credentials work first
+  ---
+  duration_ms: 1.348558
+  type: 'test'
+  ...
+# Subtest: raw output is disposable and redacted evidence is retained: the three documents say the same thing
+ok 55 - raw output is disposable and redacted evidence is retained: the three documents say the same thing
+  ---
+  duration_ms: 0.885894
+  type: 'test'
+  ...
+# Subtest: the CI review matches the hardened workflow: triggers, permissions, pinned actions, pinned runner, Node legs, and the absence of secrets and deployment steps
+ok 56 - the CI review matches the hardened workflow: triggers, permissions, pinned actions, pinned runner, Node legs, and the absence of secrets and deployment steps
+  ---
+  duration_ms: 1.004875
+  type: 'test'
+  ...
+# Subtest: the pin-verification record in the CI review names what each old reference was, including that supabase/setup-cli@v1 is a branch
+ok 57 - the pin-verification record in the CI review names what each old reference was, including that supabase/setup-cli@v1 is a branch
+  ---
+  duration_ms: 0.335367
+  type: 'test'
+  ...
+# Subtest: Node 24 is run in CI although package.json engines excludes it: the discrepancy is documented, not hidden
+ok 58 - Node 24 is run in CI although package.json engines excludes it: the discrepancy is documented, not hidden
+  ---
+  duration_ms: 0.281524
+  type: 'test'
+  ...
+# Subtest: looking up the commit behind a public action tag needs no special permission, in the CI review and the approval summary
+ok 59 - looking up the commit behind a public action tag needs no special permission, in the CI review and the approval summary
+  ---
+  duration_ms: 0.562295
+  type: 'test'
+  ...
+# Subtest: only S6 is read-only: H1b (a created and deleted Auth user) is inside an explicitly mutating authorization
+ok 60 - only S6 is read-only: H1b (a created and deleted Auth user) is inside an explicitly mutating authorization
+  ---
+  duration_ms: 0.583992
+  type: 'test'
+  ...
+# Subtest: the permitted direct-SQL exceptions include the narrowly scoped staff-assignment setup and revocation, and every check that uses them points to the list
+ok 61 - the permitted direct-SQL exceptions include the narrowly scoped staff-assignment setup and revocation, and every check that uses them points to the list
+  ---
+  duration_ms: 0.931113
+  type: 'test'
+  ...
+# Subtest: the same three push prerequisites (deployment controls, credential-retirement evidence, final workflow commit reviewed) appear in every document that gates a push
+ok 62 - the same three push prerequisites (deployment controls, credential-retirement evidence, final workflow commit reviewed) appear in every document that gates a push
+  ---
+  duration_ms: 0.550617
+  type: 'test'
+  ...
+# Subtest: the deployment-trigger evidence quoted in the CI review still exists in the repository
+ok 63 - the deployment-trigger evidence quoted in the CI review still exists in the repository
+  ---
+  duration_ms: 1.117294
+  type: 'test'
+  ...
+# Subtest: the credential-retirement document covers every baselined finding without containing a value, and ties R3 to an exposed secret or established compromise
+ok 64 - the credential-retirement document covers every baselined finding without containing a value, and ties R3 to an exposed secret or established compromise
+  ---
+  duration_ms: 0.543828
+  type: 'test'
+  ...
+# Subtest: the approval summary names the base commit, the proposed remote branch, the unresolved dependencies, cost, cleanup and per-step authorization
+ok 65 - the approval summary names the base commit, the proposed remote branch, the unresolved dependencies, cost, cleanup and per-step authorization
+  ---
+  duration_ms: 0.226086
+  type: 'test'
+  ...
+# Subtest: the three documentation corrections from the F2-F review are applied to the closeout
+ok 66 - the three documentation corrections from the F2-F review are applied to the closeout
+  ---
+  duration_ms: 0.707671
+  type: 'test'
+  ...
+# (node:70448) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/pilot-manifest.test.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: the manifest lists exactly the 25 migrations of the repository, in order, with their SHA-256
+ok 67 - the manifest lists exactly the 25 migrations of the repository, in order, with their SHA-256
+  ---
+  duration_ms: 5.747722
+  type: 'test'
+  ...
+# Subtest: counts: 25 migrations, 120 functions, 28 tables; the inventory files fingerprints match
+ok 68 - counts: 25 migrations, 120 functions, 28 tables; the inventory files fingerprints match
+  ---
+  duration_ms: 1.796842
+  type: 'test'
+  ...
+# Subtest: the ledger section equals the manifest (version and name) and every migration appears once
+ok 69 - the ledger section equals the manifest (version and name) and every migration appears once
+  ---
+  duration_ms: 0.213522
+  type: 'test'
+  ...
+# Subtest: the FUNCTION lines of the expected inventory are exactly the golden inventory of 010_roles_and_grants.test.sql (120 lines), so the hosted check uses the same reviewed truth
+ok 70 - the FUNCTION lines of the expected inventory are exactly the golden inventory of 010_roles_and_grants.test.sql (120 lines), so the hosted check uses the same reviewed truth
+  ---
+  duration_ms: 0.426508
+  type: 'test'
+  ...
+# Subtest: the inventory SQL is read-only and covers the application schemas only
+ok 71 - the inventory SQL is read-only and covers the application schemas only
+  ---
+  duration_ms: 0.408292
+  type: 'test'
+  ...
+# Subtest: the HISTORICAL staging records are preserved: the staging plan still lists exactly the 21 F2 migrations, and the 2026-10-17 evidence is committed unchanged in aee5287, already an ancestor of the branch
+ok 72 - the HISTORICAL staging records are preserved: the staging plan still lists exactly the 21 F2 migrations, and the 2026-10-17 evidence is committed unchanged in aee5287, already an ancestor of the branch
+  ---
+  duration_ms: 48.298988
+  type: 'test'
+  ...
+# (node:70449) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/pilot-rpc-checks.test.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: the API target: only https://<ref>.supabase.co, confirmed by reference, never staging; refused before any key file is read
+ok 73 - the API target: only https://<ref>.supabase.co, confirmed by reference, never staging; refused before any key file is read
+  ---
+  duration_ms: 10.003205
+  type: 'test'
+  ...
+# Subtest: the database target shares the binding: database name, staging, and connection overrides are refused
+ok 74 - the database target shares the binding: database name, staging, and connection overrides are refused
+  ---
+  duration_ms: 13.320421
+  type: 'test'
+  ...
+# Subtest: the apply and inventory tools both use the shared database binding; the RPC checker binds before reading a key file
+ok 75 - the apply and inventory tools both use the shared database binding; the RPC checker binds before reading a key file
+  ---
+  duration_ms: 17.11226
+  type: 'test'
+  ...
+# Subtest: hosted mode refuses a non-pilot URL without reading any key file or sending a request
+ok 76 - hosted mode refuses a non-pilot URL without reading any key file or sending a request
+  ---
+  duration_ms: 127.954476
+  type: 'test'
+  ...
+# Subtest: a failed check stops the run: later checks are SKIPPED (none runs, none mutates), cleanup still runs and is verified; exit 1
+ok 77 - a failed check stops the run: later checks are SKIPPED (none runs, none mutates), cleanup still runs and is verified; exit 1
+  ---
+  duration_ms: 620.80807
+  type: 'test'
+  ...
+# Subtest: an incomplete cleanup (the deletion error is returned, the user remains) is reported and fails the run with exit 3, never as success
+ok 78 - an incomplete cleanup (the deletion error is returned, the user remains) is reported and fails the run with exit 3, never as success
+  ---
+  duration_ms: 430.472033
+  type: 'test'
+  ...
+# Subtest: DEADLINE: a request inside a running check is cut at the remaining run budget and later requests are not sent; cleanup then has its OWN allowance
+ok 79 - DEADLINE: a request inside a running check is cut at the remaining run budget and later requests are not sent; cleanup then has its OWN allowance
+  ---
+  duration_ms: 1096.321038
+  type: 'test'
+  ...
+# Subtest: UNCERTAIN FIXTURE: a creation that times out and cannot be found afterwards is NEVER reported as verified clean; exit 3; the identifier is only in a private 0600 record
+ok 80 - UNCERTAIN FIXTURE: a creation that times out and cannot be found afterwards is NEVER reported as verified clean; exit 3; the identifier is only in a private 0600 record
+  ---
+  duration_ms: 1036.867371
+  type: 'test'
+  ...
+# Subtest: a creation the API definitively refused (4xx) is proven never created and is not reported as incomplete
+ok 81 - a creation the API definitively refused (4xx) is proven never created and is not reported as incomplete
+  ---
+  duration_ms: 375.859269
+  type: 'test'
+  ...
+# Subtest: the cleanup allowance is bounded too: a lookup that never answers ends within it, as incomplete (exit 3)
+ok 82 - the cleanup allowance is bounded too: a lookup that never answers ends within it, as incomplete (exit 3)
+  ---
+  duration_ms: 2130.551323
+  type: 'test'
+  ...
+# Subtest: ISOLATION: the fake-API tests never reach a real Docker: the subprocess is always the stub, never the default macOS path or a docker on PATH
+ok 83 - ISOLATION: the fake-API tests never reach a real Docker: the subprocess is always the stub, never the default macOS path or a docker on PATH
+  ---
+  duration_ms: 0.394022
+  type: 'test'
+  ...
+# Subtest: local-mode content check, three outcomes kept apart: confirmed rows remaining and verification unavailable BOTH fail the run (exit 3), with different wording; confirmed none passes
+ok 84 - local-mode content check, three outcomes kept apart: confirmed rows remaining and verification unavailable BOTH fail the run (exit 3), with different wording; confirmed none passes
+  ---
+  duration_ms: 1066.429178
+  type: 'test'
+  ...
+# (node:70458) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/AlanWatts%201/hackass-m00/wt-px2b/tests/scan-secrets.test.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/AlanWatts 1/hackass-m00/wt-px2b/package.json.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: every rule detects its synthetic credential, reports a fingerprint, and never echoes the value
+ok 85 - every rule detects its synthetic credential, reports a fingerprint, and never echoes the value
+  ---
+  duration_ms: 4.770394
+  type: 'test'
+  ...
+# Subtest: placeholders, variable references and loopback database URLs are not findings
+ok 86 - placeholders, variable references and loopback database URLs are not findings
+  ---
+  duration_ms: 0.433398
+  type: 'test'
+  ...
+# Subtest: an allowlist entry suppresses exactly its rule, file and fingerprint
+ok 87 - an allowlist entry suppresses exactly its rule, file and fingerprint
+  ---
+  duration_ms: 0.243955
+  type: 'test'
+  ...
+# Subtest: the committed allowlist has a written reason for every entry
+ok 88 - the committed allowlist has a written reason for every entry
+  ---
+  duration_ms: 5.53591
+  type: 'test'
+  ...
+# Subtest: working-tree scan covers tracked and untracked-but-not-ignored files, and skips ignored files and node_modules
+ok 89 - working-tree scan covers tracked and untracked-but-not-ignored files, and skips ignored files and node_modules
+  ---
+  duration_ms: 35.887549
+  type: 'test'
+  ...
+# Subtest: history scan finds a credential that was committed and later deleted, and keeps known historic exposures apart
+ok 90 - history scan finds a credential that was committed and later deleted, and keeps known historic exposures apart
+  ---
+  duration_ms: 79.574101
+  type: 'test'
+  ...
+# Subtest: this repository: working tree is clean, and the history scan recognises the known .env exposure without printing it
+ok 91 - this repository: working tree is clean, and the history scan recognises the known .env exposure without printing it
+  ---
+  duration_ms: 1313.568602
+  type: 'test'
+  ...
+# Subtest: long lines are scanned: a credential after 5,000 and 50,000 characters, and one straddling a window edge, is found
+ok 92 - long lines are scanned: a credential after 5,000 and 50,000 characters, and one straddling a window edge, is found
+  ---
+  duration_ms: 22.999704
+  type: 'test'
+  ...
+# Subtest: scanning pathological long lines stays fast (no quadratic regex behaviour)
+ok 93 - scanning pathological long lines stays fast (no quadratic regex behaviour)
+  ---
+  duration_ms: 609.349165
+  type: 'test'
+  ...
+# Subtest: long lowercase credentials are findings; only whole-value placeholder forms are exempt
+ok 94 - long lowercase credentials are findings; only whole-value placeholder forms are exempt
+  ---
+  duration_ms: 0.548915
+  type: 'test'
+  ...
+# Subtest: database URLs: a real-looking password is a finding even when it contains "password", "example" or "project"; documentation forms are not
+ok 95 - database URLs: a real-looking password is a finding even when it contains "password", "example" or "project"; documentation forms are not
+  ---
+  duration_ms: 0.458696
+  type: 'test'
+  ...
+# Subtest: working-tree scan has no silent skips: large files and NUL-containing files are scanned, the lockfile is scanned, unreadable files are reported
+ok 96 - working-tree scan has no silent skips: large files and NUL-containing files are scanned, the lockfile is scanned, unreadable files are reported
+  ---
+  duration_ms: 122.288577
+  type: 'test'
+  ...
+# Subtest: the CLI exits nonzero when a file could not be scanned
+ok 97 - the CLI exits nonzero when a file could not be scanned
+  ---
+  duration_ms: 90.454165
+  type: 'test'
+  ...
+1..97
+# tests 97
+# suites 0
+# pass 97
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8328.836589

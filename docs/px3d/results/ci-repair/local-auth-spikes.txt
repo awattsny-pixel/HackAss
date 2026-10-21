@@ -1,0 +1,9 @@
+PASS  L0  stack facts: access-token lifetime follows config (jwt_expiry = 600) and the signing algorithm is known  [alg=ES256, lifetime=600s, claims: aal,amr,app_metadata,aud,email,exp,iat,is_anonymous,iss,phone,role,session_id,sub,user_metadata]
+PASS  L1  email confirmation is enforced: sign-up gives no session, sign-in fails until the Mailpit link is followed, then succeeds  [sign-up -> unconfirmed sign-in refused -> link -> sign-in ok]
+PASS  L2  server-centric cookie session via createUserDb: HttpOnly/SameSite cookies, persists across clients, refreshes, and sign-out clears it and revokes the refresh token  [cookie options httpOnly=true sameSite=lax path=/; refresh rotated; sign-out cleared the jar and revoked the refresh token. NOT shown here: a real browser honouring HttpOnly (hosted/browser spike S1)]
+PASS  L3  revocation vs signature (S2): after sign-out the access token still verifies by signature and is still accepted by PostgREST, but the Auth server rejects it  [signature valid=true, exp in future, PostgREST=200 (accepted), auth server getUser=rejected (400)]
+PASS  L4  in-database session check (S3/I-3): a SECURITY DEFINER function owned by a non-superuser reads auth.sessions and sees the session die at sign-out; the caller role cannot read auth.sessions itself  [owner=postgres (postgres superuser=false); alive before=true, after sign-out=false; authenticated has no direct SELECT on auth.sessions]
+PASS  L5  MFA claims (S4): TOTP enrol + verify moves aal1 -> aal2 and the token carries amr entries with a verification timestamp, visible inside the database  [aal aal1 -> aal2; amr=[password,totp] with timestamp age 1s; auth.jwt() shows aal2 + amr in the database; wrong code rejected]
+
+local Auth/session/MFA checks: 6/6 passed
+NOT run here (hosted/browser only): S1 real-browser HttpOnly cookie behaviour over HTTPS; S5 worker role through the hosted pooler; S6 hosted key model, SMTP and rate limits.

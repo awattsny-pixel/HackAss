@@ -7,6 +7,8 @@ export default defineConfig([
   ...nextTs,
   globalIgnores([
     '.next/**',
+    '.next-gate/**', // alternative build directories used by the local verification (NEXT_DIST_DIR); never linted
+    '.next-lock/**',
     'out/**',
     'build/**',
     'next-env.d.ts',

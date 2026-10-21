@@ -263,6 +263,9 @@ select 'ledger=' || count(*) from supabase_migrations.schema_migrations where ve
 select 'hacks=' || count(*) from app.hacks;`).out.replace(/\n/g, ' ');
   const before = probe();
   ok(/fns=4 ledger=2/.test(before), `before: ${before}`);
+  // PX-3a sits above every F2 slice in the ledger, so a COMMITTED rollback goes in true reverse order: PX-3a first (otherwise `supabase migration up` finds a gap and refuses). It is re-applied by the same `migration up`.
+  const downPX3a = psql(readFileSync(path.join(root, 'supabase/rollbacks/20261020090000_px3a_down.sql'), 'utf8'));
+  ok(!/ERROR/.test(downPX3a.out + (downPX3a.err ?? '')), `the PX-3a rollback failed: ${(downPX3a.out + (downPX3a.err ?? '')).slice(-300)}`);
   const rolled = psql(readFileSync(path.join(root, 'supabase/rollbacks/20261019090000_f2e_down.sql'), 'utf8'));
   ok(!/ERROR/.test(rolled.out + rolled.err), `rollback failed: ${(rolled.out + rolled.err).slice(-300)}`);
   const mid = probe();

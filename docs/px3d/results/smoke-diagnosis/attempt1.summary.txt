@@ -1,0 +1,6 @@
+not ok 445 - this repository: working tree is clean, and the history scan recognises the known .env exposure without printing it
+not ok 461 - request timeout with a transient zombie EPERM during cleanup still exits 4 (the timeout), nothing left running
+# tests 557
+# pass 550
+# fail 2
+# skipped 5

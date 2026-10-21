@@ -1,0 +1,7 @@
+tsc clean
+
+✖ 5 problems (0 errors, 5 warnings)
+
+working tree: 0 finding(s)
+  excluded by design: 0 dependency/build directory, 88 binary extension
+manifest matches the repository

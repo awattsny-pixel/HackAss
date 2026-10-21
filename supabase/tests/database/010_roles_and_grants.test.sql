@@ -35,8 +35,8 @@ select is(
 
 -- ---- schemas --------------------------------------------------------------------------------------------------------
 select is(
-  (select string_agg(nspname || '=' || pg_get_userbyid(nspowner), ',' order by nspname) from pg_namespace where nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget')),
-  'api=hackass_owner,app=hackass_owner,app_bridge=postgres,app_budget=hackass_owner,app_content=hackass_owner,app_guard=hackass_owner,app_review=hackass_owner,worker=hackass_owner',
+  (select string_agg(nspname || '=' || pg_get_userbyid(nspowner), ',' order by nspname) from pg_namespace where nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget', 'app_work')),
+  'api=hackass_owner,app=hackass_owner,app_bridge=postgres,app_budget=hackass_owner,app_content=hackass_owner,app_guard=hackass_owner,app_review=hackass_owner,app_work=hackass_owner,worker=hackass_owner',
   'schema owners');
 
 select is(
@@ -44,7 +44,7 @@ select is(
      from pg_namespace n
      cross join (select rolname from pg_roles where rolname in ('anon', 'authenticated', 'service_role', 'authenticator', 'supabase_auth_admin', 'hackass_owner', 'hackass_worker', 'postgres')) r
      cross join (values ('USAGE'), ('CREATE')) p(priv)
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget')
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget', 'app_work')
       and has_schema_privilege(r.rolname, n.oid, p.priv)),
   'api:anon:USAGE, api:authenticated:USAGE, api:hackass_owner:CREATE, api:hackass_owner:USAGE, api:postgres:USAGE, '
   'app:hackass_owner:CREATE, app:hackass_owner:USAGE, app:postgres:USAGE, '
@@ -52,11 +52,12 @@ select is(
   'app_content:hackass_owner:CREATE, app_content:hackass_owner:USAGE, app_content:postgres:USAGE, '
   'app_guard:hackass_owner:CREATE, app_guard:hackass_owner:USAGE, app_guard:postgres:USAGE, app_guard:supabase_auth_admin:USAGE, '
   'app_review:hackass_owner:CREATE, app_review:hackass_owner:USAGE, app_review:postgres:USAGE, '
+  'app_work:hackass_owner:CREATE, app_work:hackass_owner:USAGE, app_work:postgres:USAGE, '
   'worker:hackass_owner:CREATE, worker:hackass_owner:USAGE, worker:hackass_worker:USAGE, worker:postgres:USAGE',
   'schema privileges: exactly the intended grants. postgres (break-glass) shows USAGE because the platform makes it a member of pg_read_all_data; nothing for service_role, authenticator or hackass_worker on app/app_guard/app_bridge');
 select is(
   (select count(*)::int from pg_namespace n, pg_catalog.aclexplode(n.nspacl) x
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget') and x.grantee = 0),
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget', 'app_work') and x.grantee = 0),
   0, 'PUBLIC has no privilege on any application schema');
 
 -- ---- tables ---------------------------------------------------------------------------------------------------------
@@ -84,8 +85,8 @@ select is(
 select is((select count(*)::int from pg_policy p join pg_class c on c.oid = p.polrelid join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app'), 0, 'no RLS policy exists (default deny)');
 select is(
   (select string_agg(c.relname, ', ' order by c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r'),
-  'accounts, ai_budget_days, ai_budget_global, ai_ledger, ai_operation_types, ai_reservations, categories, hack_materials, hack_requirements, hack_steps, hack_versions, hacks, jobs, moderation_decisions, publication_rights, publication_withdrawals, publications, rights_reviews, source_claims, staff_assignments, submissions, version_assessments, version_assets, version_attributions, version_lifecycle, version_tags',
-  'app contains exactly these 26 tables (any new table must be added here, with its grants reviewed)');
+  'accounts, ai_budget_days, ai_budget_global, ai_ledger, ai_operation_types, ai_reservations, categories, hack_materials, hack_requirements, hack_steps, hack_versions, hacks, jobs, moderation_decisions, publication_rights, publication_withdrawals, publications, rights_reviews, saved_prompts, saved_reflections, source_claims, staff_assignments, submissions, version_assessments, version_assets, version_attributions, version_lifecycle, version_tags',
+  'app contains exactly these 28 tables (any new table must be added here, with its grants reviewed)');
 select is(
   (select string_agg(c.relname, ', ' order by c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'app' and c.relkind = 'r'
       and not exists (select 1 from pg_trigger t where t.tgrelid = c.oid and t.tgname like '%\_guard' or t.tgrelid = c.oid and t.tgname like '%\_append\_only') and c.relname in ('hack_versions', 'hack_steps', 'hack_materials', 'hack_requirements', 'version_tags', 'version_attributions', 'source_claims', 'version_assets', 'submissions')),
@@ -130,13 +131,20 @@ select is(
                                      from aclexplode(p.proacl) x where x.privilege_type = 'EXECUTE'), 'NONE'),
      E'\n' order by p.oid::regprocedure::text)
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget')),
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget', 'app_work')),
   $golden$api.create_draft(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.delete_draft(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+api.delete_my_prompt(uuid,integer) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+api.delete_my_reflection(uuid,integer) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+api.export_my_data(text,uuid,integer) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+api.get_my_prompt(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+api.get_my_result(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.get_public_hack(text) owner=hackass_owner definer=true vol=s search_path="" execute=anon,authenticated,hackass_owner
 api.get_publication(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.get_submission_for_review(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.get_version(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+api.list_my_prompts(integer,timestamp with time zone,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+api.list_my_results(integer,text,timestamp with time zone,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.list_my_versions() owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.list_public_hacks(integer,text,text,timestamp with time zone,text) owner=hackass_owner definer=true vol=s search_path="" execute=anon,authenticated,hackass_owner
 api.list_submissions_for_review(integer,text[],timestamp with time zone,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
@@ -145,9 +153,13 @@ api.record_decision(uuid,text,text,text[],text,uuid) owner=hackass_owner definer
 api.record_rights_review(uuid,text,integer,text,text,text,date) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.record_risk_assessment(uuid,text,text,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.save_draft(uuid,jsonb) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+api.save_prompt_and_result(uuid,jsonb,jsonb,uuid,integer) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+api.save_prompt(uuid,jsonb,uuid,integer) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+api.save_reflection(uuid,uuid,integer,jsonb) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.staff_probe(text,integer) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.start_review(uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.submit_version(uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+api.update_my_reflection(uuid,integer,jsonb) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 api.whoami() owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
 api.withdraw_publication(uuid,text,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
 app_bridge.session_valid(uuid,uuid) owner=postgres definer=true vol=s search_path="" execute=hackass_owner,postgres
@@ -190,6 +202,7 @@ app_content.version_doc(uuid) owner=hackass_owner definer=true vol=s search_path
 app_content.version_hash(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_content.write_doc(uuid,jsonb) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_guard.on_auth_user_created() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,supabase_auth_admin
+app_guard.on_auth_user_deleted_content() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,supabase_auth_admin
 app_guard.on_auth_user_deleted() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,supabase_auth_admin
 app_guard.require_member() owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
 app_guard.require_staff(text,interval) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
@@ -226,6 +239,13 @@ app_review.unresolved_references(uuid) owner=hackass_owner definer=true vol=s se
 app_review.utc_today() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.verify_binding(app.submissions,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 app_review.withdraw_locked(app.publications,text,text,text,text[],text,uuid,uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_work.fingerprint(text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_work.lock_member(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_work.parse_prompt(jsonb) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_work.parse_result(jsonb) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_work.txt(jsonb,text,integer,integer,boolean) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+app_work.write_prompt(uuid,uuid,text,app_work.prompt_doc,uuid,integer) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+app_work.write_result(uuid,uuid,text,app.saved_prompts,app_work.result_doc,boolean) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
 worker.claim_job(text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,hackass_worker
 worker.complete_job(uuid,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,hackass_worker
 worker.fail_job(uuid,bigint,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,hackass_worker
@@ -236,12 +256,12 @@ worker.heartbeat_job(uuid,bigint) owner=hackass_owner definer=true vol=v search_
 
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget') and p.proowner <> 'hackass_owner'::regrole),
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget', 'app_work') and p.proowner <> 'hackass_owner'::regrole),
   'app_bridge.session_valid(uuid,uuid)',
   'G-3 exception: the ONLY application-schema function not owned by hackass_owner is the postgres-owned bridge');
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget')
+    where n.nspname in ('app', 'app_guard', 'api', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget', 'app_work')
       and (regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* '(\mfrom|\mjoin|(?<!for\s)(?<!distinct\s)\mupdate)\s+(?!app\.|auth\.|pg_catalog\.|app_bridge\.|app_guard\.|app_content\.|app_review\.|api\.|v_|p_|old\.|new\.)[a-z_]+'
         or regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* 'insert\s+into\s+(?!app\.)' or regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* 'delete\s+from\s+(?!app\.)')),
   null, 'no function body names a table or function without a schema (everything is fully qualified)');
@@ -258,8 +278,8 @@ select ok(
   'worker.healthcheck checks the calling login first');
 select is(
   (select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname in ('api', 'app_guard', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget') and p.provolatile = 'v' and p.prorettype <> 'trigger'::regtype),
-  'api.create_draft(uuid), api.delete_draft(uuid), api.publish_version(uuid,text,uuid,text), api.record_decision(uuid,text,text,text[],text,uuid), api.record_rights_review(uuid,text,integer,text,text,text,date), api.record_risk_assessment(uuid,text,text,text), api.save_draft(uuid,jsonb), api.start_review(uuid,text), api.submit_version(uuid,text), api.withdraw_publication(uuid,text,text), app_budget.cancel(uuid,text), app_budget.lock_scopes(date,text), app_budget.mark_unknown(uuid,text), app_budget.replay_or_conflict(app.ai_reservations,text,app.submissions,bigint), app_budget.reserve_for_day(text,text,uuid,text,bigint,date), app_budget.reserve(text,text,uuid,text,bigint), app_budget.settle(uuid,bigint), app_budget.today(), app_content.freeze_version(uuid,uuid,bytea), app_content.write_doc(uuid,jsonb), app_review.job_assert_lease(app.jobs,bigint), app_review.job_claim(text), app_review.job_complete(uuid,bigint), app_review.job_effect_publication_recheck(app.jobs), app_review.job_ensure_recheck(app.publications), app_review.job_fail(uuid,bigint,text), app_review.job_heartbeat(uuid,bigint), app_review.lock_submission(uuid), app_review.utc_today(), app_review.verify_binding(app.submissions,text), app_review.withdraw_locked(app.publications,text,text,text,text[],text,uuid,uuid,text), worker.claim_job(text), worker.complete_job(uuid,bigint), worker.fail_job(uuid,bigint,text), worker.heartbeat_job(uuid,bigint)',
+    where n.nspname in ('api', 'app_guard', 'worker', 'app_bridge', 'app_content', 'app_review', 'app_budget', 'app_work') and p.provolatile = 'v' and p.prorettype <> 'trigger'::regtype),
+  'api.create_draft(uuid), api.delete_draft(uuid), api.delete_my_prompt(uuid,integer), api.delete_my_reflection(uuid,integer), api.publish_version(uuid,text,uuid,text), api.record_decision(uuid,text,text,text[],text,uuid), api.record_rights_review(uuid,text,integer,text,text,text,date), api.record_risk_assessment(uuid,text,text,text), api.save_draft(uuid,jsonb), api.save_prompt_and_result(uuid,jsonb,jsonb,uuid,integer), api.save_prompt(uuid,jsonb,uuid,integer), api.save_reflection(uuid,uuid,integer,jsonb), api.start_review(uuid,text), api.submit_version(uuid,text), api.update_my_reflection(uuid,integer,jsonb), api.withdraw_publication(uuid,text,text), app_budget.cancel(uuid,text), app_budget.lock_scopes(date,text), app_budget.mark_unknown(uuid,text), app_budget.replay_or_conflict(app.ai_reservations,text,app.submissions,bigint), app_budget.reserve_for_day(text,text,uuid,text,bigint,date), app_budget.reserve(text,text,uuid,text,bigint), app_budget.settle(uuid,bigint), app_budget.today(), app_content.freeze_version(uuid,uuid,bytea), app_content.write_doc(uuid,jsonb), app_review.job_assert_lease(app.jobs,bigint), app_review.job_claim(text), app_review.job_complete(uuid,bigint), app_review.job_effect_publication_recheck(app.jobs), app_review.job_ensure_recheck(app.publications), app_review.job_fail(uuid,bigint,text), app_review.job_heartbeat(uuid,bigint), app_review.lock_submission(uuid), app_review.utc_today(), app_review.verify_binding(app.submissions,text), app_review.withdraw_locked(app.publications,text,text,text,text[],text,uuid,uuid,text), app_work.lock_member(uuid), app_work.write_prompt(uuid,uuid,text,app_work.prompt_doc,uuid,integer), app_work.write_result(uuid,uuid,text,app.saved_prompts,app_work.result_doc,boolean), worker.claim_job(text), worker.complete_job(uuid,bigint), worker.fail_job(uuid,bigint,text), worker.heartbeat_job(uuid,bigint)',
   'exactly the writing functions are VOLATILE; every reader, guard, validator and hash function is STABLE or IMMUTABLE');
 
 -- ---- hackass_owner holds nothing it does not need -----------------------------------------------------------------------
@@ -298,8 +318,8 @@ select is(
 -- ---- Auth triggers ----------------------------------------------------------------------------------------------------
 select is(
   (select string_agg(t.tgname || ':' || t.tgfoid::regproc::text, ', ' order by t.tgname) from pg_trigger t where t.tgrelid = 'auth.users'::regclass and t.tgname like 'hackass_%'),
-  'hackass_account_created:app_guard.on_auth_user_created, hackass_account_deleted:app_guard.on_auth_user_deleted',
-  'the two account-lifecycle triggers are installed on auth.users');
+  'hackass_account_created:app_guard.on_auth_user_created, hackass_account_deleted:app_guard.on_auth_user_deleted, hackass_work_content_deleted:app_guard.on_auth_user_deleted_content',
+  'the account-lifecycle triggers (accounts, and the PX-3a erasure of saved work) are installed on auth.users');
 select is(
   (select row(has_function_privilege('postgres', 'app_guard.on_auth_user_created()', 'execute'), has_schema_privilege('postgres', 'app_guard', 'usage'))::text),
   '(f,t)', 'postgres was given EXECUTE only while creating the triggers and no longer holds it (its schema USAGE is the pg_read_all_data break-glass membership)');

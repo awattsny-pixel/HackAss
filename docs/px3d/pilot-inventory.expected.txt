@@ -1,0 +1,187 @@
+C|functions=120 tables=28 migrations=25
+F|api.create_draft(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.delete_draft(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.delete_my_prompt(uuid,integer) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.delete_my_reflection(uuid,integer) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.export_my_data(text,uuid,integer) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+F|api.get_my_prompt(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+F|api.get_my_result(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+F|api.get_public_hack(text) owner=hackass_owner definer=true vol=s search_path="" execute=anon,authenticated,hackass_owner
+F|api.get_publication(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+F|api.get_submission_for_review(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+F|api.get_version(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+F|api.list_my_prompts(integer,timestamp with time zone,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+F|api.list_my_results(integer,text,timestamp with time zone,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+F|api.list_my_versions() owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+F|api.list_public_hacks(integer,text,text,timestamp with time zone,text) owner=hackass_owner definer=true vol=s search_path="" execute=anon,authenticated,hackass_owner
+F|api.list_submissions_for_review(integer,text[],timestamp with time zone,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+F|api.publish_version(uuid,text,uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.record_decision(uuid,text,text,text[],text,uuid) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.record_rights_review(uuid,text,integer,text,text,text,date) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.record_risk_assessment(uuid,text,text,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.save_draft(uuid,jsonb) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.save_prompt(uuid,jsonb,uuid,integer) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.save_prompt_and_result(uuid,jsonb,jsonb,uuid,integer) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.save_reflection(uuid,uuid,integer,jsonb) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.staff_probe(text,integer) owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+F|api.start_review(uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.submit_version(uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.update_my_reflection(uuid,integer,jsonb) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|api.whoami() owner=hackass_owner definer=true vol=s search_path="" execute=authenticated,hackass_owner
+F|api.withdraw_publication(uuid,text,text) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+F|app_bridge.session_valid(uuid,uuid) owner=postgres definer=true vol=s search_path="" execute=hackass_owner,postgres
+F|app_budget.apply_ledger() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_budget.cancel(uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_budget.guard_append_only() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_budget.guard_counter_delete() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_budget.guard_reservation() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_budget.lock_scopes(date,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_budget.mark_unknown(uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_budget.outstanding() owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_budget.reconcile_report(date) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_budget.replay_or_conflict(app.ai_reservations,text,app.submissions,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_budget.reservation_json(app.ai_reservations,boolean) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_budget.reserve(text,text,uuid,text,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_budget.reserve_for_day(text,text,uuid,text,bigint,date) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_budget.settle(uuid,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_budget.today() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_content.assert_keys(jsonb,text[],text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_content.assert_limits(jsonb) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_content.assert_submittable(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_content.canon_str(text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_content.canonical_text(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_content.canonical_text_json(jsonb) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_content.clean_text(text,integer,integer) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_content.freeze_version(uuid,uuid,bytea) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_content.fv(text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_content.guard_category() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_content.guard_child() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_content.guard_submission() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_content.guard_truncate() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_content.guard_version() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_content.hash_text(text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_content.j_arr(jsonb,text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_content.j_hex64(jsonb,text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_content.j_int(jsonb,text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_content.j_text(jsonb,text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_content.j_uuid(jsonb,text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_content.version_doc(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_content.version_hash(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_content.write_doc(uuid,jsonb) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_guard.on_auth_user_created() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,supabase_auth_admin
+F|app_guard.on_auth_user_deleted() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,supabase_auth_admin
+F|app_guard.on_auth_user_deleted_content() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,supabase_auth_admin
+F|app_guard.require_member() owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_guard.require_staff(text,interval) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_review.after_review_write() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.approval_blockers(uuid,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_review.assert_reviewer_ok(app.submissions,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_review.check_publication_children() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.check_withdrawal_cleared() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.claim_hash(uuid,integer) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_review.claim_line(uuid,integer) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_review.effective_rights(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_review.guard_append_only() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.guard_assessment() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.guard_decision() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.guard_hack() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.guard_job() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.guard_publication() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.guard_rights_review() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.job_after_publication() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.job_assert_lease(app.jobs,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.job_claim(text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.job_complete(uuid,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.job_effect_publication_recheck(app.jobs) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.job_ensure_recheck(app.publications) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.job_fail(uuid,bigint,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.job_heartbeat(uuid,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.job_subject(uuid,bigint) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_review.lock_submission(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.public_blockers(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_review.public_hack_json(uuid,boolean) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_review.publication_blockers(uuid,uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_review.snapshot_text(uuid,uuid,uuid,bytea,smallint,uuid,uuid,uuid,text,uuid[]) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_review.unresolved_references(uuid) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner
+F|app_review.utc_today() owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.verify_binding(app.submissions,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_review.withdraw_locked(app.publications,text,text,text,text[],text,uuid,uuid,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_work.fingerprint(text) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_work.lock_member(uuid) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_work.parse_prompt(jsonb) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_work.parse_result(jsonb) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_work.txt(jsonb,text,integer,integer,boolean) owner=hackass_owner definer=true vol=i search_path="" execute=hackass_owner
+F|app_work.write_prompt(uuid,uuid,text,app_work.prompt_doc,uuid,integer) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|app_work.write_result(uuid,uuid,text,app.saved_prompts,app_work.result_doc,boolean) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner
+F|worker.claim_job(text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,hackass_worker
+F|worker.complete_job(uuid,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,hackass_worker
+F|worker.fail_job(uuid,bigint,text) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,hackass_worker
+F|worker.get_job_subject(uuid,bigint) owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner,hackass_worker
+F|worker.healthcheck() owner=hackass_owner definer=true vol=s search_path="" execute=hackass_owner,hackass_worker
+F|worker.heartbeat_job(uuid,bigint) owner=hackass_owner definer=true vol=v search_path="" execute=hackass_owner,hackass_worker
+L|20261013130000 f2a_roles_and_schemas
+L|20261013130100 f2a_identity_and_staff
+L|20261013130200 f2a_authorization_guards
+L|20261014090000 f2b_content_tables
+L|20261014090100 f2b_canonical_hash
+L|20261014090200 f2b_immutability
+L|20261014090300 f2b_content_rpc
+L|20261015090000 f2c1_review_tables
+L|20261015090100 f2c1_review_rules
+L|20261015090200 f2c1_review_rpc
+L|20261016090000 f2c2_publication_tables
+L|20261016090100 f2c2_publication_rules
+L|20261016090200 f2c2_publication_rpc
+L|20261017090000 f2d1_jobs_tables
+L|20261017090100 f2d1_jobs_rules
+L|20261017090200 f2d1_worker_rpc
+L|20261017090300 f2d1_utc_boundary
+L|20261018090000 f2d2_budget_tables
+L|20261018090100 f2d2_budget_functions
+L|20261019090000 f2e_catalog_rules
+L|20261019090100 f2e_catalog_api
+L|20261020090000 px3a_work_tables
+L|20261020090100 px3a_work_helpers
+L|20261020090200 px3a_work_api
+L|20261020090300 px3a_work_erasure
+P|table_privileges_held_by_anon_authenticated_service_role_hackass_worker=0
+R|hackass_account_created -> app_guard.on_auth_user_created
+R|hackass_account_deleted -> app_guard.on_auth_user_deleted
+R|hackass_work_content_deleted -> app_guard.on_auth_user_deleted_content
+S|api owner=hackass_owner usage=anon,authenticated,hackass_owner
+S|app owner=hackass_owner usage=hackass_owner
+S|app_bridge owner=postgres usage=hackass_owner
+S|app_budget owner=hackass_owner usage=hackass_owner
+S|app_content owner=hackass_owner usage=hackass_owner
+S|app_guard owner=hackass_owner usage=hackass_owner
+S|app_review owner=hackass_owner usage=hackass_owner
+S|app_work owner=hackass_owner usage=hackass_owner
+S|worker owner=hackass_owner usage=hackass_owner,hackass_worker
+T|app.accounts owner=hackass_owner rls=true forced=false
+T|app.ai_budget_days owner=hackass_owner rls=true forced=false
+T|app.ai_budget_global owner=hackass_owner rls=true forced=false
+T|app.ai_ledger owner=hackass_owner rls=true forced=false
+T|app.ai_operation_types owner=hackass_owner rls=true forced=false
+T|app.ai_reservations owner=hackass_owner rls=true forced=false
+T|app.categories owner=hackass_owner rls=true forced=false
+T|app.hack_materials owner=hackass_owner rls=true forced=false
+T|app.hack_requirements owner=hackass_owner rls=true forced=false
+T|app.hack_steps owner=hackass_owner rls=true forced=false
+T|app.hack_versions owner=hackass_owner rls=true forced=false
+T|app.hacks owner=hackass_owner rls=true forced=false
+T|app.jobs owner=hackass_owner rls=true forced=false
+T|app.moderation_decisions owner=hackass_owner rls=true forced=false
+T|app.publication_rights owner=hackass_owner rls=true forced=false
+T|app.publication_withdrawals owner=hackass_owner rls=true forced=false
+T|app.publications owner=hackass_owner rls=true forced=false
+T|app.rights_reviews owner=hackass_owner rls=true forced=false
+T|app.saved_prompts owner=hackass_owner rls=true forced=false
+T|app.saved_reflections owner=hackass_owner rls=true forced=false
+T|app.source_claims owner=hackass_owner rls=true forced=false
+T|app.staff_assignments owner=hackass_owner rls=true forced=false
+T|app.submissions owner=hackass_owner rls=true forced=false
+T|app.version_assessments owner=hackass_owner rls=true forced=false
+T|app.version_assets owner=hackass_owner rls=true forced=false
+T|app.version_attributions owner=hackass_owner rls=true forced=false
+T|app.version_lifecycle owner=hackass_owner rls=true forced=false
+T|app.version_tags owner=hackass_owner rls=true forced=false
