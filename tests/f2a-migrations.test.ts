@@ -13,8 +13,8 @@ const sql = Object.fromEntries(files.map((f) => [f, readFileSync(join(migDir, f)
 const all = files.map((f) => sql[f]).join('\n');
 const code = (t: string) => t.replace(/--.*$/gm, '');
 
-test('F2-A, F2-B, F2-C1, F2-C2 and F2-D1, F2-D2 and F2-E migrations: twenty-one timestamped, ordered files, no stray files', () => {
-  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql', 'f2d1_jobs_tables.sql', 'f2d1_jobs_rules.sql', 'f2d1_worker_rpc.sql', 'f2d1_utc_boundary.sql', 'f2d2_budget_tables.sql', 'f2d2_budget_functions.sql', 'f2e_catalog_rules.sql', 'f2e_catalog_api.sql']);
+test('F2-A, F2-B, F2-C1, F2-C2 and F2-D1, F2-D2, F2-E and PX-3a migrations: twenty-five timestamped, ordered files, no stray files', () => {
+  assert.deepEqual(files.map((f) => f.replace(/^\d{14}_/, '')), ['f2a_roles_and_schemas.sql', 'f2a_identity_and_staff.sql', 'f2a_authorization_guards.sql', 'f2b_content_tables.sql', 'f2b_canonical_hash.sql', 'f2b_immutability.sql', 'f2b_content_rpc.sql', 'f2c1_review_tables.sql', 'f2c1_review_rules.sql', 'f2c1_review_rpc.sql', 'f2c2_publication_tables.sql', 'f2c2_publication_rules.sql', 'f2c2_publication_rpc.sql', 'f2d1_jobs_tables.sql', 'f2d1_jobs_rules.sql', 'f2d1_worker_rpc.sql', 'f2d1_utc_boundary.sql', 'f2d2_budget_tables.sql', 'f2d2_budget_functions.sql', 'f2e_catalog_rules.sql', 'f2e_catalog_api.sql', 'px3a_work_tables.sql', 'px3a_work_helpers.sql', 'px3a_work_api.sql', 'px3a_work_erasure.sql']);
   assert.deepEqual(readdirSync(migDir).filter((f) => !f.endsWith('.sql')), ['.gitkeep']);
   for (const f of files) assert.match(f, /^\d{14}_[a-z0-9_]+\.sql$/);
 });
@@ -52,10 +52,13 @@ test('no grant to PUBLIC, anon or service_role beyond the api schema USAGE, and 
     'api.list_submissions_for_review(integer, text[], timestamptz, uuid), api.get_submission_for_review(uuid), api.start_review(uuid, text), api.record_risk_assessment(uuid, text, text, text), api.record_rights_review(uuid, text, integer, text, text, text, date), api.record_decision(uuid, text, text, text[], text, uuid) to authenticated;',
     'api.publish_version(uuid, text, uuid, text), api.withdraw_publication(uuid, text, text), api.get_publication(uuid) to authenticated;',
     'api.list_public_hacks(integer, text, text, timestamptz, text), api.get_public_hack(text) to anon, authenticated;',
+    'api.save_prompt(uuid, jsonb, uuid, integer), api.get_my_prompt(uuid), api.list_my_prompts(integer, timestamptz, uuid), api.delete_my_prompt(uuid, integer), api.save_reflection(uuid, uuid, integer, jsonb), api.save_prompt_and_result(uuid, jsonb, jsonb, uuid, integer), api.update_my_reflection(uuid, integer, jsonb), api.delete_my_reflection(uuid, integer), api.list_my_results(integer, text, timestamptz, uuid), api.get_my_result(uuid), api.export_my_data(text, uuid, integer) to authenticated;',
     'api.whoami(), api.staff_probe(text, integer) to authenticated;',
     'app_bridge.session_valid(uuid, uuid) to hackass_owner;',
     'app_guard.on_auth_user_created(), app_guard.on_auth_user_deleted() to postgres;',
     'app_guard.on_auth_user_created(), app_guard.on_auth_user_deleted() to supabase_auth_admin;',
+    'app_guard.on_auth_user_deleted_content() to postgres;',
+    'app_guard.on_auth_user_deleted_content() to supabase_auth_admin;',
     'worker.healthcheck() to hackass_worker;',
     'worker.claim_job(text), worker.heartbeat_job(uuid, bigint), worker.get_job_subject(uuid, bigint), worker.complete_job(uuid, bigint), worker.fail_job(uuid, bigint, text) to hackass_worker;',
   ].sort(), 'the complete list of EXECUTE grants');
@@ -101,7 +104,7 @@ test('every function in an application schema has PUBLIC execute revoked, and no
 test('every application table has RLS enabled and is covered by the immutability / append-only / truncate triggers where it holds content', () => {
   const c = code(all).replace(/\s+/g, ' ');
   const tables = [...c.matchAll(/create table (app\.\w+)/g)].map((m) => m[1]);
-  assert.equal(tables.length, 26);
+  assert.equal(tables.length, 28);
   for (const t of tables) assert.match(c, new RegExp(`alter table ${t.replace('.', '\\.')} enable row level security;`), `${t} lacks RLS`);
   for (const t of ['hack_steps', 'hack_materials', 'hack_requirements', 'version_tags', 'version_attributions', 'source_claims', 'version_assets']) {
     assert.match(c, new RegExp(`create trigger ${t}_guard before insert or update or delete on app\\.${t} for each row execute function app_content\\.guard_child\\(\\);`), `${t} lacks the child guard`);
@@ -141,11 +144,12 @@ test('the rollback scripts remove every schema, table, role and trigger the migr
   const downA = read('20261013130000_f2a_down.sql');
   const downB = read('20261014090000_f2b_down.sql');
   const createdSchemas = [...all.matchAll(/create schema (\w+)/g)].map((m) => m[1]).sort();
-  assert.deepEqual(createdSchemas, ['api', 'app', 'app_bridge', 'app_budget', 'app_content', 'app_guard', 'app_review', 'worker']);
+  assert.deepEqual(createdSchemas, ['api', 'app', 'app_bridge', 'app_budget', 'app_content', 'app_guard', 'app_review', 'app_work', 'worker']);
   for (const s of ['api', 'worker', 'app_guard', 'app', 'app_bridge']) assert.match(downA, new RegExp(`drop schema if exists ${s} cascade;`), `F2-A rollback must drop schema ${s}`);
   assert.match(downB, /drop schema if exists app_content cascade;/);
   for (const r of ['hackass_worker', 'hackass_owner']) assert.match(downA, new RegExp(`drop role if exists ${r};`));
-  for (const t of [...all.matchAll(/create trigger (hackass_\w+)/g)].map((m) => m[1])) assert.match(downA, new RegExp(`drop trigger if exists ${t} on auth\\.users;`));
+  const px3aSql = files.filter((f) => f.includes('_px3a_')).map((f) => sql[f]).join('\n');
+  for (const t of [...all.replace(px3aSql, '').matchAll(/create trigger (hackass_\w+)/g)].map((m) => m[1])) assert.match(downA, new RegExp(`drop trigger if exists ${t} on auth\\.users;`));
   // F2-B drops its tables (before the schema whose function their CHECKs call) and its api functions
   const f2bTables = [...code(sql['20261014090000_f2b_content_tables.sql']).matchAll(/create table (app\.\w+)/g)].map((m) => m[1]);
   assert.equal(f2bTables.length, 12);
@@ -158,6 +162,25 @@ test('the rollback scripts remove every schema, table, role and trigger the migr
   assert.match(downA, new RegExp(`version in \\(${versions('_f2a_').map((v) => `'${v}'`).join(', ')}\\)`));
   assert.match(downB, new RegExp(`version in \\(${versions('_f2b_').map((v) => `'${v}'`).join(', ')}\\)`));
   for (const d of [downA, downB]) { assert.match(d, /^\s*begin;/m); assert.match(d, /^\s*commit;/m); assert.ok(!/drop schema (if exists )?(auth|public|storage|extensions)\b/i.test(d)); }
+});
+
+test('PX-3a rollback removes everything the four PX-3a migrations create (in dependency order) and un-ledgers exactly their versions', () => {
+  const down = code(readFileSync(join(root, 'supabase/rollbacks/20261020090000_px3a_down.sql'), 'utf8'));
+  const px = files.filter((f) => f.includes('_px3a_'));
+  assert.equal(px.length, 4);
+  const pxSql = code(px.map((f) => sql[f]).join('\n'));
+  assert.deepEqual([...pxSql.matchAll(/create schema (\w+)/g)].map((m) => m[1]), ['app_work']);
+  assert.match(down, /drop schema if exists app_work cascade;/);
+  for (const t of [...pxSql.matchAll(/create table (app\.\w+)/g)].map((m) => m[1])) assert.ok(down.includes(`drop table if exists ${t};`), `rollback must drop ${t}`);
+  for (const t of [...pxSql.matchAll(/create trigger (hackass_\w+)/g)].map((m) => m[1])) assert.match(down, new RegExp(`drop trigger if exists ${t} on auth\\.users;`));
+  const apiFns = [...pxSql.matchAll(/create function (api\.\w+)\(/g)].map((m) => m[1]);
+  assert.equal(apiFns.length, 11);
+  for (const f of apiFns) assert.ok(down.includes(`drop function if exists ${f}(`), `rollback must drop ${f}`);
+  assert.ok(down.includes('drop function if exists app_guard.on_auth_user_deleted_content();'));
+  assert.ok(down.indexOf('drop schema if exists app_work') < down.indexOf('drop table if exists app.saved_reflections'), 'the helpers (whose signature names the prompts table) go before the tables');
+  assert.ok(down.indexOf('drop table if exists app.saved_reflections') < down.indexOf('drop table if exists app.saved_prompts'), 'results before prompts');
+  assert.match(down, new RegExp(`version in \\(${px.map((f) => `'${f.slice(0, 14)}'`).join(', ')}\\)`));
+  assert.match(down, /^\s*begin;/m); assert.match(down, /^\s*commit;/m); assert.ok(!/drop schema (if exists )?(auth|public|storage|extensions|api|app)\b(?!_)/i.test(down), 'never drops a shared schema');
 });
 
 test('the pgTAP files exist and keep their no-drift inventory assertions', () => {
