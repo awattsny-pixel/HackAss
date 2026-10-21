@@ -1,0 +1,5 @@
+tsc clean
+✖ 5 problems (0 errors, 5 warnings)
+
+working tree: 0 finding(s)
+history: 0 new finding(s), 5 known historic exposure line(s)

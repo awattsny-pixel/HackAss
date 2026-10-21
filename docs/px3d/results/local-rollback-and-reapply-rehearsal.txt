@@ -1,0 +1,30 @@
+== 1. dry run, fully applied
+ledger: 25 of 25 applied; 0 pending
+nothing to apply
+== 2. committed rollback of PX-3a (local disposable stack)
+drop cascades to function app_work.write_prompt(uuid,uuid,text,app_work.prompt_doc,uuid,integer)
+drop cascades to function app_work.write_result(uuid,uuid,text,app.saved_prompts,app_work.result_doc,boolean)
+rollback exit=0
+== 3. inventory after rollback (must DIFFER: 4 migrations removed)
+inventory DIFFERS: 28 expected line(s) missing, 1 unexpected line(s)
+  - C|functions=120 tables=28 migrations=25
+  - F|api.delete_my_prompt(uuid,integer) owner=hackass_owner definer=true vol=v search_path="" execute=authenticated,hackass_owner
+== 4. dry run: 4 pending
+ledger: 21 of 25 applied; 4 pending: 20261020090000, 20261020090100, 20261020090200, 20261020090300
+DRY RUN: nothing was changed (add --apply to apply the pending files)
+== 5. apply the pending files
+ledger: 21 of 25 applied; 4 pending: 20261020090000, 20261020090100, 20261020090200, 20261020090300
+applied 22/25  20261020090000 px3a_work_tables
+applied 23/25  20261020090100 px3a_work_helpers
+applied 24/25  20261020090200 px3a_work_api
+applied 25/25  20261020090300 px3a_work_erasure
+done
+== 6. inventory identical
+inventory identical: 187 lines (120 functions, 28 tables, 25 ledger rows)
+== 7. apply again: nothing to apply
+ledger: 25 of 25 applied; 0 pending
+nothing to apply
+== 8. RPC checks on the re-applied database
+PASS  R6  SESSION REVOCATION (separate from key rotation): after the session is revoked at the provider, the SAME unexpi
+
+6/6 passed, 0 failed

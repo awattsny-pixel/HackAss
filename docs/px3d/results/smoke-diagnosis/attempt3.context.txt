@@ -1,0 +1,9 @@
+attempt 3 2026-10-21 11:51:00
+11:51  up 23 days, 21:03, 2 users, load averages: 8.40 16.49 20.98
+top consumers:
+ %CPU COMM
+ 95.8 /private/tmp/claude-501/-Users-AlanWatts-1/a06c755e-2b79-429d-867d-3c6cdef9a9ba/scratchpad/fre
+ 95.8 next-server (v16.3.8)
+ 42.2 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions
+ 30.9 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions
+11:52  up 23 days, 21:04, 2 users, load averages: 10.09 15.42 20.19

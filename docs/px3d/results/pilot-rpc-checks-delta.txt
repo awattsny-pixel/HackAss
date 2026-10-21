@@ -1,0 +1,14 @@
+PASS  R0  two throwaway members are created and signed in (fixtures; removed and verified at the end)  [created]
+PASS  R1  ANONYMOUS (publishable key, no session): all 11 member functions are refused by the API/database; the two public catalogue reads still answer  [11 refused; public read OK]
+PASS  R2  SERVICE ROLE (secret key, the operator's): all 11 member functions are refused: the saved-work functions have no EXECUTE for service_role  [11 refused]
+PASS  R3  MEMBER A: every one of the 11 functions works for the member's own data (create, read, list, update, replay, results, combined save, export, delete)  [all 11 functions answered successfully for the owner (including delet
+PASS  R4  MEMBER B against A's ids: every attempt is the IDENTICAL not-found as a missing id, and A's data is unchanged  [8 operations: identical not_found; A unchanged]
+PASS  R5  MEMBER B sees nothing of A: empty lists and a zero export, also with a crafted cursor  [empty]
+PASS  R6  SESSION REVOCATION (separate from key rotation): after the session is revoked at the provider, the SAME unexpired access token is refused by the database guard on a read and a write  [revoked token: read and write refuse
+PASS  R7  OPERATOR MASS REVOCATION by SQL (local rehearsal of the procedure in docs/px3d/05): deleting a member's rows in auth.sessions ends the access token's usefulness AND the refresh token at once  [access token refused (read 
+cleanup  fixture user deleted and verified gone
+cleanup  fixture user deleted and verified gone
+cleanup  fixture user deleted and verified gone
+
+8/8 passed, 0 failed, 0 skipped
+cleanup verified: 3 fixture user(s) removed

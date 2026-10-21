@@ -1,0 +1,9 @@
+attempt 2 2026-10-21 11:35:24
+11:35  up 23 days, 20:47, 2 users, load averages: 18.44 42.06 27.96
+top consumers:
+ %CPU COMM
+ 95.4 next-server (v16.3.8)
+ 95.1 python
+ 49.9 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions
+ 30.8 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions
+11:36  up 23 days, 20:48, 2 users, load averages: 20.56 38.72 28.14
