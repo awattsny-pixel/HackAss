@@ -123,7 +123,7 @@ One 512 MB process and the smallest database size are sized for **tens of member
 5. F-H9-1 dispositioned (D5); the origin lock and the legacy-route containment verified on the hosted build.
 6. The throttle acknowledgement (§2.1) recorded by the owner.
 7. Log checks (§6) recorded, including what Render and Cloudflare actually record.
-8. Artwork rights confirmed for every image served (`public/hack`, `mascot.png`, avatars).
+8. Artwork rights confirmed for every image served: `public/hack/hack-official.png` is confirmed by the owner (2026-10-21, created from scratch); `mascot.png` and the default avatars still need the owner's confirmation.
 9. Final privacy text, retention statement and tester terms approved (D9).
 10. Backups confirmed (the 7-day daily backup exists; a restore rehearsal on a scratch project is a separate gate).
 11. A named person who can close access (05 §8) and who receives the alerts.

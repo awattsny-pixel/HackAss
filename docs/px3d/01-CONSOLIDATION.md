@@ -55,7 +55,7 @@ Branch `px2b-auth`, based on `main` at `c423aa4`. **Everything from PX-2b onward
 | Local pilot stack | `supabase-pilot/` (configuration only; the migrations and tests directories are links, listed in `.gitignore`) |
 | Documents | `docs/px3/`, `docs/identity/`, `docs/ux/` (11 MB of screenshots), this folder |
 | Review archives | 14 `PX-*.zip` files in the repository root (**must not be committed**; move them out or ignore them) |
-| Assets | `public/hack/` (1.6 MB of artwork; **rights are an open public-release gate**) |
+| Assets | `public/hack/hack-official.png` (1.6 MB): **owner confirmation recorded 2026-10-21**: Alan, the owner, confirmed in the working session that the current official Hack artwork was created from scratch by the HackAss team and authorized its use in HackAss and its publication in the public repository. This covers that one file only; `mascot.png` and the two default avatars (already in the repository) are not covered by it. The review screenshots stay outside the repository |
 
 ## 4. Proposed commit slicing (proposal only; nothing is committed)
 
@@ -75,7 +75,7 @@ Create one branch from `main` (`c423aa4`) and commit in dependency order. Becaus
 | C10 | Pilot tooling: manifest, exact SQL inventory, apply tool, RPC and revocation checks, their tests |
 | C11 | Documents (`docs/px3`, `docs/identity`, `docs/px3d`; `docs/ux` screenshots only if the owner wants them in the repository) |
 
-Rules: **merge commit into `main`, never squash or rebase** (the recorded SHAs of earlier milestones must remain reachable); the 14 archives and the artwork are decided separately (D8); no commit message contains a credential; the secret scanner and gitleaks run on the final tree before any push.
+Rules: **merge commit into `main`, never squash or rebase** (the recorded SHAs of earlier milestones must remain reachable); the 14 archives are decided separately (D8); the review screenshots stay outside the public repository; no commit message contains a credential; the secret scanner and gitleaks run on the final tree before any push.
 
 ## 5. Review archives (kept outside the repository)
 `PX-2b-review-package{,-r2,-r2b}.zip`, `PX-2c-review-package.zip`, `PX-2c-delta-package.zip`, `PX-3-plan-package.zip`, `PX-3-revision-1-package.zip`, `PX-3a-review-package.zip`, `PX-3b-review-package.zip`, `PX-3b-correction-delta.zip`, `PX-3c-review-package.zip`, `PX-3c-correction-delta.zip`, `PX-3c-second-correction-delta.zip`, `PX-3c-third-correction-delta.zip`. Each holds its diff, results and (for UI) screenshots.
@@ -88,7 +88,7 @@ Rules: **merge commit into `main`, never squash or rebase** (the recorded SHAs o
 | 2 | **F-H9-1**: the hosted transaction pooler discloses whether a login exists (a real worker login and a non-existent one answer differently) | open, confirmed on staging; the hosted verification outcome is "FAILED by design" because of it | owner decision D6. For the pilot: the worker role is created **without a password** and no worker runs, so no worker login can succeed; the disclosure remains observable and is recorded as an accepted exception **only if the owner accepts it** |
 | 3 | Full F2 acceptance | open | release |
 | 4 | Staging credential disposal and the `hackass-staging` deletion date | open (fixture-secret copies removed; keys not rotated; no deletion date set) | closing the staging record |
-| 5 | Artwork rights (`public/hack`, mascot) | open | external testers and any public release |
+| 5 | Artwork rights: `public/hack/hack-official.png` **confirmed and authorized by the owner on 2026-10-21** (created from scratch; use and public-repository publication); `mascot.png` and the default avatars are **still to be confirmed** | partly closed | external testers and any public release |
 | 6 | SMTP (custom sender), real HTTPS cookie verification, confirmed hosted settings | open | **external testers** |
 | 7 | Hosted behaviour of the PX-3a functions, cross-tab behaviour on hosted, the in-memory throttle on more than one instance | unverified | pilot go-live (03) |
 | 8 | Legacy service-role client still present for legacy catalogue/profile routes | contained, not removed; must not be reachable or configured in the pilot | pilot deployment (02 §3, §8) |
