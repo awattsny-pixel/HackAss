@@ -5,7 +5,8 @@ import type { ReactNode } from 'react';
 export function HackGuide({ heading = 'Hack says', children, size = 80 }: { heading?: string; children: ReactNode; size?: number }) {
   return (
     <div className="hack-guide">
-      <Image src="/hack/hack-official.png" alt="Hack, the HackAss donkey" width={size} height={size} />
+      {/* unoptimized: the origin lock refuses the image optimizer's internal fetch of this file (see SparkHeader) */}
+      <Image src="/hack/hack-official.png" alt="Hack, the HackAss donkey" width={size} height={size} unoptimized />
       <blockquote><strong>{heading}</strong><br />{children}</blockquote>
     </div>
   );

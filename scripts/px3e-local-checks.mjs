@@ -121,7 +121,9 @@ try {
     ok((await get(L, '/work/prompts', { headers: H })).status === 401, 'private route answers for itself'); ok((await get(L, '/browse', { headers: H })).status === 404, 'a legacy path stays refused even with the header');
     for (const bad of [LOCK_SECRET.slice(0, -1), LOCK_SECRET + 'x', 'x' + LOCK_SECRET, '', LOCK_SECRET.toUpperCase(), 'wrong-' + LOCK_SECRET]) { const r = await get(L, '/lab', { headers: { 'x-hackass-edge': bad } }); ok(r.status === 404, `a wrong value "${bad.slice(0, 10)}…": ${r.status}`); }
     const h = await get(L, '/health'); const j = await h.json(); ok(h.status === 200 && j.ready === true && j.lock === 'on' && j.gate === 'preview', `/health without the header: ${h.status} ${JSON.stringify(j)}`);
-    const root = await get(L, '/'); ok(root.status === 307, `/ redirects without the header (harmless; /spark is locked): ${root.status}`); await sleep(400); ok(!locked.log.text.includes(LOCK_SECRET), 'the lock secret appears in the application output');
+    const root = await get(L, '/'); ok(root.status === 404 && (await root.text()) === 'Not found', `/ without the header is refused like every other path: ${root.status}`);
+    const rootH = await get(L, '/', { headers: H, redirect: 'manual' }); ok(rootH.status === 307 && rootH.headers.get('location')?.endsWith('/spark'), `/ with the header redirects to /spark: ${rootH.status} ${rootH.headers.get('location')}`);
+    const art = await get(L, '/hack/hack-official.png', { headers: H }); ok(art.status === 200 && art.headers.get('content-type') === 'image/png', `the artwork is served directly with the header (the pages load it unoptimized): ${art.status} ${art.headers.get('content-type')}`); await sleep(400); ok(!locked.log.text.includes(LOCK_SECRET), 'the lock secret appears in the application output');
     const g = await get(gate.base, '/health'); ok((await g.json()).lock === 'off', 'a build without the lock reports lock off');
     return 'no header → 404 on 10 paths × methods; header → works; 6 wrong values → 404; /health exempt; secret not logged';
   });

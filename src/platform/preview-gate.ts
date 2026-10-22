@@ -74,7 +74,7 @@ const HEADER_PAGES = (https: boolean): readonly (readonly [string, string])[] =>
 ];
 export interface NextHeaderRule { readonly source: string; readonly headers: readonly { readonly key: string; readonly value: string }[] }
 export interface NextRewriteRule { readonly source: string; readonly destination: string; readonly missing?: readonly { readonly type: 'query' | 'header'; readonly key: string; readonly value?: string }[] }
-export interface NextRedirectRule { readonly source: string; readonly destination: string; readonly permanent: false }
+export interface NextRedirectRule { readonly source: string; readonly destination: string; readonly permanent: false; readonly has?: readonly { readonly type: 'header'; readonly key: string; readonly value: string }[] }
 const kv = (pairs: readonly (readonly [string, string])[]) => pairs.map(([key, value]) => ({ key, value }));
 
 /**
@@ -90,7 +90,9 @@ export const EDGE_LOCK_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 export function gateConfig(https: boolean, edgeLockSecret?: string): { headers: readonly NextHeaderRule[]; rewrites: readonly NextRewriteRule[]; redirects: readonly NextRedirectRule[] } {
   const assetsRe = PUBLIC_ASSETS.map(escapeRe).join('|');
   if (edgeLockSecret !== undefined && !EDGE_LOCK_SECRET_PATTERN.test(edgeLockSecret)) throw new Error('EDGE_LOCK_SECRET must be 32 to 128 characters of A-Z a-z 0-9 _ -');
-  const lock: readonly NextRewriteRule[] = edgeLockSecret === undefined ? [] : [{ source: '/:gate((?!health$).+)', missing: [{ type: 'header', key: EDGE_LOCK_HEADER, value: `^${edgeLockSecret}$` }], destination: '/gate-blocked' }];
+  const lockHeader = edgeLockSecret === undefined ? undefined : ({ type: 'header', key: EDGE_LOCK_HEADER, value: `^${edgeLockSecret}$` } as const);
+  // `.*` (not `.+`) so the root is covered too; redirects run before rewrites, so the root redirect below only fires WITH the header
+  const lock: readonly NextRewriteRule[] = lockHeader === undefined ? [] : [{ source: '/:gate((?!health$).*)', missing: [lockHeader], destination: '/gate-blocked' }];
   return {
     headers: [
       { source: '/:path*', headers: kv(HEADER_BASE(https)) },
@@ -103,7 +105,7 @@ export function gateConfig(https: boolean, edgeLockSecret?: string): { headers: 
       // everything not allowed, any method, is answered by one uniform 404 route (which is itself excluded from the rule so it can never loop)
       { source: `/:gate((?!(?:gate-blocked|${ALLOWED_SOURCES.join('|')})$).+)`, destination: '/gate-blocked' },
     ],
-    redirects: [{ source: '/', destination: '/spark', permanent: false }],
+    redirects: [{ source: '/', destination: '/spark', permanent: false, ...(lockHeader === undefined ? {} : { has: [lockHeader] }) }],
   };
 }
 

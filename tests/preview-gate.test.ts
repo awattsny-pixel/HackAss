@@ -134,6 +134,9 @@ test('ORIGIN LOCK: with a secret the first rewrite refuses everything (except /h
   assert.equal(locked.rewrites.length, base.rewrites.length + 1); assert.deepEqual(locked.rewrites.slice(1), base.rewrites, 'only one rule is added, in front');
   const r = locked.rewrites[0]; assert.equal(r.destination, '/gate-blocked'); assert.equal(r.missing?.[0].type, 'header'); assert.equal(r.missing?.[0].key, EDGE_LOCK_HEADER); assert.equal(r.missing?.[0].value, `^${secret}$`);
   const re = new RegExp(`^/(${r.source.slice('/:gate('.length, -1)})$`); assert.ok(!re.test('/health'), '/health is exempt (the host\'s own health check)'); for (const p of ['/lab', '/auth/callback', '/work/prompts', '/mascot.png', '/_next/static/x.js', '/browse', '/spark/demo/a']) assert.ok(re.test(p), p);
+  assert.ok(re.test('/'), 'the lock covers the root too, so an unlocked request to / is refused like every other path');
+  assert.equal(locked.redirects.length, 1); assert.deepEqual(locked.redirects[0].has, [{ type: 'header', key: EDGE_LOCK_HEADER, value: `^${secret}$` }], 'the root redirect only fires WITH the edge header (redirects run before rewrites)');
+  assert.equal(base.redirects[0].has, undefined, 'without a secret the root redirect is unconditional');
   assert.doesNotMatch(JSON.stringify(base), new RegExp(EDGE_LOCK_HEADER), 'no lock rule without a secret');
   for (const bad of ['', 'short', 'x'.repeat(31), 'x'.repeat(129), 'has space ' + 'x'.repeat(30), 'dot.' + 'x'.repeat(30), 'x'.repeat(30) + '$(', 'a|b' + 'x'.repeat(30)]) assert.throws(() => gateConfig(true, bad), /EDGE_LOCK_SECRET/, JSON.stringify(bad).slice(0, 20));
   assert.ok(EDGE_LOCK_SECRET_PATTERN.test(secret) && !EDGE_LOCK_SECRET_PATTERN.test('x'.repeat(31)));

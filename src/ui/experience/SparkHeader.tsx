@@ -22,7 +22,8 @@ export function SparkHeader({ mode, exploreHref }: { mode: 'catalog' | 'demo'; e
           </div>
         </div>
         <div className="hack-hero">
-          <Image src="/hack/hack-official.png" alt="Hack, the HackAss donkey" width={140} height={140} priority />
+          {/* unoptimized: the origin lock refuses the image optimizer's internal fetch of this file, so the browser loads it directly through the edge */}
+          <Image src="/hack/hack-official.png" alt="Hack, the HackAss donkey" width={140} height={140} priority unoptimized />
           <div className="hack-quote">“Good ideas are contagious. Let&apos;s make yours dangerous—in a useful way.”</div>
         </div>
       </div>
