@@ -23,4 +23,10 @@ export function toneFor(category: string): 'a' | 'b' | 'c' | 'd' | 'e' | 'f' {
   const named: Record<string, 'a' | 'b' | 'c' | 'd' | 'e' | 'f'> = { everyday: 'a', work: 'b', business: 'b', creative: 'c', money: 'd', life: 'e', visual: 'f' };
   return named[category.trim().toLowerCase()] ?? visualFor(category.trim().toLowerCase());
 }
+export type IconKey = 'all' | 'everyday' | 'work' | 'money' | 'life' | 'creative' | 'visual' | 'other';
+/** The icon for a category: the six design categories by name (Business shares Work's), anything else a neutral tag. */
+export function iconKeyFor(category: string): IconKey {
+  const named: Record<string, IconKey> = { everyday: 'everyday', work: 'work', business: 'work', money: 'money', life: 'life', creative: 'creative', visual: 'visual' };
+  return named[category.trim().toLowerCase()] ?? 'other';
+}
 export const formatDate = (iso: string): string => new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });

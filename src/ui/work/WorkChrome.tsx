@@ -5,9 +5,9 @@ import { failureText } from './messages.ts';
 
 export function WorkTabs({ current }: { current: 'prompts' | 'results' }) {
   return (
-    <nav className="work-tabs" aria-label="Saved work">
-      <Link href="/account/prompts" aria-current={current === 'prompts' ? 'page' : undefined}>My prompts</Link>
-      <Link href="/account/results" aria-current={current === 'results' ? 'page' : undefined}>My results</Link>
+    <nav className="work-tabs" aria-label="My hacks">
+      <Link href="/account/prompts" aria-current={current === 'prompts' ? 'page' : undefined}>Prompts</Link>
+      <Link href="/account/results" aria-current={current === 'results' ? 'page' : undefined}>Results</Link>
     </nav>
   );
 }
