@@ -18,4 +18,9 @@ export function visualFor(slug: string): 'a' | 'b' | 'c' | 'd' | 'e' | 'f' {
   let h = 0; for (const ch of slug) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return (['a', 'b', 'c', 'd', 'e', 'f'] as const)[h % 6];
 }
+/** The card colour for a category (the approved palette): the six design categories by name, any other category by a stable hash so a card never changes colour between renders. */
+export function toneFor(category: string): 'a' | 'b' | 'c' | 'd' | 'e' | 'f' {
+  const named: Record<string, 'a' | 'b' | 'c' | 'd' | 'e' | 'f'> = { everyday: 'a', work: 'b', business: 'b', creative: 'c', money: 'd', life: 'e', visual: 'f' };
+  return named[category.trim().toLowerCase()] ?? visualFor(category.trim().toLowerCase());
+}
 export const formatDate = (iso: string): string => new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });

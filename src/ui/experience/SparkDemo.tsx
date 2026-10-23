@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { DEMO_CATEGORIES, DEMO_HACKS } from './demo-hacks.ts';
+import { toneFor } from './format.ts';
 import { SparkHeader } from './SparkHeader.tsx';
 import { StateBox } from './StateBox.tsx';
 
@@ -23,14 +24,12 @@ export function SparkDemo() {
         <ul className="cards">
           {shown.map((h) => (
             <li key={h.key}>
-              <article className="card hack-card">
-                <div className={`visual ${h.visual}`} aria-hidden="true">{h.emoji}</div>
-                <div className="hack-body">
-                  <div className="actions"><span className="draft-pill">Demo example · draft</span><span className="meta">{h.category}</span></div>
-                  <h3>{h.title}</h3>
-                  <p>{h.summary}</p>
-                  <div className="actions"><Link className="btn primary" href={h.href}>Explore hack →</Link></div>
-                </div>
+              <article className={`hack-card tone-${toneFor(h.category)}`}>
+                <div className="top-row"><span className="draft-pill">Demo example · draft</span><span className="meta">{h.category}</span></div>
+                <h3>{h.title}</h3>
+                <p>{h.summary}</p>
+                <span className="credit">Draft written for design review · not community verified</span>
+                <Link className="btn" href={h.href}>Explore hack →</Link>
               </article>
             </li>
           ))}

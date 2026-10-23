@@ -9,21 +9,21 @@ const HEADERS = {
   'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'same-origin', 'x-frame-options': 'DENY', 'x-content-type-options': 'nosniff',
   'content-security-policy': "default-src 'none'; img-src 'self'; form-action 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
 };
-// The approved UX-08 visual language, standalone (these pages are opened from an email, outside the app shell): the same tokens, radii, 44px controls,
-// focus ring and Hack artwork. No script, no external resource.
-const CSS = `:root{color-scheme:dark;--bg:#11151c;--surface:#1a2029;--surface2:#222b36;--line:#37424f;--ink:#f6f3ee;--muted:#abb8c4;--accent:#f36b51;--gold:#f4bf65;--mint:#86d4bd}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:16px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+// The approved HackAss One visual language, standalone (these pages are opened from an email, outside the app shell): the same light warm tokens, radii, 44px controls,
+// focus ring and Hack artwork. No script, no external resource (system fonts only).
+const CSS = `:root{color-scheme:light;--ground:#f6f5f2;--surface:#ffffff;--ink:#141414;--muted:#716f68;--line:#e2dfd8;--chip:#ebe9e4;--coral-deep:#c2452c;--amber:#ffc145;--amber-wash:#fff7e6;--danger:#b42318;--danger-wash:#fdecea}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--ground);color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,Roboto,Arial,sans-serif;letter-spacing:-.01em;-webkit-font-smoothing:antialiased}
 .wrap{max-width:34rem;margin:0 auto;padding:20px 16px 48px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
-.brand{display:inline-flex;align-items:center;min-height:44px;font-weight:900;font-size:26px;letter-spacing:-1px;color:var(--ink);text-decoration:none}.brand span{color:var(--accent)}.top img{width:64px;height:64px;object-fit:contain}
-main{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px}h1{font-size:28px;line-height:1.15;letter-spacing:-.5px;margin:0 0 12px}p{margin:0 0 14px}
-.muted{color:var(--muted);font-size:14px}.alert,.notice{border-radius:12px;padding:12px 14px;margin:0 0 14px;border:1px solid var(--line);background:var(--surface2)}.alert{border-color:#8b4a3d;background:#2f1f1c}.notice{border-color:#8b6f37;background:#2f2a1f;color:#f4cf8c}
-label{display:block;font-weight:750;font-size:14px;margin-bottom:6px}input{width:100%;min-height:44px;background:#10161e;border:1px solid #556170;border-radius:11px;color:var(--ink);padding:10px 12px;font:inherit;margin-bottom:16px}
-.btn,button{display:inline-block;min-height:44px;padding:10px 18px;border-radius:11px;border:1px solid var(--line);background:var(--surface2);color:var(--ink);font:inherit;font-weight:750;text-decoration:none;cursor:pointer;margin:0 8px 8px 0}
-.primary,button{background:var(--accent);border-color:var(--accent);color:#161719}.btn.subtle{background:transparent;color:var(--ink)}
-a{color:var(--gold)}.btn:hover,button:hover{filter:brightness(1.12)}:focus-visible{outline:3px solid var(--gold);outline-offset:2px}`;
+.brand{display:inline-flex;align-items:center;gap:10px;min-height:44px;font-weight:800;font-size:20px;letter-spacing:-.03em;color:var(--ink);text-decoration:none}.tile{width:40px;height:40px;border-radius:12px;background:var(--amber);display:grid;place-items:center;overflow:hidden}.tile img{width:36px;height:36px;object-fit:contain;margin-top:5px}
+main{background:var(--surface);border-radius:22px;padding:24px}h1{font-size:30px;line-height:1.08;letter-spacing:-.035em;margin:0 0 12px;font-weight:800}p{margin:0 0 14px}
+.muted{color:var(--muted);font-size:14px}.alert,.notice{border-radius:14px;padding:12px 14px;margin:0 0 14px;background:var(--amber-wash);box-shadow:inset 0 0 0 1.5px var(--amber)}.alert{background:var(--danger-wash);box-shadow:inset 0 0 0 1.5px #e8b4ae}
+label{display:block;font-weight:700;font-size:13px;color:var(--muted);margin-bottom:6px}input{width:100%;min-height:44px;background:var(--ground);border:0;border-radius:12px;color:var(--ink);padding:10px 14px;font:inherit;margin-bottom:16px}
+.btn,button{display:inline-block;min-height:44px;padding:11px 18px;border-radius:12px;border:0;background:var(--chip);color:var(--ink);font:inherit;font-weight:600;text-decoration:none;cursor:pointer;margin:0 8px 8px 0}
+.primary,button{background:var(--ink);color:#ffffff}.btn.subtle{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1.5px #cfcbc2}
+a{color:var(--coral-deep)}.btn:hover,button:hover{filter:brightness(1.15)}:focus-visible{outline:2.5px solid var(--coral-deep);outline-offset:2px}`;
 const HACK_ALT = 'Hack, the HackAss donkey';
 export function page(status: number, title: string, bodyHtml: string, extra: Record<string, string> = {}): NextResponse {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="same-origin"><meta name="robots" content="noindex"><title>${esc(title)} · HackAss</title><style>${CSS}</style></head><body><div class="wrap"><div class="top"><a class="brand" href="/spark">Hack<span>Ass</span> ⚡</a><img src="/hack/hack-official.png" alt="${esc(HACK_ALT)}" width="64" height="64"></div><main id="main" tabindex="-1"><h1>${esc(title)}</h1>${bodyHtml}</main></div></body></html>`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="same-origin"><meta name="robots" content="noindex"><title>${esc(title)} · HackAss</title><style>${CSS}</style></head><body><div class="wrap"><div class="top"><a class="brand" href="/spark"><span class="tile"><img src="/hack/hack-official.png" alt="${esc(HACK_ALT)}" width="36" height="36"></span>HackAss</a></div><main id="main" tabindex="-1"><h1>${esc(title)}</h1>${bodyHtml}</main></div></body></html>`;
   return new NextResponse(html, { status, headers: { ...HEADERS, ...extra } });
 }
 const SIGN_IN_LINK = '<p><a class="btn" href="/account/sign-in">Go to sign in</a></p>';

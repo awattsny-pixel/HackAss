@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useReducer } from 'react';
 import { initList, reduceList } from './catalog-state.ts';
-import { AI_LABEL, costRange, DIFFICULTY_LABEL, timeRange, visualFor } from './format.ts';
+import { AI_LABEL, costRange, DIFFICULTY_LABEL, timeRange, toneFor } from './format.ts';
 import { SparkHeader } from './SparkHeader.tsx';
 import { StateBox } from './StateBox.tsx';
 
@@ -73,20 +73,17 @@ export function SparkCatalog({ view, loadMore }: { view: CatalogView; loadMore: 
                 const t = timeRange(h.time_minutes); const c = costRange(h.cost);
                 return (
                   <li key={h.slug}>
-                    <article className="card hack-card">
-                      <div className={`visual ${visualFor(h.category.slug)}`} aria-hidden="true">{h.category.name.charAt(0).toUpperCase()}</div>
-                      <div className="hack-body">
-                        <div className="actions"><span className="live-pill">Published</span><span className="meta">{h.category.name}</span></div>
-                        <h3>{h.title}</h3>
-                        <p>{h.summary}</p>
-                        <div className="badges">
-                          {h.difficulty ? <span className="badge">{DIFFICULTY_LABEL[h.difficulty]}</span> : null}
-                          {t ? <span className="badge">{t}</span> : null}
-                          {c ? <span className="badge">{c}</span> : null}
-                          {h.ai_requirement ? <span className="badge">{AI_LABEL[h.ai_requirement]}</span> : null}
-                        </div>
-                        <div className="actions"><Link className="btn primary" href={`/spark/catalog/${h.slug}`}>Explore hack →</Link></div>
+                    <article className={`hack-card tone-${toneFor(h.category.name)}`}>
+                      <div className="top-row"><span className="live-pill">Published</span><span className="meta">{h.category.name}</span></div>
+                      <h3>{h.title}</h3>
+                      <p>{h.summary}</p>
+                      <div className="badges">
+                        {h.difficulty ? <span className="badge">{DIFFICULTY_LABEL[h.difficulty]}</span> : null}
+                        {t ? <span className="badge">{t}</span> : null}
+                        {c ? <span className="badge">{c}</span> : null}
+                        {h.ai_requirement ? <span className="badge">{AI_LABEL[h.ai_requirement]}</span> : null}
                       </div>
+                      <Link className="btn" href={`/spark/catalog/${h.slug}`}>Explore hack →</Link>
                     </article>
                   </li>
                 );

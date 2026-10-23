@@ -41,8 +41,8 @@ test('after sign-in the member moves by client navigation (router.push), never a
   const s = src('src/ui/account/SignInScreen.tsx'); assert.match(s, /router\.push\(next\)/); assert.doesNotMatch(s, /window\.location|location\.href|location\.assign|location\.replace/);
   assert.match(src('app/(experience)/account/sign-in/page.tsx'), /safeReturnPath\(/);
 });
-test('the email-link pages carry the approved visual tokens and 44px controls, load nothing external and keep the strict security headers', () => {
+test('the email-link pages carry the approved HackAss One visual tokens and 44px controls, load nothing external and keep the strict security headers', () => {
   const p = src('app/auth/_server/pages.ts');
-  for (const t of ['#11151c', '#1a2029', '#f36b51', '#f4bf65', 'min-height:44px', ':focus-visible', 'hack-official.png']) assert.ok(p.includes(t), t);
+  for (const t of ['#f6f5f2', '#ffffff', '#141414', '#c2452c', 'min-height:44px', ':focus-visible', 'hack-official.png']) assert.ok(p.includes(t), t);
   assert.doesNotMatch(p, /https?:\/\//); assert.match(p, /img-src 'self'/); assert.match(p, /'referrer-policy': 'same-origin'/);
 });
