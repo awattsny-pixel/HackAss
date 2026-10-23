@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useReducer } from 'react';
 import { initList, reduceList } from './catalog-state.ts';
-import { AI_LABEL, costRange, DIFFICULTY_LABEL, timeRange, toneFor } from './format.ts';
-import { SparkHeader } from './SparkHeader.tsx';
+import { ChipIcon } from './CategoryIcon.tsx';
+import { AI_LABEL, costRange, DIFFICULTY_LABEL, timeRange } from './format.ts';
+import { HackCard } from './HackCard.tsx';
+import { SourceSwitch, SparkHeader } from './SparkHeader.tsx';
 import { StateBox } from './StateBox.tsx';
 
 export interface CardItem {
@@ -42,7 +44,6 @@ export function SparkCatalog({ view, loadMore }: { view: CatalogView; loadMore: 
   const list = base.renderId === view.renderId ? base : initList(view);
   useEffect(() => { dispatch({ type: 'sync', view }); }, [view]);
   const { items, cursor, busy, moreError } = list;
-  const first = items[0];
 
   const more = async () => {
     if (!cursor || busy) return;
@@ -55,14 +56,17 @@ export function SparkCatalog({ view, loadMore }: { view: CatalogView; loadMore: 
 
   return (
     <>
-      <SparkHeader mode="catalog" exploreHref={first ? `/spark/catalog/${first.slug}` : null} />
-      {view.status !== 'ok' ? <Failure kind={view.status} /> : (
-        <>
+      <SparkHeader mode="catalog">
+        {view.status === 'ok' ? (
           <nav className="chips" aria-label="Categories">
-            <Link className="chip" href="/spark" aria-current={view.activeCategory === null ? 'true' : undefined}>All</Link>
-            {view.categories.map((c) => <Link key={c.slug} className="chip" href={`/spark?category=${encodeURIComponent(c.slug)}`} aria-current={view.activeCategory === c.slug ? 'true' : undefined}>{c.name}</Link>)}
+            <Link className="chip" href="/spark" aria-current={view.activeCategory === null ? 'true' : undefined}><ChipIcon category={null} />All</Link>
+            {view.categories.map((c) => <Link key={c.slug} className="chip" href={`/spark?category=${encodeURIComponent(c.slug)}`} aria-current={view.activeCategory === c.slug ? 'true' : undefined}><ChipIcon category={c.name} />{c.name}</Link>)}
           </nav>
-          <div className="sectiontop"><h2>Worth a try</h2><span className="live-pill">Published catalog</span></div>
+        ) : null}
+      </SparkHeader>
+      {view.status !== 'ok' ? <><div className="sectiontop"><SourceSwitch mode="catalog" /></div><Failure kind={view.status} /></> : (
+        <>
+          <div className="sectiontop"><h2>Worth a try</h2><SourceSwitch mode="catalog" /></div>
           {items.length === 0 ? (
             <StateBox kind="empty" title={view.activeCategory ? 'No published hacks in this category yet' : 'No published hacks yet'} actions={<>{view.activeCategory ? <Link className="btn" href="/spark">Show all hacks</Link> : null}<Link className="btn" href="/spark/demo">Preview the demo examples</Link></>}>
               The catalog is empty. The three demo examples are separate, clearly labelled draft content for design review.
@@ -73,18 +77,14 @@ export function SparkCatalog({ view, loadMore }: { view: CatalogView; loadMore: 
                 const t = timeRange(h.time_minutes); const c = costRange(h.cost);
                 return (
                   <li key={h.slug}>
-                    <article className={`hack-card tone-${toneFor(h.category.name)}`}>
-                      <div className="top-row"><span className="live-pill">Published</span><span className="meta">{h.category.name}</span></div>
-                      <h3>{h.title}</h3>
-                      <p>{h.summary}</p>
+                    <HackCard href={`/spark/catalog/${h.slug}`} title={h.title} summary={h.summary} category={h.category.name}>
                       <div className="badges">
                         {h.difficulty ? <span className="badge">{DIFFICULTY_LABEL[h.difficulty]}</span> : null}
                         {t ? <span className="badge">{t}</span> : null}
                         {c ? <span className="badge">{c}</span> : null}
                         {h.ai_requirement ? <span className="badge">{AI_LABEL[h.ai_requirement]}</span> : null}
                       </div>
-                      <Link className="btn" href={`/spark/catalog/${h.slug}`}>Explore hack →</Link>
-                    </article>
+                    </HackCard>
                   </li>
                 );
               })}

@@ -119,9 +119,8 @@ test('card colours follow the six approved categories, and any other category ge
   assert.deepEqual(['Everyday', 'Work', 'Creative', 'Money', 'Life', 'Visual'].map(toneFor), ['a', 'b', 'c', 'd', 'e', 'f']);
   assert.equal(toneFor('  EVERYDAY '), 'a'); assert.equal(toneFor('Gardening'), toneFor('Gardening')); assert.equal(toneFor('Gardening'), visualFor('gardening'));
 });
-test('navigation exposes every journey screen and the saved-work screens, with accessible names, and a bottom bar on phones', () => {
+test('navigation: accessible names, icons, and a bottom bar on phones (destinations are covered in ui-s2.test.ts)', () => {
   const shell = src('src/ui/experience/Shell.tsx');
-  for (const l of ['The Spark', 'Hack detail', 'The Lab', 'The Reveal', 'My prompts', 'My results']) assert.ok(shell.includes(`'${l}'`), l);
   assert.match(shell, /aria-label="Mobile navigation"/); assert.match(shell, /aria-label="Primary"/); assert.match(shell, /aria-hidden="true" focusable="false"/);
 });
 
