@@ -8,6 +8,7 @@ import { StateBox } from './StateBox.tsx';
 import { SavePanel } from '../work/SavePanel.tsx';
 import { HACK_ADVICE, MODE_LABELS, MODE_PANELS, isOutputFormat } from './prompt.ts';
 import { OUTPUT_FORMATS, type Mode } from './types.ts';
+import { LIMITS } from '../../modules/mywork/index.ts';
 
 const MODES: Mode[] = ['try', 'learn', 'master'];
 
@@ -20,7 +21,7 @@ export function LabScreen() {
   if (!state.started) {
     return (
       <>
-        <div className="sectiontop"><div><span className="eyebrow">THE LAB</span><h1>Make it yours.</h1><p className="lead">Shape a prompt with Hack. Save it to your account, or copy it before leaving.</p></div></div>
+        <div className="sectiontop"><div><span className="eyebrow">The Lab</span><h1>Make it yours.</h1><p className="lead">Shape a prompt with Hack. Save it to your account, or copy it before leaving.</p></div></div>
         <StateBox kind="empty" title="No draft yet" actions={<><button type="button" className="btn primary" onClick={create}>＋ Create a Prompt</button><Link className="btn" href="/spark">Browse The Spark</Link></>}>
           Start from a hack in The Spark, or create a prompt from scratch. Sign in to save your work to your account; until then it lives on this page and is lost on reload.
         </StateBox>
@@ -42,7 +43,7 @@ export function LabScreen() {
   return (
     <>
       <div className="sectiontop">
-        <div><span className="eyebrow">THE LAB</span><h1>{heading}</h1><p className="lead">Shape a prompt with Hack. Save it to your account, or copy it before leaving.</p></div>
+        <div><span className="eyebrow">The Lab</span><h1>{heading}</h1><p className="lead">Shape a prompt with Hack. Save it to your account, or copy it before leaving.</p></div>
         <Link className="btn subtle" href="/spark">← Discover</Link>
       </div>
       {origin?.source === 'demo' ? <div className="banner demo" role="note"><strong>Demo mode.</strong> This draft started from a demo example, not from the catalog.</div> : null}
@@ -58,21 +59,21 @@ export function LabScreen() {
             <span className="draft-pill" role="status">{state.dirty ? 'Unsaved edits on this page' : 'No edits yet'}</span>
             <button type="button" className="btn subtle" onClick={() => confirmThen('reset', () => dispatch({ type: 'resetDraft' }))}>Reset draft</button>
           </div>
-          <div className="field"><label htmlFor="promptTitle">Prompt title</label><input id="promptTitle" maxLength={120} placeholder="Give your prompt a name" value={fields.title} onChange={(e) => dispatch({ type: 'editField', field: 'title', value: e.target.value })} /></div>
-          <div className="field"><label htmlFor="promptGoal">What should the AI accomplish?</label><textarea id="promptGoal" placeholder="Describe the goal and expected outcome" value={fields.goal} onChange={(e) => dispatch({ type: 'editField', field: 'goal', value: e.target.value })} /></div>
-          <div className="field"><label htmlFor="promptContext">Context or constraints</label><textarea id="promptContext" placeholder="Audience, budget, tone, inputs, limitations..." value={fields.context} onChange={(e) => dispatch({ type: 'editField', field: 'context', value: e.target.value })} /></div>
+          <div className="field"><label htmlFor="promptTitle">Prompt title</label><input id="promptTitle" maxLength={LIMITS.title} placeholder="Give your prompt a name" value={fields.title} onChange={(e) => dispatch({ type: 'editField', field: 'title', value: e.target.value })} /></div>
+          <div className="field"><label htmlFor="promptGoal">What should the AI accomplish?</label><textarea id="promptGoal" maxLength={LIMITS.goal} placeholder="Describe the goal and expected outcome" value={fields.goal} onChange={(e) => dispatch({ type: 'editField', field: 'goal', value: e.target.value })} /></div>
+          <div className="field"><label htmlFor="promptContext">Context or constraints</label><textarea id="promptContext" maxLength={LIMITS.context} placeholder="Audience, budget, tone, inputs, limitations..." value={fields.context} onChange={(e) => dispatch({ type: 'editField', field: 'context', value: e.target.value })} /></div>
           <div className="field"><label htmlFor="promptOutput">Preferred output</label>
             <select id="promptOutput" value={fields.format} onChange={(e) => { if (isOutputFormat(e.target.value)) dispatch({ type: 'editField', field: 'format', value: e.target.value }); }}>{OUTPUT_FORMATS.map((f) => <option key={f}>{f}</option>)}</select></div>
           <h3>Editable prompt</h3>
           <p className="muted small">You can rewrite the complete prompt directly. It won&apos;t be automatically overwritten when you change a field unless you choose Regenerate draft.</p>
-          <div className="field"><label className="sr-only" htmlFor="fullPrompt">Full prompt</label><textarea id="fullPrompt" style={{ minHeight: 215, fontFamily: 'ui-monospace,monospace', fontSize: 13 }} value={state.fullPrompt} onChange={(e) => dispatch({ type: 'editPrompt', value: e.target.value })} /></div>
+          <div className="field"><label className="sr-only" htmlFor="fullPrompt">Full prompt</label><textarea id="fullPrompt" className="prompt-box" maxLength={LIMITS.prompt} style={{ minHeight: 215 }} value={state.fullPrompt} onChange={(e) => dispatch({ type: 'editPrompt', value: e.target.value })} /></div>
           <div className="actions">
             <button type="button" className="btn" onClick={() => confirmThen('regenerate', () => { dispatch({ type: 'regenerate' }); toast('Local draft regenerated · not saved'); })}>Regenerate draft from fields</button>
-            <button type="button" className="btn primary" onClick={copyPrompt}>Copy prompt ↗</button>
-            <button type="button" className="btn" onClick={() => router.push('/reveal')}>Compare versions →</button>
+            <button type="button" className="btn primary" onClick={copyPrompt}>Copy prompt</button>
+            <button type="button" className="btn subtle" onClick={() => router.push('/reveal')}>Next: How did it go? →</button>
           </div>
           <SavePanel />
-          <div className="banner">Copy sends text to your clipboard only. Paste into your own AI tool. No prompt is sent to an AI provider by HackAss.</div>
+          <div className="banner">Copy-out is how this version works today: copy the prompt and paste it into the AI tool you already use. HackAss sends nothing to an AI provider. Running AI inside HackAss is part of the approved vision and is not available yet.</div>
         </div>
         <aside className="panel">
           <HackGuide heading="Hack · Your AI badass"><span>{state.fullPrompt || fields.goal ? HACK_ADVICE[state.mode] : '“You bring the goal. I’ll help with the structure. No magic wand required.”'}</span></HackGuide>
@@ -84,7 +85,7 @@ export function LabScreen() {
           </section>
           <section>
             <h3>Copy-out workflow</h3>
-            <p className="muted small">Works with an external AI tool of your choice. Compatibility and results have not been validated.</p>
+            <p className="muted small">Works with the external AI tool of your choice. Compatibility and results have not been validated. Copying is always free.</p>
             <button type="button" className="btn" onClick={() => router.push('/reveal')}>I&apos;ve tried it · Reflect →</button>
           </section>
         </aside>

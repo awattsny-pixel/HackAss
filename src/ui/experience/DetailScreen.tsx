@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { useExperience } from './ExperienceProvider.tsx';
 import { HackGuide } from './HackGuide.tsx';
-import { AI_LABEL, costRange, DIFFICULTY_LABEL, formatDate, timeRange } from './format.ts';
+import { AI_LABEL, costRange, DIFFICULTY_LABEL, formatDate, timeRange, toneFor } from './format.ts';
 import { safeHref } from './safe-href.ts';
 import type { ExperienceHack } from './types.ts';
 
@@ -34,23 +34,23 @@ export function DetailScreen({ hack, detail }: { hack: ExperienceHack; detail: D
   const t = detail ? timeRange(detail.time_minutes) : null; const c = detail ? costRange(detail.cost) : null;
   return (
     <>
-      <div className="sectiontop">
-        <div><span className="eyebrow">HACK DETAIL</span><h1>{hack.title}</h1></div>
-        <Link className="btn subtle" href={demo ? '/spark/demo' : '/spark'}>← The Spark</Link>
-      </div>
+      <div className="sectiontop"><Link className="btn subtle" href={demo ? '/spark/demo' : '/spark'}>← Back to discovery</Link></div>
       {demo ? <div className="banner demo" role="note"><strong>Demo mode.</strong> This is a draft example written for design review, not a catalog hack.</div> : null}
+      <div className={`hero-card tone-${toneFor(hack.category)}`}>
+        <div className="actions">
+          {demo ? <span className="draft-pill">Draft example · not in the catalog</span> : <span className="live-pill">Published catalog hack</span>}
+          <span className="meta">{hack.category}</span>
+        </div>
+        <h1>{hack.title}</h1>
+        <p className="lead">{hack.summary}</p>
+        {detail ? <div className="badges">
+          {detail.difficulty ? <span className="badge">{DIFFICULTY_LABEL[detail.difficulty]}</span> : null}
+          {t ? <span className="badge">{t}</span> : null}{c ? <span className="badge">{c}</span> : null}
+          {detail.ai_requirement ? <span className="badge">{AI_LABEL[detail.ai_requirement]}</span> : null}
+        </div> : null}
+      </div>
       <div className="detail-grid">
         <div className="panel">
-          <div className="actions">
-            {demo ? <span className="draft-pill">Demo example · not community verified</span> : <span className="live-pill">Published catalog hack</span>}
-            <span className="meta">{hack.category}</span>
-          </div>
-          {detail ? <div className="badges" style={{ marginTop: 10 }}>
-            {detail.difficulty ? <span className="badge">{DIFFICULTY_LABEL[detail.difficulty]}</span> : null}
-            {t ? <span className="badge">{t}</span> : null}{c ? <span className="badge">{c}</span> : null}
-            {detail.ai_requirement ? <span className="badge">{AI_LABEL[detail.ai_requirement]}</span> : null}
-          </div> : null}
-          <p className="lead">{hack.summary}</p>
           <section><h3>What you&apos;ll accomplish</h3><p>{hack.goal}</p></section>
           {detail && detail.requirements.length ? <section><h3>What you need</h3><ul className="plain-list">{detail.requirements.map((r, i) => <li key={i}><strong>{r.name}</strong>{r.detail ? ` — ${r.detail}` : ''}</li>)}</ul></section> : null}
           {detail && detail.materials.length ? <section><h3>Materials</h3><ul className="plain-list">{[...detail.materials].sort((a, b) => a.position - b.position).map((m, i) => <li key={i}><strong>{m.name}</strong>{m.detail ? ` — ${m.detail}` : ''}</li>)}</ul></section> : null}
@@ -63,8 +63,8 @@ export function DetailScreen({ hack, detail }: { hack: ExperienceHack; detail: D
           </section>
           <section>
             <h3>How to use it</h3>
-            <p>Adapt the details in The Lab, copy the resulting prompt and run it in your own AI tool. HackAss does not send your prompt or run AI in this preview.</p>
-            <div className="actions"><button type="button" className="btn primary" onClick={adapt}>Adapt in The Lab →</button><button type="button" className="btn" onClick={() => copy(hack.starterPrompt)}>Copy starter</button></div>
+            <p>Make it yours in The Lab, copy the prompt and paste it into the AI tool you already use. Copying out is how this version works today; running AI inside HackAss is part of the approved vision and is not available yet. HackAss does not send your prompt anywhere.</p>
+            <div className="actions"><button type="button" className="btn primary" onClick={adapt}>Make it yours →</button><button type="button" className="btn" onClick={() => copy(hack.starterPrompt)}>Copy starter</button></div>
           </section>
         </div>
         <aside className="panel">

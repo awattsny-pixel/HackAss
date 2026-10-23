@@ -10,7 +10,8 @@ import { workApi } from '../work/api.ts';
 import { createWorkController, type WorkController } from '../work/controller.ts';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { Toast } from './Toast.tsx';
-import { COPIED, COPY_BLOCKED, copyText } from './copy.ts';
+import { COPIED, copyText, createCopyFlow, type CopyFlow } from './copy.ts';
+import { ManualCopyDialog } from './ManualCopyDialog.tsx';
 
 export interface ConfirmOptions { readonly title: string; readonly message: string; readonly confirmLabel: string; readonly cancelLabel?: string; readonly danger?: boolean; readonly run: () => void }
 interface Pending { readonly title?: string; readonly message: string; readonly confirmLabel: string; readonly cancelLabel?: string; readonly danger?: boolean; readonly run: () => void }
@@ -28,6 +29,8 @@ interface Ctx {
   readonly view: (hack: ExperienceHack) => void;
   readonly toast: (message: string) => void;
   readonly copy: (text: string) => Promise<void>;
+  /** Account boundary: closes and clears the manual-copy dialog and the toast, and invalidates clipboard requests still running (see copy.ts). */
+  readonly invalidateCopies: () => void;
 }
 const ExperienceContext = createContext<Ctx | null>(null);
 export function useExperience(): Ctx {
@@ -66,7 +69,15 @@ export function ExperienceProvider({ children }: { children: ReactNode }) {
   const confirm = useCallback((o: ConfirmOptions) => { setPending(o); }, []);
   const [work] = useState<WorkController>(() => createWorkController({ api: workApi, getState: store.get, dispatch: store.dispatch, newId: () => crypto.randomUUID(), now: () => Date.now() }));
   const view = useCallback((hack: ExperienceHack) => dispatch({ type: 'view', hack }), [dispatch]);
-  const copy = useCallback(async (text: string) => { toast((await copyText(text)) === 'copied' ? COPIED : COPY_BLOCKED); }, [toast]);
+  const [manualCopy, setManualCopy] = useState<string | null>(null);
+  // "Copied" is announced only after the browser confirms the write. Otherwise nothing is claimed: the text is shown selected, with manual-copy instructions.
+  // The flow is bound to the account boundary: invalidateCopies() (called by AccountBoundary) clears the dialog and the toast and drops late clipboard answers.
+  const clearCopyUi = useCallback(() => { setManualCopy(null); setToastText(''); }, []);
+  // The flow object owns the account-boundary epoch. It is created once, after mount (a ref is only touched in effects and handlers).
+  const copyFlow = useRef<CopyFlow | null>(null);
+  useEffect(() => { copyFlow.current = createCopyFlow({ write: copyText, onCopied: () => toast(COPIED), onManual: setManualCopy, onClear: clearCopyUi }); }, [toast, clearCopyUi]);
+  const copy = useCallback(async (text: string) => { await copyFlow.current?.copy(text); }, []);
+  const invalidateCopies = useCallback(() => { copyFlow.current?.invalidate(); }, []);
 
   // Unsaved prompt or reflection edits: the browser warns before the page is closed or reloaded.
   useEffect(() => {
@@ -76,7 +87,7 @@ export function ExperienceProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [state.dirty]);
 
-  const value = useMemo<Ctx>(() => ({ state, dispatch, confirmThen, confirm, work, edits, view, toast, copy }), [state, dispatch, confirmThen, confirm, work, edits, view, toast, copy]);
+  const value = useMemo<Ctx>(() => ({ state, dispatch, confirmThen, confirm, work, edits, view, toast, copy, invalidateCopies }), [state, dispatch, confirmThen, confirm, work, edits, view, toast, copy, invalidateCopies]);
   return (
     <ExperienceContext.Provider value={value}>
       {children}
@@ -90,6 +101,7 @@ export function ExperienceProvider({ children }: { children: ReactNode }) {
         onCancel={() => setPending(null)}
         onConfirm={() => { const p = pending; setPending(null); p?.run(); }}
       />
+      <ManualCopyDialog text={manualCopy} onClose={() => setManualCopy(null)} />
       <Toast message={toastText} />
     </ExperienceContext.Provider>
   );

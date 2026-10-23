@@ -51,7 +51,10 @@ export const HACK_ADVICE: Record<Mode, string> = {
 };
 export const MODE_LABELS: Record<Mode, string> = { try: 'Try It', learn: 'Learn It', master: 'Master It' };
 
-export const OUTCOME_LABELS = { '': 'Choose an outcome', yes: 'Yes, it helped', partial: 'Partly — needs work', no: "No, it didn't work", notyet: "I haven't tried it" } as const;
+/** The canonical outcome values are yes, partial, no and notyet (the stored contract); these are only their labels, as approved in the design. */
+export const OUTCOME_LABELS = { '': 'Choose an outcome', yes: 'It worked', partial: 'Partly worked', no: 'Didn’t work', notyet: 'Didn’t try it yet' } as const;
+export const OUTCOME_HINTS = { yes: 'It did what I wanted.', partial: 'Useful, but it needed changes.', no: 'It did not give me what I needed.', notyet: 'I have not run it yet.' } as const;
+export const OUTCOME_ORDER = ['yes', 'partial', 'no', 'notyet'] as const;
 
 /** The reflection text that "Copy reflection" puts on the clipboard (nothing is stored). */
 export function reflectionText(title: string, outcome: keyof typeof OUTCOME_LABELS, text: string, next: string): string {
