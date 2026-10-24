@@ -10,7 +10,7 @@ import { workApi } from '../work/api.ts';
 import { createWorkController, type WorkController } from '../work/controller.ts';
 import { ConfirmDialog } from './ConfirmDialog.tsx';
 import { Toast } from './Toast.tsx';
-import { COPIED, copyText, createCopyFlow, type CopyFlow } from './copy.ts';
+import { COPIED, copyStillValid, copyText, createCopyFlow, type CopiedRecord, type CopyFlow } from './copy.ts';
 import { ManualCopyDialog } from './ManualCopyDialog.tsx';
 
 export interface ConfirmOptions { readonly title: string; readonly message: string; readonly confirmLabel: string; readonly cancelLabel?: string; readonly danger?: boolean; readonly run: () => void }
@@ -19,7 +19,7 @@ interface Ctx {
   readonly state: ExperienceState;
   readonly dispatch: (a: Action) => void;
   /** Runs `run` now, or after the member confirms when unsaved work would be replaced. */
-  readonly confirmThen: (what: Replacement, run: () => void) => void;
+  readonly confirmThen: (what: Replacement, run: () => void, opts?: { readonly exceptEditor?: string }) => void;
   /** A confirmation with its own wording (delete, overwrite, leaving a conflict). Cancel is the focused default. */
   readonly confirm: (o: ConfirmOptions) => void;
   /** Saving: explicit save of the prompt and of the result, and the conflict choices. The state is read synchronously, so a decision never uses a stale draft. */
@@ -31,6 +31,8 @@ interface Ctx {
   readonly copy: (text: string) => Promise<void>;
   /** Account boundary: closes and clears the manual-copy dialog and the toast, and invalidates clipboard requests still running (see copy.ts). */
   readonly invalidateCopies: () => void;
+  /** True only when `text` is EXACTLY what the browser last confirmed copying, for this draft generation and this revision of it. Any edit, a new draft or an account change makes it false again. */
+  readonly copiedExactly: (text: string) => boolean;
 }
 const ExperienceContext = createContext<Ctx | null>(null);
 export function useExperience(): Ctx {
@@ -44,7 +46,8 @@ const MESSAGES: Record<Replacement, { message: string; confirmLabel: string }> =
   new: { message: 'You have unsaved work. Creating a new prompt will replace your current draft and reflection. Copy anything you want to keep first.', confirmLabel: 'Replace my draft' },
   reset: { message: 'You have unsaved work. Resetting will replace your current draft and reflection. Copy anything you want to keep first.', confirmLabel: 'Reset my draft' },
   load: { message: 'You have unsaved work. Opening this saved prompt will replace your current draft and reflection. Save or copy anything you want to keep first.', confirmLabel: 'Open the saved prompt' },
-  regenerate: { message: 'Replace the editable prompt with a new draft assembled from the fields? Your manual edits to the prompt will be lost.', confirmLabel: 'Replace the prompt' },
+  regenerate: { message: 'Replace the whole editable prompt with a new draft assembled from the fields? Everything in it now, including any method steps and text you added, will be lost.', confirmLabel: 'Replace the prompt' },
+  rebuild: { message: 'Rebuild the generated part of the prompt from the fields? Text after it, such as method steps or notes you added, is kept. Hand edits inside the generated part are replaced.', confirmLabel: 'Rebuild the prompt' },
 };
 
 export function ExperienceProvider({ children }: { children: ReactNode }) {
@@ -62,8 +65,8 @@ export function ExperienceProvider({ children }: { children: ReactNode }) {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToastText(''), 3500);
   }, []);
-  const confirmThen = useCallback((what: Replacement, run: () => void) => {
-    if (!requiresConfirmation(store.get(), what)) { run(); return; }
+  const confirmThen = useCallback((what: Replacement, run: () => void, opts?: { readonly exceptEditor?: string }) => {
+    if (!requiresConfirmation(store.get(), what, opts)) { run(); return; }
     setPending({ ...MESSAGES[what], run });
   }, [store]);
   const confirm = useCallback((o: ConfirmOptions) => { setPending(o); }, []);
@@ -72,11 +75,14 @@ export function ExperienceProvider({ children }: { children: ReactNode }) {
   const [manualCopy, setManualCopy] = useState<string | null>(null);
   // "Copied" is announced only after the browser confirms the write. Otherwise nothing is claimed: the text is shown selected, with manual-copy instructions.
   // The flow is bound to the account boundary: invalidateCopies() (called by AccountBoundary) clears the dialog and the toast and drops late clipboard answers.
-  const clearCopyUi = useCallback(() => { setManualCopy(null); setToastText(''); }, []);
+  const [copied, setCopied] = useState<CopiedRecord | null>(null);
+  const clearCopyUi = useCallback(() => { setManualCopy(null); setToastText(''); setCopied(null); }, []);
   // The flow object owns the account-boundary epoch. It is created once, after mount (a ref is only touched in effects and handlers).
   const copyFlow = useRef<CopyFlow | null>(null);
-  useEffect(() => { copyFlow.current = createCopyFlow({ write: copyText, onCopied: () => toast(COPIED), onManual: setManualCopy, onClear: clearCopyUi }); }, [toast, clearCopyUi]);
-  const copy = useCallback(async (text: string) => { await copyFlow.current?.copy(text); }, []);
+  useEffect(() => { copyFlow.current = createCopyFlow({ write: copyText, onCopied: (text, stamp) => { toast(COPIED); const st = stamp as { revision: number; epoch: number } | undefined; setCopied(st ? { text, revision: st.revision, epoch: st.epoch } : null); }, onManual: setManualCopy, onClear: clearCopyUi }); }, [toast, clearCopyUi]);
+  // The revision and epoch of the draft at the moment of copying are remembered with the confirmed copy: if the prompt changes (or the draft is replaced) afterwards, the confirmation is gone.
+  const copy = useCallback(async (text: string) => { const w = store.get().work; await copyFlow.current?.copy(text, { revision: w.revision, epoch: w.epoch }); }, [store]);
+  const copiedExactly = useCallback((text: string) => copyStillValid(copied, text, state.work.revision, state.work.epoch), [copied, state.work.revision, state.work.epoch]);
   const invalidateCopies = useCallback(() => { copyFlow.current?.invalidate(); }, []);
 
   // Unsaved prompt or reflection edits: the browser warns before the page is closed or reloaded.
@@ -87,7 +93,7 @@ export function ExperienceProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [state.dirty]);
 
-  const value = useMemo<Ctx>(() => ({ state, dispatch, confirmThen, confirm, work, edits, view, toast, copy, invalidateCopies }), [state, dispatch, confirmThen, confirm, work, edits, view, toast, copy, invalidateCopies]);
+  const value = useMemo<Ctx>(() => ({ state, dispatch, confirmThen, confirm, work, edits, view, toast, copy, invalidateCopies, copiedExactly }), [state, dispatch, confirmThen, confirm, work, edits, view, toast, copy, invalidateCopies, copiedExactly]);
   return (
     <ExperienceContext.Provider value={value}>
       {children}

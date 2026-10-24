@@ -10,7 +10,9 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { authProbe as runProbe, leftBehind, pct, probeBlocked, probeSummary as summarize } from './lib/auth-probe.mjs';
 import { randomBytes } from 'node:crypto';
+import os from 'node:os';
 import { createClient } from '@supabase/supabase-js';
 import { launch, newPage, sleep } from './lib/cdp.mjs';
 
@@ -25,8 +27,15 @@ const API = cfg.API_URL, PUB = cfg.PUBLISHABLE_KEY, SECRET = cfg.SECRET_KEY;
 const admin = createClient(API, SECRET, { auth: { persistSession: false, autoRefreshToken: false } });
 const sql = (text) => { const r = spawnSync(DOCKER, ['exec', '-i', DB, 'psql', '-U', 'postgres', '-d', 'postgres', '-X', '-q', '-At', '-v', 'ON_ERROR_STOP=1'], { input: text, encoding: 'utf8' }); if (r.status !== 0) throw new Error(`sql: ${r.stderr.slice(0, 200)}`); return r.stdout.trim(); };
 
-const proxyState = { mode: 'pass' };
+const proxyState = { mode: 'pass', catalog: false };
+// S3 fixture: when `catalog` is on, the two anonymous public-read functions answer with one fictional published hack (nothing is written anywhere), so a catalog hack WITH method steps can be adapted.
+const FIXTURE_ITEM = { slug: 's3-fixture-dinner', version_id: '00000000-0000-4000-8000-000000000001', published_at: '2026-10-20T12:00:00+00:00', category: { slug: 'everyday', name: 'Everyday' }, title: 'Weeknight dinner from the fridge', summary: 'Turn leftovers into three dinners.', difficulty: 'easy', time_minutes: { min: 10, max: 20 }, cost: { min_cents: 0, max_cents: 500, currency: 'USD' }, ai_requirement: 'helpful' };
+const FIXTURE_DETAIL = { ...FIXTURE_ITEM, outcome: 'Three realistic dinners that use what you already have.', estimate_basis: 'Author estimate.', limitations: 'It cannot see your fridge.', steps: [{ position: 1, body: 'List what you have.' }, { position: 2, body: 'Say how many people and how much time.' }], materials: [{ position: 1, name: 'A list of your ingredients', detail: null }], requirements: [{ kind: 'tool', name: 'An AI tool you already use', detail: null }], tags: ['dinner'], attributions: [], sources: [] };
 const proxy = http.createServer((req, res) => {
+  if (proxyState.catalog && /\/rpc\/(list_public_hacks|get_public_hack)/.test(req.url)) {
+    const list = req.url.includes('list_public_hacks'); req.resume();
+    req.on('end', () => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(list ? { items: [FIXTURE_ITEM], page_size: 25, next_cursor: null } : FIXTURE_DETAIL)); }); return;
+  }
   if (proxyState.mode === 'down') { res.writeHead(503, { 'content-type': 'application/json' }); res.end('{"message":"simulated outage"}'); return; }
   const up = http.request({ host: '127.0.0.1', port: Number(new URL(API).port), path: req.url, method: req.method, headers: req.headers }, (r) => { res.writeHead(r.statusCode, r.headers); r.pipe(res); }); up.on('error', () => { res.writeHead(502); res.end(); }); req.pipe(up);
 }).listen(PROXY_PORT);
@@ -45,6 +54,25 @@ let appLog = ''; app.stdout.on('data', (d) => { appLog += d; }); app.stderr.on('
 let up = false; for (let i = 0; i < 60 && !up; i++) { try { up = !!(await fetch(`${APP}/auth/session`)).status; } catch { await sleep(500); } }
 if (!up) { console.error('BLOCKED  the app did not start (run `npx next build` first)'); app.kill(); proxy.close(); process.exit(2); }
 
+// ---- stack health probe (diagnostic, not a retry) --------------------------------------------------------------------------------------------------------
+// Auth requests have a 10 s server-side deadline (a slow stack answers 504 "context deadline exceeded", which the app shows as "Sign-in is temporarily unavailable"). A run on a stack
+// that slow tells us about the machine, not the app, so before any check runs the harness times a few create-user / sign-in / delete-user round trips through the same proxy the app
+// uses and prints them (no emails, no tokens). If the stack is clearly too slow the run stops with exit 2 (BLOCKED, the same code as "stack unreachable") instead of recording
+// unexplained check failures. Observed on a quiet machine: sign-in p50 147 ms, p90 368 ms, p99 1.9 s. Nothing here retries a check or changes a timeout or a throttle.
+const PROBE_N = Number(process.env.PROBE_N || 12), PROBE_MAX_MS = 5000, PROBE_P90_MS = 1500;
+const clock = () => new Date().toISOString().slice(11, 23);
+const probeDeps = () => ({ admin, makeAnon: () => createClient(`http://127.0.0.1:${PROXY_PORT}`, PUB, { auth: { persistSession: false, autoRefreshToken: false } }), password: 'correct horse battery staple', rand: () => randomBytes(4).toString('hex'), clock });
+const authProbe = (n) => runProbe(n, probeDeps());
+const probeSummary = (rows) => summarize(rows, { loadavg_1m: Number(os.loadavg()[0].toFixed(1)), cpus: os.cpus().length, proxy: proxyState.mode });
+{
+  const rows = await authProbe(PROBE_N); const sum = probeSummary(rows);
+  const slow = probeBlocked(sum, { maxMs: PROBE_MAX_MS, p90Ms: PROBE_P90_MS });
+  console.log(`AUTH PROBE ${JSON.stringify(sum)}${process.env.PROBE_ROWS ? `\n${rows.map((r) => JSON.stringify(r)).join('\n')}` : ''}`);
+  if (leftBehind(rows).length) console.error(`PROBE CLEANUP UNCONFIRMED  ${leftBehind(rows).length} probe user(s) were not confirmed deleted (ids: ${leftBehind(rows).join(', ')}). Remove them from the disposable stack by id.`);
+  if (slow) { console.error(`BLOCKED  the Auth stack is too slow to give a trustworthy result (limits: any call > ${PROBE_MAX_MS} ms, sign-in p90 > ${PROBE_P90_MS} ms, any error, any fixture not confirmed deleted). Quiet the machine and run again.`); app.kill(); proxy.close(); process.exit(2); }
+  if (process.env.PROBE_ONLY) { app.kill(); proxy.close(); process.exit(0); }
+}
+
 // ---- helpers ------------------------------------------------------------------------------------------------------------------------------------------
 const uniq = () => randomBytes(4).toString('hex'); const PW = 'correct horse battery staple';
 let ipN = 80; const nextIp = () => `198.51.100.${(ipN++ % 250) + 1}`;
@@ -54,7 +82,10 @@ const { proc, port } = await launch(9300 + Math.floor(Math.random() * 600));
 const pages = [];
 async function page(w = 1280, h = 800, mobile = false, ip = nextIp(), keep = false) { const p = await newPage(port); pages.push(p); await p.viewport(w, h, mobile); await p.send('Network.enable'); await p.send('Log.enable'); if (!keep) await p.send('Network.clearBrowserCookies'); await p.send('Network.setExtraHTTPHeaders', { headers: { 'x-test-client-ip': ip } }); return p; }
 const text = (p, sel = 'body') => p.ev(`document.querySelector(${JSON.stringify(sel)})?.innerText ?? ''`);
-async function waitFor(p, expr, ms = 10000, label = expr) { const t0 = Date.now(); for (;;) { try { if (await p.ev(`!!(${expr})`)) return true; } catch { /* page navigating */ } if (Date.now() - t0 > ms) { let where = ''; try { where = await p.ev("location.pathname + ' | ' + document.body.innerText.replace(/\\s+/g, ' ').slice(0, 260)"); } catch { /* gone */ } throw new Error(`timed out waiting for: ${label} @ ${where}`); } await sleep(120); } }
+/** S3: a draft opens in Adapt (from a hack) or Guided (from scratch). The Slice-1 journeys address the Advanced fields (#promptTitle, #fullPrompt), so a wait or a typing step that names them first selects the Advanced tab, the way a person would. */
+const ADVANCED_IDS = /fullPrompt|promptTitle|promptGoal|promptContext|promptOutput/;
+const ensureAdvanced = (p) => p.ev("(() => { const t = document.getElementById('edit-tab-advanced'); if (t && t.getAttribute('aria-selected') !== 'true') { t.click(); return true; } return false; })()");
+async function waitFor(p, expr, ms = 10000, label = expr) { const t0 = Date.now(); for (;;) { try { if (ADVANCED_IDS.test(expr)) await ensureAdvanced(p); if (await p.ev(`!!(${expr})`)) return true; } catch { /* page navigating */ } if (Date.now() - t0 > ms) { let where = ''; try { where = await p.ev("location.pathname + ' | ' + document.body.innerText.replace(/\\s+/g, ' ').slice(0, 260)"); } catch { /* gone */ } throw new Error(`timed out waiting for: ${label} @ ${where}`); } await sleep(120); } }
 const click = async (p, sel, t = '') => { trace(`click ${sel} ${t}`); await waitFor(p, `[...document.querySelectorAll(${JSON.stringify(sel)})].some((x) => x.textContent.includes(${JSON.stringify(t)}) && !x.disabled)`, 10000, `click target ${sel} "${t}"`); return p.click(sel, t); };
 // ---- role + accessible-name helpers (S2): the navigation is addressed the way a person finds it, not by class names or by visible-text guesses -----------------
 // "name" is the aria-label, else the visible text; only visible, enabled elements count (the sidebar, the rail and the phone bar are never all visible at once).
@@ -77,7 +108,19 @@ const status = (p, sel = '#save-status') => text(p, sel);
 const warns = (p) => p.ev("(() => { const e = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(e); return e.defaultPrevented; })()");
 const overflow = (p) => p.ev('document.documentElement.scrollWidth > innerWidth + 1');
 async function offenders(p) { return p.ev(`[...document.querySelectorAll('a[href],button,input,select,textarea,[role=tab]')].filter(e => e.offsetParent !== null && getComputedStyle(e).visibility !== 'hidden' && e.type !== 'hidden' && !e.classList.contains('skip') && !e.closest('p, li, h3')).map(e => { const r = e.getBoundingClientRect(); return { n: (e.id || e.textContent || e.tagName).trim().slice(0, 28), h: Math.round(r.height), w: Math.round(r.width) }; }).filter(x => x.h < 43.5 && !(x.n === 'Skip to content'))`); }
-async function signIn(p, m, next = '%2Fspark') { await p.goto(`${APP}/account/sign-in?next=${next}`); await typeInto(p, '#signin-email', m.email); await typeInto(p, '#signin-password', PW); await p.key('Enter'); await waitFor(p, "document.querySelector('.account-state')?.textContent.includes('Signed in')", 12000, 'signed in'); }
+async function signInRaw(p, m, next = '%2Fspark') { await p.goto(`${APP}/account/sign-in?next=${next}`); await typeInto(p, '#signin-email', m.email); await typeInto(p, '#signin-password', PW); await p.key('Enter'); await waitFor(p, "document.querySelector('.account-state')?.textContent.includes('Signed in')", 12000, 'signed in'); }
+/** Every sign-in is timed and recorded (no emails). If one fails, the error says what the page showed, how long it took, the proxy state, the machine load and a fresh one-call Auth timing. */
+const signInTrace = [];
+async function signIn(p, m, next = '%2Fspark') {
+  const at = clock(), t0 = Date.now();
+  try { await signInRaw(p, m, next); signInTrace.push({ at, ms: Date.now() - t0, ok: true }); }
+  catch (e) {
+    const ui = await p.ev("(() => { const t = document.body.innerText; return /temporarily unavailable/i.test(t) ? 'temporarily-unavailable' : /too many|try again later/i.test(t) ? 'rate-limited' : /incorrect|invalid/i.test(t) ? 'rejected' : location.pathname; })()").catch(() => 'page-gone');
+    let probe; try { probe = probeSummary(await authProbe(1)); } catch (pe) { probe = { error: String(pe.message).slice(0, 80) }; }
+    signInTrace.push({ at, ms: Date.now() - t0, ok: false, ui });
+    throw new Error(`${e.message} | sign-in diagnostics ${JSON.stringify({ at, elapsed_ms: Date.now() - t0, page_showed: ui, proxy: proxyState.mode, loadavg_1m: Number(os.loadavg()[0].toFixed(1)), auth_probe_now: probe })}`);
+  }
+}
 /** A draft started the normal way: a demo hack adapted in the Lab (client navigation), then edited. */
 async function startDraft(p, { title = 'My meal plan', prompt = 'MY DRAFT PROMPT' } = {}) {
   await p.goto(`${APP}/spark/demo/meal`); await clickRole(p, 'button', 'Make it yours'); await waitFor(p, "location.pathname === '/lab'");
@@ -496,6 +539,217 @@ try {
     const v = await p.ev("(() => { const c = document.querySelector('.chips').getBoundingClientRect(); const a = document.activeElement; const r = a.getBoundingClientRect(); const s = getComputedStyle(a); return { scrolled: document.querySelector('.chips').scrollLeft > 0, inside: r.left >= c.left && r.right <= c.right, ring: parseFloat(s.outlineWidth), style: s.outlineStyle, offset: parseFloat(s.outlineOffset), room: Math.min(r.top - c.top, c.bottom - r.bottom) }; })()");
     ok(v.scrolled && v.inside && v.style !== 'none' && v.ring >= 2 && v.room >= v.ring + v.offset, `focused chip visible with its ring ${JSON.stringify(v)}`); await shot(p, 'n8-chips-focus-340'); return 'one row, scrolls, focused chip scrolled into view with a full ring';
   });
+  // ======== S3: Build with Hack (scripted exchange), inline highlighted editing (Hack page and Lab), advanced editing, copy-then-open ========
+  const { composePrompt } = await import('../src/ui/experience/prompt.ts');
+  const tabSel = (p, id) => p.ev(`document.getElementById(${JSON.stringify(id)})?.getAttribute('aria-selected') === 'true'`);
+  const val = (p, sel) => p.ev(`document.querySelector(${JSON.stringify(sel)})?.value ?? null`);
+  const pickTab = async (p, name) => { await clickRole(p, 'tab', name); await waitFor(p, `document.getElementById('edit-tab-${name.toLowerCase()}')?.getAttribute('aria-selected') === 'true'`, 5000, `${name} tab selected`); };
+  const providerRow = (p) => p.ev("(() => { const r = document.querySelector('.provider-row'); return r ? [...r.querySelectorAll('a')].map((a) => ({ id: a.dataset.provider, href: a.getAttribute('href'), target: a.target, rel: a.rel })) : null; })()");
+  const fakeClipboard = (p) => p.ev("window.__opened = false; window.open = () => { window.__opened = true; return null; }; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => {} }, configurable: true }); true");
+  const chatAnswer = async (p, answer, expectNext) => { await typeInto(p, '#g-answer', answer); await click(p, '#g-send', 'Send'); if (expectNext) await waitFor(p, `document.getElementById('g-question')?.innerText.includes(${JSON.stringify(expectNext)})`, 6000, `next question: ${expectNext}`); };
+  const chipClick = (p, label) => p.ev(`(() => { const b = [...document.querySelectorAll('.build-chat .chip')].find((x) => x.textContent.trim() === ${JSON.stringify(label)}); if (!b) return false; b.click(); return true; })()`);
+  const editorOpen = (p) => p.ev("!!document.querySelector('dialog.hl-editor[open]')");
+  const FIXTURE_STEPS = 'Method from the published hack:\n1. List what you have.\n2. Say how many people and how much time.';
+  await check('G1', 'BUILD WITH HACK: a scratch draft opens in the scripted exchange; Hack asks five fixed questions, the member answers by typing or with chips, and the prompt beside the chat updates each time (fixed rules, no AI claim); Save stores exactly the existing fields; the saved prompt reopens in Advanced and the exchange rebuilds from it without asking again', async () => {
+    const m = await newMember('g1'); const p = await page(1440, 900); await signIn(p, m);
+    await clickRole(p, 'button', 'New hack'); await waitFor(p, "location.pathname === '/lab'"); await waitFor(p, "document.getElementById('g-question')", 8000, 'the exchange');
+    ok(await tabSel(p, 'edit-tab-guided'), 'Guided is the default for a scratch draft'); ok((await text(p, '#g-question')).includes('What do you want an AI to do for you?'), 'first question'); ok((await text(p, '#g-preview')).includes('will appear here'), 'empty preview');
+    ok(/Scripted, not live AI/.test(await text(p)) && /not how well the prompt will work/.test(await text(p)), 'the one scripted / not-live-AI note');
+    ok(await chipClick(p, 'Plan something'), 'goal chip'); ok((await val(p, '#g-answer')) === 'Plan ', 'a chip seeds the answer box'); await p.ev("(() => { const e = document.getElementById('g-answer'); e.focus(); e.setSelectionRange(e.value.length, e.value.length); return true; })()"); await p.insertText('a three day trip to Lisbon'); await click(p, '#g-send', 'Send'); await waitFor(p, "document.getElementById('g-question')?.innerText.includes('What should the AI know?')", 6000, 'context question');
+    ok((await text(p, '.bubbles')).includes('Plan a three day trip to Lisbon'), 'my answer is a bubble');
+    const goal = 'Plan a three day trip to Lisbon'; const context = 'Two adults. Budget 900 euros.'; const limits = 'No flights, nothing before 9am.'; 
+    await chatAnswer(p, context, 'Any rules it should follow?'); ok(await chipClick(p, 'Keep it short'), 'limits chip'); await typeInto(p, '#g-answer', limits); await click(p, '#g-send', 'Send'); await waitFor(p, "document.getElementById('g-question')?.innerText.includes('How should the answer look?')", 6000, 'format question');
+    ok(await p.ev("document.querySelector('.build-chat [role=radiogroup]')?.children.length === 4"), 'four format chips'); ok(await chipClick(p, 'Comparison table'), 'format chip'); await waitFor(p, "document.getElementById('g-question')?.innerText.includes('what will you call it')", 6000, 'title question');
+    await chatAnswer(p, 'Lisbon trip', null); await waitFor(p, "document.getElementById('g-step')?.innerText.includes('All answered')", 6000, 'all answered');
+    const expected = composePrompt({ goal, context: `${context}\n\nLimits: ${limits}`, format: 'Comparison table' });
+    ok((await text(p, '#g-preview')) === expected, `preview differs: ${(await text(p, '#g-preview')).slice(0, 160)}`); ok((await text(p, '#g-check-summary')).includes('Every question has an answer'), await text(p, '#g-check-summary'));
+    ok(!/AI (wrote|checked|scored|approved)|high quality|will work well/i.test(await text(p)), 'no AI-quality claim'); await shot(p, 'g1-build-desktop');
+    await click(p, '#save-prompt', 'Save prompt'); await waitFor(p, "/^Saved/.test(document.querySelector('#save-status')?.textContent.trim())", 12000, 'Saved'); ok(count('saved_prompts', m.id) === 1, 'one row');
+    const row = sql(`select title || '~' || goal || '~' || context || '~' || output_format || '~' || (full_prompt = $q$${expected}$q$)::text from app.saved_prompts where owner_id = '${m.id}'`); ok(row === `Lisbon trip~${goal}~${context}\n\nLimits: ${limits}~Comparison table~true`, `stored fields ${JSON.stringify(row)}`);
+    await clickRole(p, 'link', 'My hacks'); await waitFor(p, "location.pathname === '/account/prompts'"); await click(p, 'a', 'Lisbon trip'); await click(p, '#continue-editing', 'Continue editing'); await waitFor(p, "location.pathname === '/lab'");
+    ok(await tabSel(p, 'edit-tab-advanced'), 'a reopened saved prompt opens in Advanced'); ok((await val(p, '#fullPrompt')) === expected, 'prompt text intact');
+    await pickTab(p, 'Guided'); ok((await text(p, '#g-step')).includes('All answered'), 'the exchange rebuilt from the draft: nothing is asked again'); ok((await text(p, '.bubbles')).includes(limits) && (await text(p, '#g-preview')) === expected, 'answers and prompt match the saved draft'); return 'five scripted questions, chips and typing, preview exact, saved fields exact, reopen → Advanced → exchange rebuilt';
+  });
+  await check('G1b', 'EXCHANGE DETAILS: Skip leaves limits unanswered on purpose; Change on an earlier answer rewrites only the generated block and keeps text after it; Enter sends', async () => {
+    const m = await newMember('g1b'); const p = await page(1280, 900); await signIn(p, m); await clickRole(p, 'button', 'New hack'); await waitFor(p, "document.getElementById('g-question')", 8000, 'the exchange');
+    await typeInto(p, '#g-answer', 'Line one'); await p.key('Enter', 'Enter'); await waitFor(p, "document.getElementById('g-question')?.innerText.includes('What should the AI know?')", 5000, 'Enter sends');
+    await typeInto(p, '#g-answer', 'Who and how much'); await click(p, '#g-send', 'Send'); await waitFor(p, "document.getElementById('g-question')?.innerText.includes('Any rules')", 5000, 'limits question');
+    ok(await chipClick(p, 'Skip'), 'skip chip'); await waitFor(p, "document.getElementById('g-question')?.innerText.includes('How should the answer look?')", 5000, 'skipping moves on'); ok((await text(p, '#g-preview')).includes('Context and constraints: Who and how much\n\nReturn:'), 'no limits text was added');
+    ok((await text(p, '.part.skipped')).includes('Limits'), 'Getting there shows Limits as skipped');
+    ok(await chipClick(p, 'Concise summary'), 'format'); await chatAnswer(p, 'Short name', null); await waitFor(p, "document.getElementById('g-step')?.innerText.includes('All answered')", 5000, 'complete');
+    // text added after the generated block survives a change of answer
+    await p.ev("window.__keep = true; true"); await pickTab(p, 'Advanced'); const base = await val(p, '#fullPrompt'); await typeInto(p, '#fullPrompt', base + '\n\nMY OWN NOTE'); await pickTab(p, 'Guided');
+    await p.ev("document.querySelector('.bubble-edit').click(); true"); await waitFor(p, "document.getElementById('g-answer')?.value === 'Line one'", 5000, 'the answer returns to the box'); await typeInto(p, '#g-answer', 'Line two'); await click(p, '#g-send', 'Send');
+    await waitFor(p, "document.getElementById('g-step')?.innerText.includes('All answered')", 5000, 'complete again'); await pickTab(p, 'Advanced'); const after = await val(p, '#fullPrompt'); ok(after.startsWith('Objective: Line two') && after.endsWith('\n\nMY OWN NOTE'), `block rewritten, note kept: ${JSON.stringify(after.slice(0, 60))}...`);
+    return 'skip, Change, text after the block kept, Enter sends';
+  });
+  await check('G2', 'HACK PAGE: prompt first with highlights INSIDE it; choosing one opens an editor; Apply starts the SAME draft through the replace-draft guard (Cancel keeps everything and the editor); the action panel copies, saves (Save my version), shows Original / Your version and links to How did it go; Share and Remix are unavailable', async () => {
+    proxyState.catalog = true;
+    try {
+      const m = await newMember('g2'); const p = await page(1440, 900); await signIn(p, m); await startDraft(p, { title: 'Prior', prompt: 'PRIOR DRAFT TEXT' });
+      await clickRole(p, 'link', 'Home'); await waitFor(p, "location.pathname === '/spark'"); await clickRole(p, 'link', 'Weeknight dinner from the fridge'); await waitFor(p, "document.querySelector('.hl-prose')", 10000, 'prompt with highlights');
+      const order = await p.ev("(() => { const a = document.querySelector('.prompt-card').getBoundingClientRect(), b = document.querySelector('.col-details').getBoundingClientRect(), c = document.querySelector('.actions-panel').getBoundingClientRect(); return { promptAboveDetails: a.top < b.top, panelBesidePrompt: c.left > a.right - 2 && Math.abs(c.top - a.top) < 4 }; })()"); ok(order.promptAboveDetails && order.panelBesidePrompt, `layout ${JSON.stringify(order)}`);
+      ok(await p.ev("[...document.querySelectorAll('.hl-prose p')].some((x) => x.querySelector('.hl-inline') && x.textContent.startsWith('Objective:'))"), 'highlights are inside the sentence'); ok(!(await p.ev("!!document.querySelector('.hl-prose textarea, .hl-prose input')")), 'no separate labelled blocks or inputs');
+      ok(await p.ev("[...document.querySelectorAll('.actions-panel button')].filter((b) => /^(Share|Remix)$/.test(b.textContent.trim())).every((b) => b.disabled)") && (await text(p, '.actions-panel')).includes('not available in this preview'), 'Share and Remix are unavailable'); ok(await p.ev("document.querySelector('.actions-panel button.block[disabled]')?.textContent.includes('Save my version')"), 'Save my version waits for a change');
+      await click(p, '#hack-hl-goal', ''); await waitFor(p, "document.querySelector('dialog.hl-editor[open]')", 5000, 'editor'); await typeInto(p, '#hack-ed-text', 'Plan dinners from leftovers'); await click(p, '#hack-apply', 'Apply');
+      await waitFor(p, "document.querySelector('dialog.confirm[open]')", 5000, 'replace-draft guard'); ok((await dialogText(p)).includes('unsaved work'), 'guard wording'); await confirmDialog(p, 'Keep my draft'); await sleep(300);
+      ok(await editorOpen(p) && (await val(p, '#hack-ed-text')) === 'Plan dinners from leftovers', 'Cancel kept the editor and what I typed'); ok((await text(p, '#hack-version-status')) === 'Original', 'nothing started');
+      await clickRole(p, 'button', 'Cancel'); await waitFor(p, "!document.querySelector('dialog.hl-editor[open]')", 4000, 'editor closes'); ok(!(await text(p, '.hl-prose')).includes('leftovers'), 'Cancel changed nothing');
+      await clickRole(p, 'link', 'Home'); await waitFor(p, "location.pathname === '/spark'"); await goLab(p); await waitFor(p, "location.pathname === '/lab'"); ok((await val(p, '#fullPrompt')) === 'PRIOR DRAFT TEXT', 'the prior draft is intact'); await clickRole(p, 'link', 'Home');
+      await clickRole(p, 'link', 'Weeknight dinner from the fridge'); await waitFor(p, "document.querySelector('.hl-prose')", 10000, 'hack page again'); await click(p, '#hack-hl-goal', ''); await waitFor(p, "document.querySelector('dialog.hl-editor[open]')", 5000, 'editor'); await typeInto(p, '#hack-ed-text', 'Plan dinners from leftovers'); await click(p, '#hack-apply', 'Apply');
+      await confirmDialog(p, 'Replace my draft'); await waitFor(p, "!document.querySelector('dialog.hl-editor[open]') && document.querySelector('#hack-hl-goal')?.textContent.includes('Plan dinners from leftovers')", 6000, 'applied inline');
+      ok((await text(p, '#hack-version-status')) === 'Unsaved' && await warns(p), 'one draft, unsaved'); await waitFor(p, "document.activeElement?.id === 'hack-hl-goal'", 3000, 'focus returns to the highlight'); await shot(p, 'g2-hack-page-desktop');
+      await clickRole(p, 'button', 'Original'); ok((await text(p, '.hl-prose')).includes('Three realistic dinners that use what you already have.') && !(await text(p, '.hl-prose')).includes('leftovers'), 'Original shows the published text'); ok(await warns(p) && (await text(p, '#hack-version-status')) === 'Unsaved', 'Original changed only the view');
+      await clickRole(p, 'button', 'Your version'); ok((await text(p, '#hack-hl-goal')) === 'Plan dinners from leftovers', 'Your version is intact');
+      await click(p, '#save-prompt', 'Save my version'); await waitFor(p, "/^Saved/.test(document.querySelector('#save-status')?.textContent.trim())", 12000, 'Saved from the Hack page'); ok(count('saved_prompts', m.id) === 1 && (await text(p, '#hack-version-status')) === 'Saved', 'saved through the shared controller'); ok(!(await warns(p)), 'saved: no warning');
+      ok(await hasRole(p, 'link', 'How did it go?'), 'How did it go? is available once there is a version');
+      await clickRole(p, 'button', 'Continue in the Lab'); await waitFor(p, "location.pathname === '/lab'"); ok(await tabSel(p, 'edit-tab-adapt'), 'Adapt is the default from a hack'); ok((await text(p, '#adapt-hl-goal')) === 'Plan dinners from leftovers', 'same draft in the Lab');
+      await click(p, '#adapt-hl-context', ''); await waitFor(p, "document.querySelector('dialog.hl-editor[open]')", 5000, 'Lab editor'); await typeInto(p, '#adapt-ed-text', 'Four people, 30 minutes, no nuts'); await click(p, '#adapt-apply', 'Apply'); await waitFor(p, "!document.querySelector('dialog.hl-editor[open]')", 4000, 'applied');
+      await pickTab(p, 'Advanced'); const full = await val(p, '#fullPrompt'); ok(full === composePrompt({ goal: 'Plan dinners from leftovers', context: 'Four people, 30 minutes, no nuts', format: 'Clear step-by-step plan' }) + '\n\n' + FIXTURE_STEPS, `prompt ${JSON.stringify(full)}`); return 'inline highlights, editor, guard + Cancel preserved the editor and draft, panel actions, save, Lab shows the same draft, method kept';
+    } finally { proxyState.catalog = false; }
+  });
+  await check('G3', 'FREE TEXT and HAND EDITS: a demo starter is one highlight for the whole prompt; with free text an answer in the exchange never overwrites it, and "Replace the prompt with this preview" names the loss and asks first', async () => {
+    const m = await newMember('g3'); const p = await page(1280, 900); await signIn(p, m); await p.goto(`${APP}/spark/demo/meal`);
+    await waitFor(p, "document.getElementById('hack-hl-all')", 8000, 'one-piece highlight'); ok((await text(p)).includes('free text'), 'explains why it is one piece'); await click(p, '#hack-hl-all', ''); await waitFor(p, "document.querySelector('dialog.hl-editor[open]')", 5000, 'editor');
+    await typeInto(p, '#hack-ed-text', 'MY WHOLE PROMPT'); await click(p, '#hack-apply', 'Apply'); await waitFor(p, "!document.querySelector('dialog.hl-editor[open]')", 5000, 'applied'); ok((await text(p, '#hack-hl-all')) === 'MY WHOLE PROMPT', 'one piece applied');
+    await clickRole(p, 'button', 'Continue in the Lab'); await waitFor(p, "location.pathname === '/lab'"); ok((await text(p, '#adapt-hl-all')) === 'MY WHOLE PROMPT', 'one piece in Adapt');
+    await pickTab(p, 'Guided'); const goal0 = await p.ev("document.querySelector('.bubbles .bubble.you span').textContent"); await p.ev("document.querySelector('.bubble-edit').click(); true"); await typeInto(p, '#g-answer', 'A new goal'); await click(p, '#g-send', 'Send'); await waitFor(p, "document.getElementById('g-rebuild')", 5000, 'free-text notice');
+    await pickTab(p, 'Advanced'); ok((await val(p, '#fullPrompt')) === 'MY WHOLE PROMPT', `an answer did not touch free text (was ${goal0})`); const ctx0 = await val(p, '#promptContext'), fmt0 = await val(p, '#promptOutput');
+    await pickTab(p, 'Guided'); await click(p, '#g-rebuild', 'Replace the prompt with this preview'); ok((await dialogText(p)).includes('will be lost'), 'whole-prompt replacement is spelled out'); await confirmDialog(p, 'Keep my'); await sleep(300);
+    await pickTab(p, 'Advanced'); ok((await val(p, '#fullPrompt')) === 'MY WHOLE PROMPT', 'Cancel kept the prompt'); await pickTab(p, 'Guided'); await click(p, '#g-rebuild', 'Replace the prompt'); await confirmDialog(p, 'Replace the prompt');
+    await sleep(300); await pickTab(p, 'Advanced'); ok((await val(p, '#fullPrompt')) === composePrompt({ goal: 'A new goal', context: ctx0, format: fmt0 }), 'replaced after confirmation'); return 'one highlight; answers never overwrite; replacement confirmed';
+  });
+  await check('G4', 'MODES: switching Guided / Adapt / Advanced keeps every character, the save status, the unsaved warning and the page; arrow keys move between the mode tabs', async () => {
+    const m = await newMember('g4'); const p = await page(1280, 800); await signIn(p, m); await startDraft(p, { title: 'Mode prompt', prompt: 'KEEP THIS EXACT TEXT' });
+    await p.ev("window.__doc = 'same-document'; true"); const before = { full: await val(p, '#fullPrompt'), title: await val(p, '#promptTitle'), st: (await status(p)).trim() };
+    for (const t of ['Guided', 'Adapt', 'Advanced', 'Guided', 'Advanced']) await pickTab(p, t);
+    const after = { full: await val(p, '#fullPrompt'), title: await val(p, '#promptTitle'), st: (await status(p)).trim() }; ok(JSON.stringify(before) === JSON.stringify(after), `${JSON.stringify(before)} vs ${JSON.stringify(after)}`); ok(await warns(p) && await sameDoc(p), 'still unsaved, same document');
+    await p.ev("document.getElementById('edit-tab-advanced').focus(); true"); await p.key('ArrowRight'); await waitFor(p, "document.getElementById('edit-tab-guided')?.getAttribute('aria-selected') === 'true' && document.activeElement?.id === 'edit-tab-guided'", 4000, 'ArrowRight moves to Guided');
+    await p.key('ArrowLeft'); await waitFor(p, "document.getElementById('edit-tab-advanced')?.getAttribute('aria-selected') === 'true'", 4000, 'ArrowLeft back'); return 'draft, status and warning identical after five switches; arrow keys work';
+  });
+  await check('G5', 'COPY THEN OPEN: provider links appear only after a CONFIRMED copy of the exact prompt (Lab and Hack page); fixed home pages; new tab, noopener noreferrer; nothing opens by itself; an edit hides them; a refused copy shows none', async () => {
+    const m = await newMember('g5'); const p = await page(1280, 800); await signIn(p, m); await startDraft(p, { title: 'Copy then open', prompt: 'EXACT PROMPT TEXT' }); await fakeClipboard(p);
+    ok((await providerRow(p)) === null, 'no links before copying'); await clickRole(p, 'button', 'Copy prompt'); await waitFor(p, "document.querySelector('.provider-row')", 5000, 'links after copy');
+    const row = await providerRow(p); const want = [['chatgpt', 'https://chatgpt.com/'], ['claude', 'https://claude.ai/'], ['gemini', 'https://gemini.google.com/'], ['copilot', 'https://copilot.microsoft.com/']];
+    ok(JSON.stringify(row.map((r) => [r.id, r.href])) === JSON.stringify(want), `links ${JSON.stringify(row)}`); ok(row.every((r) => r.target === '_blank' && /noopener/.test(r.rel) && /noreferrer/.test(r.rel) && !/[?#]/.test(r.href) && !/EXACT|PROMPT/i.test(r.href)), 'attributes');
+    ok(!(await p.ev('window.__opened')) && (await p.ev('location.pathname')) === '/lab', 'nothing opened or navigated by itself'); await shot(p, 'g5-provider-row');
+    await typeInto(p, '#fullPrompt', 'EXACT PROMPT TEXT, EDITED'); await waitFor(p, "!document.querySelector('.provider-row')", 4000, 'an edit hides the links');
+    await typeInto(p, '#fullPrompt', 'EXACT PROMPT TEXT'); await sleep(200); ok((await providerRow(p)) === null, 'editing back does not restore the confirmation');
+    await clickRole(p, 'button', 'Copy prompt'); await waitFor(p, "document.querySelector('.provider-row')", 5000, 'links after a new copy'); await p.ev("Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { throw new Error('denied'); } }, configurable: true }); document.execCommand = () => false; true");
+    await typeInto(p, '#fullPrompt', 'REFUSED COPY TEXT'); await clickRole(p, 'button', 'Copy prompt'); await waitFor(p, "document.querySelector('dialog[open] textarea.manual-copy')", 5000, 'manual dialog'); ok((await providerRow(p)) === null, 'a refused copy shows no links'); await p.key('Escape');
+    proxyState.catalog = true;
+    try {
+      const h = await page(1440, 900); await signIn(h, m); await h.goto(`${APP}/spark/catalog/s3-fixture-dinner`); await waitFor(h, "document.querySelector('.hl-prose')", 10000, 'hack page'); await fakeClipboard(h);
+      ok(!(await h.ev("!!document.querySelector('.actions-panel .provider-row')")) && (await text(h, '.actions-panel')).includes('Copy first, then open'), 'the panel asks to copy first'); await click(h, '#hack-copy', ''); await waitFor(h, "document.querySelector('.actions-panel .provider-row')", 5000, 'links in the action panel');
+      ok(JSON.stringify((await providerRow(h)).map((r) => r.href)) === JSON.stringify(want.map((w) => w[1])), 'panel links are the fixed home pages');
+    } finally { proxyState.catalog = false; }
+    return 'four fixed links after a confirmed copy only (Lab and Hack page); edit, edit-back and refused copy hide them; no auto-open';
+  });
+  await check('G6', 'CLIPBOARD vs ACCOUNT: a copy that finishes after sign-out records nothing; signing in as someone else removes the links; the draft text stays', async () => {
+    const m = await newMember('g6'); const p = await page(1280, 800); await signIn(p, m); await startDraft(p, { title: 'Race', prompt: 'RACE TEXT' });
+    await p.ev("window.__open = null; Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => new Promise((r) => { window.__release = r; }) }, configurable: true }); true");
+    await clickRole(p, 'button', 'Copy prompt'); await sleep(200); await signOutUi(p); await waitFor(p, "!document.querySelector('.account-state')?.textContent.includes('Signed in')", 8000, 'signed out'); await p.ev('window.__release(); true'); await sleep(500);
+    ok((await providerRow(p)) === null && !(await text(p)).includes('Copied.'), 'a late copy after sign-out recorded nothing'); ok((await val(p, '#fullPrompt')) === 'RACE TEXT', 'draft text stays, unsaved');
+    await fakeClipboard(p); await clickRole(p, 'button', 'Copy prompt'); await waitFor(p, "document.querySelector('.provider-row')", 5000, 'links appear'); const m2 = await newMember('g6b'); await p.ev("document.querySelector('#save-anon a').click(); true"); await waitFor(p, "location.pathname === '/account/sign-in'"); await typeInto(p, '#signin-email', m2.email); await typeInto(p, '#signin-password', PW); await p.key('Enter');
+    await waitFor(p, "location.pathname === '/lab'", 15000, 'back in the Lab after signing in'); await sleep(500);
+    ok((await providerRow(p)) === null, 'signing in as someone else removes the confirmation'); ok((await val(p, '#fullPrompt')) === 'RACE TEXT', 'the draft survived the account change'); return 'late copy after sign-out dropped; sign-in/out clears the links';
+  });
+  await check('G7', 'LAYOUT: Hack page (with the editor open), Build with Hack, Adapt and Advanced at 1440, 820 and 390: no horizontal overflow, controls ≥ 44px, fields labelled; on phones the editor is a bottom sheet and the prompt sits above the chat; screenshots for the V3 comparison', async () => {
+    proxyState.catalog = true;
+    try {
+      const m = await newMember('g7');
+      for (const [w, h, mob, tag] of [[1440, 900, false, 'desktop'], [820, 1100, false, 'tablet'], [390, 844, true, 'phone']]) {
+        const p = await page(w, h, mob); await signIn(p, m); await p.goto(`${APP}/spark/catalog/s3-fixture-dinner`); await waitFor(p, "document.querySelector('.hl-prose')", 10000, 'highlighted prompt');
+        ok(!(await overflow(p)), `${tag} hack page overflows`); let off = await offenders(p); ok(off.length === 0, `${tag} hack page small controls ${JSON.stringify(off)}`); await shot(p, `g7-hack-${tag}`);
+        const order = await p.ev("(() => { const a = document.querySelector('.prompt-card').getBoundingClientRect(), c = document.querySelector('.actions-panel').getBoundingClientRect(), d = document.querySelector('.col-details').getBoundingClientRect(); return { actionsAfterPrompt: c.top >= a.top, detailsAfterPrompt: d.top > a.top, actionsBeforeDetailsOnNarrow: window.innerWidth >= 990 || c.top < d.top, narrowIsOneColumn: window.innerWidth >= 990 || (Math.abs(a.width - c.width) < 3 && c.top >= a.bottom - 1), promptWide: a.width > Math.min(innerWidth - 60, 560), dims: [Math.round(a.width), Math.round(c.width), Math.round(a.bottom), Math.round(c.top), innerWidth] }; })()"); ok(order.narrowIsOneColumn && order.promptWide, `${tag} not one column ${JSON.stringify(order)}`); ok(order.actionsAfterPrompt && order.detailsAfterPrompt && order.actionsBeforeDetailsOnNarrow, `${tag} order ${JSON.stringify(order)}`);
+        await click(p, '#hack-hl-goal', ''); await waitFor(p, "document.querySelector('dialog.hl-editor[open]')", 8000, 'editor'); await sleep(450);
+        const sheet = await p.ev("(() => { const d = document.querySelector('dialog.hl-editor[open]'); const r = d.getBoundingClientRect(); return { modal: d.matches(':modal'), bottom: Math.round(innerHeight - r.bottom), full: Math.round(r.width) >= innerWidth - 1, inside: r.top >= 0 && r.bottom <= innerHeight + 1 }; })()");
+        ok(tag === 'phone' ? sheet.modal && sheet.full && sheet.bottom <= 1 && sheet.inside : !sheet.modal, `${tag} editor ${JSON.stringify(sheet)}`); await shot(p, `g7-hack-editor-${tag}`); await clickRole(p, 'button', 'Cancel'); await waitFor(p, "!document.querySelector('dialog.hl-editor[open]')", 4000, 'closed');
+        await clickRole(p, 'button', 'Make it yours'); await waitFor(p, "location.pathname === '/lab'");
+        for (const mode of ['Adapt', 'Advanced', 'Guided']) {
+          if (mode === 'Guided') { await clickRole(p, 'button', 'New hack'); await waitFor(p, "document.getElementById('g-answer')", 8000, 'a blank draft asks its first question'); }
+          await pickTab(p, mode); await sleep(250); ok(!(await overflow(p)), `${tag} ${mode} overflows`); off = await offenders(p); ok(off.length === 0, `${tag} ${mode} small controls ${JSON.stringify(off)}`);
+          if (mode === 'Guided') {
+            const g = await p.ev("(() => { const a = document.querySelector('.build-preview').getBoundingClientRect(), b = document.querySelector('.build-chat').getBoundingClientRect(); return { side: Math.abs(a.top - b.top) < 40 && a.left > b.left, previewAbove: a.top < b.top, labelled: !!document.querySelector('label[for=g-answer]') }; })()");
+            ok(g.labelled && (tag === 'phone' || tag === 'tablet' ? g.previewAbove : g.side), `${tag} build layout ${JSON.stringify(g)}`); const small = await p.ev("[...document.querySelectorAll('#g-answer,#g-send,.build-chat .chip,.bubble-edit')].filter((e) => e.getBoundingClientRect().height < 43.5).map((e) => e.id || e.className)"); ok(small.length === 0, `${tag} exchange controls small ${small}`);
+            await chatAnswer(p, 'Plan my mum\u2019s 70th birthday dinner', 'What should the AI know?'); await chatAnswer(p, 'Eight people, she loves Italian, budget \u00a3300', 'Any rules it should follow?'); await sleep(300); ok(!(await overflow(p)), `${tag} conversation overflows`);
+          }
+          await shot(p, `g7-lab-${mode.toLowerCase()}-${tag}`);
+        }
+      }
+      return 'no overflow, controls ≥ 44px, labelled fields, phone editor is a bottom sheet, prompt above chat on narrow screens, side by side on desktop';
+    } finally { proxyState.catalog = false; }
+  });
+  const FAKE_KEYBOARD = "(() => { const t = new EventTarget(); const vv = { height: innerHeight, offsetTop: 0, width: innerWidth, scale: 1, addEventListener: t.addEventListener.bind(t), removeEventListener: t.removeEventListener.bind(t) }; Object.defineProperty(window, 'visualViewport', { value: vv, configurable: true }); window.__kb = (px) => { vv.height = innerHeight - px; t.dispatchEvent(new Event('resize')); }; })();";
+  const rectOf = (p, sel) => p.ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right), h: Math.round(r.height), shown: cs.display !== 'none' && r.height > 0, vh: innerHeight, vw: innerWidth }; })()`);
+  await check('G8', 'UNFINISHED ANSWERS: a guided answer that has not been sent survives mode switches and page changes, counts as unsaved work (leave-page warning, replace-draft guard), and a Change in progress keeps its question', async () => {
+    const m = await newMember('g8'); const p = await page(1280, 900); await signIn(p, m); await clickRole(p, 'button', 'New hack'); await waitFor(p, "document.getElementById('g-answer')", 8000, 'the exchange');
+    ok(!(await warns(p)), 'a fresh draft is not unsaved'); await typeInto(p, '#g-answer', 'UNSENT goal about Lisbon'); ok(await warns(p), 'a typed, unsent answer is unsaved work'); ok(/unsaved/i.test(await text(p, '.draft-pill')), 'the draft pill says so');
+    for (const t of ['Adapt', 'Advanced', 'Guided']) await pickTab(p, t); ok((await val(p, '#g-answer')) === 'UNSENT goal about Lisbon', 'switching modes kept the unsent answer');
+    await clickRole(p, 'link', 'Home'); await waitFor(p, "location.pathname === '/spark'"); await goLab(p); await waitFor(p, "document.getElementById('g-answer')", 8000, 'back in the exchange'); ok((await val(p, '#g-answer')) === 'UNSENT goal about Lisbon', 'a page change kept it');
+    await clickRole(p, 'link', 'Home'); await waitFor(p, "location.pathname === '/spark'"); await clickRole(p, 'button', 'New hack'); await waitFor(p, "document.querySelector('dialog.confirm[open]')", 5000, 'replace-draft guard'); ok((await dialogText(p)).includes('unsaved work'), 'the guard names unsaved work'); await confirmDialog(p, 'Keep my draft'); await sleep(300);
+    await goLab(p); await waitFor(p, "document.getElementById('g-answer')", 8000, 'back'); ok((await val(p, '#g-answer')) === 'UNSENT goal about Lisbon', 'Cancel kept it');
+    await click(p, '#g-send', 'Send'); await waitFor(p, "document.getElementById('g-question')?.innerText.includes('What should the AI know?')", 6000, 'sent'); await chatAnswer(p, 'Two adults', 'Any rules it should follow?');
+    await p.ev("document.querySelector('.bubble-edit').click(); true"); await waitFor(p, "document.getElementById('g-cancel-change')", 4000, 'Change in progress'); await typeInto(p, '#g-answer', 'HALF-EDITED goal');
+    await pickTab(p, 'Advanced'); await pickTab(p, 'Guided'); ok((await val(p, '#g-answer')) === 'HALF-EDITED goal' && await p.ev("!!document.getElementById('g-cancel-change')"), 'the Change in progress and its text survived'); await click(p, '#g-cancel-change', ''); await waitFor(p, "!document.getElementById('g-cancel-change')", 3000, 'cancelled');
+    ok((await text(p, '#g-preview')).includes('Objective: UNSENT goal about Lisbon'), 'cancelling the change left the answer as it was');
+    await clickRole(p, 'link', 'Home'); await waitFor(p, "location.pathname === '/spark'"); await clickRole(p, 'button', 'New hack'); await confirmDialog(p, 'Replace my draft'); await waitFor(p, "location.pathname === '/lab'"); await waitFor(p, "document.getElementById('g-answer')", 8000, 'a blank exchange');
+    ok((await val(p, '#g-answer')) === '' && !(await warns(p)), 'a replaced draft starts with nothing unfinished'); return 'unsent answer kept across modes and pages, counted as unsaved, guarded, Change in progress kept, cleared by a replacement';
+  });
+  await check('G8b', 'QUESTION IDENTITY: a Limits answer typed but not sent stays with the Limits question after leaving the Lab and coming back; Send puts it in the limits, never in the title; the exchange does not move on by itself', async () => {
+    const m = await newMember('g8b'); const p = await page(1280, 900); await signIn(p, m); await clickRole(p, 'button', 'New hack'); await waitFor(p, "document.getElementById('g-answer')", 8000, 'the exchange');
+    await chatAnswer(p, 'Plan a dinner', 'What should the AI know?'); await chatAnswer(p, 'Eight people', 'Any rules it should follow?');
+    await typeInto(p, '#g-answer', 'Avoid peanuts'); ok(await warns(p), 'the unsent answer is unsaved work');
+    await clickRole(p, 'link', 'Home'); await waitFor(p, "location.pathname === '/spark'"); await goLab(p); await waitFor(p, "document.getElementById('g-answer')", 8000, 'back in the exchange');
+    ok((await text(p, '#g-question')).includes('Any rules it should follow?'), `the open question is still Limits: ${await text(p, '#g-question')}`); ok((await val(p, '#g-answer')) === 'Avoid peanuts', 'the unsent text is still in the answer box');
+    ok((await text(p, '#g-step')) === 'Question 3 of 5', await text(p, '#g-step'));
+    await click(p, '#g-send', 'Send'); await waitFor(p, "document.getElementById('g-question')?.innerText.includes('How should the answer look?')", 6000, 'the format question follows Limits'); ok((await text(p, '.bubbles')).includes('Avoid peanuts'), 'the answer is a bubble under Limits');
+    await pickTab(p, 'Advanced'); ok((await val(p, '#promptContext')) === 'Eight people\n\nLimits: Avoid peanuts', `context ${JSON.stringify(await val(p, '#promptContext'))}`); ok((await val(p, '#promptTitle')) === '', `the title stayed empty: ${JSON.stringify(await val(p, '#promptTitle'))}`); ok((await val(p, '#promptGoal')) === 'Plan a dinner', 'goal untouched');
+    await pickTab(p, 'Guided'); ok(await chipClick(p, 'Concise summary'), 'format chip'); await waitFor(p, "document.getElementById('g-question')?.innerText.includes('what will you call it')", 6000, 'the title question comes last'); ok((await val(p, '#g-answer')) === '', 'the title box is empty');
+    return 'unsent Limits answer kept with its question; Send filled the limits, the title stayed empty, the next question was Format';
+  });
+  await check('G9', 'STALE EDITORS: a reset or replacement clears the highlight editor and the guided answer; a late Apply from the old editor changes nothing; the Hack page editor does not outlive the draft it was opened for', async () => {
+    proxyState.catalog = true;
+    try {
+      const m = await newMember('g9'); const p = await page(1280, 900); await signIn(p, m); await p.goto(`${APP}/spark/catalog/s3-fixture-dinner`); await waitFor(p, "document.querySelector('.hl-prose')", 10000, 'hack page'); await clickRole(p, 'button', 'Make it yours'); await waitFor(p, "location.pathname === '/lab'"); await waitFor(p, "document.getElementById('adapt-hl-goal')", 8000, 'Adapt');
+      const goal0 = await text(p, '#adapt-hl-goal'); await click(p, '#adapt-hl-goal', ''); await waitFor(p, "document.querySelector('dialog.hl-editor[open]')", 5000, 'editor'); await typeInto(p, '#adapt-ed-text', 'OLD EDITOR TEXT'); ok(await warns(p), 'an unapplied editor is unsaved work');
+      await p.ev("window.__oldApply = document.getElementById('adapt-apply'); true"); await clickRole(p, 'button', 'Reset draft'); await confirmDialog(p, 'Reset my draft'); await waitFor(p, "!document.querySelector('dialog.hl-editor[open]')", 5000, 'the reset closed the editor');
+      ok((await text(p, '#adapt-hl-goal')) === goal0 && !(await warns(p)), 'the reset draft is untouched and clean'); await p.ev("window.__oldApply.disabled = false; window.__oldApply.click(); true"); await sleep(400);
+      ok((await text(p, '#adapt-hl-goal')) === goal0 && !(await warns(p)), 'a late Apply from the old editor changed nothing'); await click(p, '#adapt-hl-goal', ''); await waitFor(p, "document.querySelector('dialog.hl-editor[open]')", 5000, 'editor again'); ok((await val(p, '#adapt-ed-text')) === goal0, 'a new editor starts from the draft, not from the old text'); await clickRole(p, 'button', 'Cancel');
+      // guided answer vs reset
+      await pickTab(p, 'Guided'); await waitFor(p, "document.getElementById('g-answer') || document.getElementById('g-step')", 6000, 'guided'); await p.ev("document.querySelector('.bubble-edit')?.click(); true"); await waitFor(p, "document.getElementById('g-answer')", 4000, 'answer box'); await typeInto(p, '#g-answer', 'OLD ANSWER'); ok(await warns(p), 'unsent answer counts');
+      await clickRole(p, 'button', 'Reset draft'); await confirmDialog(p, 'Reset my draft'); await sleep(400); ok(!(await p.ev("(document.getElementById('g-answer')?.value ?? '').includes('OLD ANSWER')")) && !(await warns(p)), 'the reset cleared the unsent answer');
+      // Hack page editor vs a replacement
+      await clickRole(p, 'link', 'Home'); await waitFor(p, "location.pathname === '/spark'"); await p.ev("history.back(); true"); await p.goto(`${APP}/spark/catalog/s3-fixture-dinner`); await waitFor(p, "document.querySelector('.hl-prose')", 10000, 'hack page');
+      await click(p, '#hack-hl-goal', ''); await waitFor(p, "document.querySelector('dialog.hl-editor[open]')", 5000, 'page editor'); await typeInto(p, '#hack-ed-text', 'PAGE EDITOR TEXT'); ok(await warns(p), 'the page editor is unsaved work'); await p.ev("window.__pageApply = document.getElementById('hack-apply'); true");
+      await clickRole(p, 'button', 'New hack'); await confirmDialog(p, 'Replace my draft'); await waitFor(p, "location.pathname === '/lab'"); await p.ev("history.back(); true"); await waitFor(p, "location.pathname === '/spark/catalog/s3-fixture-dinner'", 8000, 'back on the Hack page'); await sleep(500);
+      ok(!(await editorOpen(p)) && !(await text(p, '.hl-prose')).includes('PAGE EDITOR TEXT'), 'the Hack page editor did not outlive the draft it belonged to'); await p.ev("if (window.__pageApply) { window.__pageApply.disabled = false; window.__pageApply.click(); } true"); await sleep(300);
+      ok(!(await text(p, '.hl-prose')).includes('PAGE EDITOR TEXT') && (await text(p, '#hack-version-status')) === 'Original', 'a late Apply did nothing'); return 'reset and replacement clear editors and unsent answers; late Apply changes nothing';
+    } finally { proxyState.catalog = false; }
+  });
+  await check('G10', 'PHONE INTERACTION (390): Copy stays at the bottom of the Hack page above the bottom navigation and the keyboard; the guided answer box stays at the bottom with the conversation scrolling above; the prompt and progress are compact; the real count is "of 5"', async () => {
+    proxyState.catalog = true;
+    try {
+      const m = await newMember('g10'); const p = await page(390, 844, true); await p.send('Page.addScriptToEvaluateOnNewDocument', { source: FAKE_KEYBOARD }); await signIn(p, m); await p.goto(`${APP}/spark/catalog/s3-fixture-dinner`); await waitFor(p, "document.querySelector('.hl-prose')", 10000, 'hack page'); await fakeClipboard(p);
+      const nav = await rectOf(p, '.mobile-nav'), bar = await rectOf(p, '.copy-bar'); ok(bar.shown && nav.shown && bar.bottom <= nav.top + 1 && bar.top > 0 && bar.bottom <= bar.vh, `copy bar ${JSON.stringify(bar)} nav ${JSON.stringify(nav)}`);
+      for (const y of [0, 700, 2400, 9999]) { await p.ev(`window.scrollTo(0, ${y}); true`); await sleep(120); const b = await rectOf(p, '.copy-bar'), n = await rectOf(p, '.mobile-nav'); ok(b.shown && b.bottom <= n.top + 1 && b.top > 0, `the copy bar stays reachable at scroll ${y}: ${JSON.stringify(b)}`); }
+      ok(!(await rectOf(p, '#hack-copy')).shown, 'the in-panel copy button is not duplicated on phones'); await p.ev('window.scrollTo(0, 0); true'); await shot(p, 'g10-hack-phone-top');
+      await click(p, '#hack-copy-bar', ''); await waitFor(p, "document.querySelector('.copy-bar .provider-row.compact')", 5000, 'links in the bar'); const links = await p.ev("[...document.querySelectorAll('.copy-bar .provider-row a')].map((a) => a.getAttribute('href'))"); ok(JSON.stringify(links) === JSON.stringify(['https://chatgpt.com/', 'https://claude.ai/', 'https://gemini.google.com/', 'https://copilot.microsoft.com/']), `bar links ${JSON.stringify(links)}`);
+      const bar2 = await rectOf(p, '.copy-bar'); ok(bar2.bottom <= nav.top + 1 && bar2.top > 0, 'the bar with the links is still above the navigation'); const inside = await p.ev("[...document.querySelectorAll('.copy-bar #hack-copy-bar, .copy-bar')].every((e) => { const r = e.getBoundingClientRect(); return r.left >= -1 && r.right <= innerWidth + 1; })"); ok(inside, 'the copy bar and its Copy button fit the screen width (the link row scrolls on its own)'); await sleep(3700); await p.shot(`${OUT}g10-hack-phone-copied.png`, false);
+      await p.ev('window.__kb(300); true'); await sleep(200); const kb = await rectOf(p, '.copy-bar'); ok(await p.ev("document.documentElement.classList.contains('kb-open')") && kb.bottom <= kb.vh - 300 + 1 && kb.bottom >= kb.vh - 300 - 2, `bar above a 300px keyboard: ${JSON.stringify(kb)}`); ok(!(await rectOf(p, '.mobile-nav')).shown, 'the bottom navigation steps aside for the keyboard'); await sleep(300); await p.shot(`${OUT}g10-hack-phone-keyboard.png`, false); await p.ev('window.__kb(0); true'); await sleep(150);
+      ok((await rectOf(p, '.mobile-nav')).shown && !(await p.ev("document.documentElement.classList.contains('kb-open')")), 'the navigation returns when the keyboard closes');
+      // the exchange
+      await clickRole(p, 'button', 'New hack'); await waitFor(p, "document.getElementById('g-answer')", 8000, 'the exchange'); await sleep(300);
+      ok((await text(p, '#g-step')) === 'Question 1 of 5', await text(p, '#g-step')); await chatAnswer(p, 'Plan my mum’s 70th birthday dinner', 'What should the AI know?'); await chatAnswer(p, 'Eight people, she loves Italian, budget £300', 'Any rules it should follow?'); ok((await text(p, '#g-step')) === 'Question 3 of 5', 'the real five-question count');
+      const pv = await rectOf(p, '#g-preview'); ok(pv.h <= 110, `compact preview ${pv.h}px`); const rows = await p.ev("new Set([...document.querySelectorAll('.build-preview .part')].map((e) => Math.round(e.getBoundingClientRect().top))).size"); ok(rows === 1, `progress chips in one row (${rows})`);
+      await sleep(400); const main = await rectOf(p, '.build-main'); ok(main.top >= -2 && main.top < 200, `the exchange was brought into view on open: ${JSON.stringify(main)}`); const comp = await rectOf(p, '.composer'), nav2 = await rectOf(p, '.mobile-nav'); ok(comp.shown && comp.bottom <= nav2.top + 1 && comp.top > 0, `composer sits above the navigation ${JSON.stringify(comp)}`);
+      const unhidden = await p.ev("(() => { const q = document.getElementById('g-question').getBoundingClientRect(), b = document.querySelector('.bubbles').getBoundingClientRect(), c = document.querySelector('.composer').getBoundingClientRect(), pv = document.querySelector('.build-preview').getBoundingClientRect(); return { questionInsideChat: q.top >= b.top - 1 && q.bottom <= b.bottom + 1, aboveComposer: q.bottom <= c.top + 1, previewAbove: pv.bottom <= b.top + 2 }; })()"); ok(unhidden.questionInsideChat && unhidden.aboveComposer && unhidden.previewAbove, `the current question is visible, above the answer box, below the prompt: ${JSON.stringify(unhidden)}`);
+      ok(/Scripted, not live AI/.test(await text(p, '#g-note')), 'the scripted note stays on the phone');
+      const bubbles = await p.ev("(() => { const b = document.querySelector('.bubbles'); return { h: Math.round(b.getBoundingClientRect().height), scrolls: b.scrollHeight >= b.clientHeight, max: Math.round(innerHeight * 0.5), overflowY: getComputedStyle(b).overflowY }; })()"); ok(bubbles.h <= bubbles.max && bubbles.overflowY === 'auto' && bubbles.h >= 120, `the conversation scrolls inside its own area ${JSON.stringify(bubbles)}`);
+      await typeInto(p, '#g-answer', 'Keep it short and friendly'); await sleep(3700); await p.shot(`${OUT}g10-build-phone-typing.png`, false); await p.ev('window.__kb(300); true'); await sleep(200); const ck = await rectOf(p, '.composer'); ok(ck.bottom <= ck.vh - 300 + 1 && ck.bottom >= ck.vh - 300 - 30 && ck.top > 0, `composer above a 300px keyboard ${JSON.stringify(ck)}`); ok(await p.ev("(() => { const q = document.getElementById('g-question').getBoundingClientRect(), b = document.querySelector('.bubbles').getBoundingClientRect(); return q.bottom <= b.bottom + 1 && q.bottom > b.top; })()"), 'the latest question stays in view when the keyboard opens'); await sleep(300); await p.shot(`${OUT}g10-build-phone-keyboard.png`, false); await p.ev('window.__kb(0); true');
+      ok(await warns(p), 'the unsent text is still unsaved work'); return 'Copy bar and composer pinned above navigation and keyboard, conversation scrolls above, compact preview and chips, Question n of 5';
+    } finally { proxyState.catalog = false; }
+  });
   await check('Z1', 'no Content-Security-Policy violation, blocked resource or uncaught exception was logged by any page in this run (meaningful when the app runs with the private-preview gate, PREVIEW_GATE=on)', async () => {
     let n = 0; const bad = [];
     for (const pg of pages) for (const e of pg.history) { n++; const t = JSON.stringify(e.params ?? {}); if (/Content Security Policy|Refused to (load|execute|connect|apply|frame|navigate)|violates the following/i.test(t) || e.method === 'Runtime.exceptionThrown') bad.push(`${e.method}: ${t.slice(0, 220)}`); }
@@ -511,5 +765,6 @@ try {
   proc.kill(); app.kill(); proxy.close();
   for (const m of members) { try { await admin.auth.admin.deleteUser(m.id); } catch { /* best effort on a disposable stack */ } }
 }
+if (signInTrace.length) { const ms = signInTrace.map((t) => t.ms); console.log(`SIGN-IN TRACE ${JSON.stringify({ count: signInTrace.length, failed: signInTrace.filter((t) => !t.ok).length, ms: { p50: pct(ms, .5), p90: pct(ms, .9), max: Math.max(...ms) }, slowest: signInTrace.filter((t) => t.ms > 3000).map((t) => ({ at: t.at, ms: t.ms, ok: t.ok })) })}`); }
 console.log(`\n${results.length - failed}/${results.length} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

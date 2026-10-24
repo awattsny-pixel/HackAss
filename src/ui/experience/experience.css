@@ -222,6 +222,119 @@
   .hx .work-row{grid-template-columns:1fr}.hx .outcome-grid{grid-template-columns:1fr 1fr}
 }
 @media(min-width:601px){.hx .work-row .btn,.hx .work-row .outcome-badge{justify-self:end}}
+/* ---- S3: Build with Hack (scripted exchange + live prompt), the Hack page (inline highlights, action panel), mode switch, provider row ---- */
+.hx{--hl:#dde5ff;--hl-line:#a9c2ff}
+.hx .tabs[aria-label="How to edit"]{margin-top:2px}
+.hx .seg{display:inline-flex;gap:3px;background:var(--chip);border-radius:12px;padding:3px;margin-bottom:12px}
+.hx .seg button{border:0;background:transparent;padding:8px 14px;border-radius:10px;font-weight:600;min-height:44px}
+.hx .seg button[aria-pressed="true"]{background:#fff;box-shadow:0 1px 3px rgba(20,20,20,.12)}
+.hx .chip.on{background:var(--ink);color:#fff}
+.hx .block{display:flex;width:100%;justify-content:center;text-align:center}
+.hx .parts{list-style:none;margin:6px 0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.hx .part{background:var(--chip-soft);border-radius:99px;padding:6px 12px;font-size:13.5px}
+.hx .part.filled{background:var(--success-wash);color:var(--success-ink)}.hx .part.too_long{background:var(--danger-wash);color:var(--danger)}
+/* the prompt as a sentence, with highlights inside it */
+.hx .hl-prose{background:var(--ground);border-radius:16px;padding:16px 18px;display:grid;gap:10px;font-size:17px;line-height:1.8}
+.hx .hl-prose p{margin:0}.hx .hl-prose p.muted{font-size:13px;line-height:1.45}
+.hx .hl-label{font-weight:700;color:var(--muted)}
+.hx .hl-inline{display:inline;font:inherit;line-height:inherit;text-align:left;background:var(--hl);border:0;border-bottom:2px solid var(--hl-line);border-radius:8px;padding:1px 6px;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere;-webkit-box-decoration-break:clone;box-decoration-break:clone;cursor:pointer}
+.hx .hl-inline:hover{background:#cddbff}.hx .hl-empty{color:var(--muted);font-style:italic}
+.hx .hl-fixed{color:var(--muted);font-size:14.5px;line-height:1.6}
+.hx .hl-plain{white-space:pre-wrap;overflow-wrap:anywhere}
+.hx .hl-prose .hl-rest{background:var(--surface);border-radius:12px;padding:12px 14px;font-size:15px;line-height:1.6}
+.hx .prompt-card .pc-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:12px}
+.hx .pc-head h2{margin:0;font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:800}
+.hx dialog.hl-editor{border:0;padding:18px;background:#fff;color:var(--ink);border-radius:16px;box-shadow:inset 0 0 0 1.5px var(--hl-line);position:static;inset:auto;width:100%;max-width:none;height:auto;margin:12px 0 0}
+.hx dialog.hl-editor h4{margin:0 0 10px;font-size:15px;font-weight:700}
+.hx dialog.hl-editor::backdrop{background:rgba(20,20,20,.38)}
+.hx dialog.hl-editor .chips{margin:6px 0 12px;flex-wrap:wrap;overflow:visible;padding:0}
+.hx .hl-textarea{width:100%;background:var(--ground);border:0;border-radius:12px;padding:12px 14px;font-size:16px;line-height:1.5;min-height:100px;resize:vertical;margin-bottom:12px}
+/* the Hack page: prompt first, action panel beside it */
+.hx .hack-grid{grid-template-columns:minmax(0,1fr) 340px;align-items:start}
+.hx .col-main,.hx .col-side{display:grid;gap:16px;min-width:0;align-content:start}
+.hx .col-details section+section{padding-top:16px;margin-top:16px;border-top:1px solid var(--line-soft)}
+.hx .actions-panel{display:grid;gap:10px;align-content:start}
+.hx .actions-panel p{margin:0}
+.hx .act-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hx .your-version{display:grid;gap:10px;padding:14px;background:var(--ground);border-radius:16px}
+.hx .yv-head{display:flex;justify-content:space-between;align-items:center;gap:10px}.hx .yv-head h3{margin:0;font-size:15px;font-weight:700}
+.hx .your-version .seg{margin:0}
+.hx .save-panel.compact{background:transparent;padding:0;margin:0;box-shadow:none}.hx .save-panel.compact .save-head h3{display:none}.hx .save-panel.compact .save-pill{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}.hx .save-panel.compact{position:relative}
+.hx .provider-row{margin:2px 0;padding:12px 14px;background:var(--success-wash);border-radius:16px}
+.hx .provider-row p{margin:0 0 8px}.hx .provider-row .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}.hx .provider-row .btn{justify-content:center;text-align:center}
+/* Build with Hack */
+.hx .lab-grid.guided{grid-template-columns:minmax(0,1fr)}
+.hx .build{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);grid-template-areas:"chat preview" "chat actions";gap:16px 22px;align-items:start}
+.hx .build-chat{grid-area:chat}.hx .build-preview{grid-area:preview}.hx .build-actions{grid-area:actions}
+.hx .bp-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.hx .bp-head h3{margin:0;font-size:16px;font-weight:700}
+.hx .bubbles{display:flex;flex-direction:column;gap:10px;min-height:210px;max-height:430px;overflow:auto;padding:12px;background:var(--ground);border-radius:16px;margin:10px 0}
+.hx .turn{display:grid;gap:8px}
+.hx .bubble{max-width:90%;padding:10px 14px;border-radius:18px;font-size:15px;line-height:1.45;overflow-wrap:anywhere;white-space:pre-wrap}
+.hx .bubble.hack{background:#fff;border-bottom-left-radius:6px;align-self:flex-start;display:flex;gap:10px;align-items:flex-start}
+.hx .dot{width:22px;height:22px;border-radius:50%;background:var(--amber);flex:none;margin-top:1px}
+.hx .bubble.you{background:var(--ink);color:#fff;border-bottom-right-radius:6px;align-self:flex-end;display:flex;gap:10px;align-items:center}
+.hx .bubble-edit{background:transparent;border:0;color:#fff;text-decoration:underline;font-size:13px;min-height:44px;padding:0 6px;flex:none}
+.hx .bubble-edit:focus-visible{outline-color:#fff}
+.hx .build-chat .chips{margin:8px 0}
+.hx .answer{display:flex;gap:8px;align-items:flex-end}
+.hx .answer textarea{flex:1;border:0;background:var(--ground);border-radius:16px;padding:12px 14px;font-size:16px;line-height:1.4;min-height:48px;resize:none;min-width:0}
+.hx .answer .btn{min-height:48px}
+.hx .hl-preview{max-height:340px;overflow:auto}
+@media(min-width:990px){.hx .actions-panel{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto}}
+@media(max-width:989px){
+  .hx .hack-grid{grid-template-columns:minmax(0,1fr)}
+  .hx .col-main,.hx .col-side{display:contents}
+  .hx .hack-grid .prompt-card{order:1}.hx .hack-grid .actions-panel{order:2}.hx .hack-grid .col-details{order:3}.hx .hack-grid .col-aside{order:4}
+  .hx .build{grid-template-columns:minmax(0,1fr);grid-template-areas:"preview" "chat" "actions"}
+  .hx .bubbles{max-height:46vh}
+}
+@media(max-width:767px){
+  .hx .hl-prose{font-size:16px}
+  .hx .hl-preview{max-height:150px}
+  .hx .build-chat .chips[role="radiogroup"]{flex-wrap:wrap;overflow:visible;margin:8px 0;padding:0}
+  .hx dialog.hl-editor[open]{position:fixed;left:0;right:0;bottom:0;top:auto;margin:0;width:100%;border-radius:38px 38px 0 0;padding:24px 18px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(20,20,20,.18);max-height:82vh;overflow:auto}
+  /* With the keyboard open the sheet clears it (--kb) and also the floating accessory bar iOS shows above it (about 60px, which the visual viewport does not account for), so Apply and Cancel stay visible. */
+  :root.kb-open .hx dialog.hl-editor[open]{bottom:var(--kb,0px);padding-bottom:calc(24px + 64px)}
+}
+@media(prefers-reduced-motion:no-preference){@keyframes hx-sheet-up{from{transform:translateY(100%)}to{transform:none}}@media(max-width:767px){.hx dialog.hl-editor[open]{animation:hx-sheet-up .45s var(--ease)}}}
+/* ---- S3 round 2: the phone interaction layout (Copy stays reachable, the answer box stays at the bottom, compact progress) ---- */
+.hx .show-767,.hx .show-989,.hx .copy-bar{display:none}
+.hx .steps5{display:flex;gap:4px;margin:2px 0 8px}.hx .steps5 span{flex:1;height:4px;border-radius:2px;background:var(--chip)}.hx .steps5 .on{background:var(--ink)}.hx .steps5 .now{background:var(--coral)}
+.hx .composer{display:grid;gap:8px}.hx .composer .chips{margin:0}
+.hx .build-main{display:contents}
+.hx .build-preview .block{margin:8px 0 0}
+@media(max-width:989px){.hx .show-989{display:block}.hx .hide-989{display:none}}
+@media(max-width:767px){
+  .hx{--bnav:calc(64px + env(safe-area-inset-bottom,0px));--below:var(--bnav)}
+  :root.kb-open .hx{--below:var(--kb)}
+  .hx .show-767{display:block}.hx .hide-767{display:none}
+  :root.kb-open .hx .mobile-nav{display:none}
+  .hx .copy-bar{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;position:fixed;left:0;right:0;bottom:var(--below);z-index:25;padding:10px 18px;background:rgba(246,245,242,.97);backdrop-filter:blur(16px);border-top:1px solid var(--line)}
+  .hx .copy-bar p{margin:0;text-align:center}
+  .hx .copy-bar .provider-row.compact{background:transparent;padding:0;margin:0;min-width:0}
+  .hx .provider-row.compact .actions{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:8px;margin:0;scrollbar-width:none}.hx .provider-row.compact .actions::-webkit-scrollbar{display:none}.hx .provider-row.compact .btn{flex:none}
+  .hx .page:has(.copy-bar){padding-bottom:calc(var(--bnav) + 150px)}
+  .hx .lab-head .lead{display:none}.hx .lab-head{margin-bottom:10px}
+  .hx .lab-bar{flex-wrap:nowrap}.hx .lab-bar .btn{padding:8px 14px}
+  /* the exchange is one screen: prompt so far on top, the conversation scrolling in the middle, the answer box at the bottom */
+  .hx .build{gap:12px}
+  .hx .build-main{display:flex;flex-direction:column;gap:8px;height:calc(100vh - var(--below) - 28px);height:calc(100dvh - var(--below) - 28px);min-height:400px;scroll-margin-top:8px}
+  .hx .build-preview{flex:none}.hx .build-chat{flex:1;min-height:0;display:flex;flex-direction:column}
+  .hx .bubbles{flex:1;min-height:0;max-height:none;margin:6px 0}
+  .hx .composer{flex:none}
+  /* keyboard open: the exchange is pinned to the visible area above the keyboard (the browser pans the page behind it, so the exchange does not depend on where the page ended up), and the compact prompt preview steps aside so the current question and the answer box are on screen together */
+  :root.kb-open .hx .build-main{position:fixed;left:0;right:0;top:var(--vvt,0px);height:var(--vvh);min-height:0;z-index:40;box-sizing:border-box;padding:10px 18px;background:var(--surface);overflow:hidden}
+  :root.kb-open .hx .build-preview{display:none}
+  .hx .build-preview .bp-head{align-items:center}.hx .build-preview .bp-head h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  .hx .bp-copy{padding:6px 14px;min-height:44px}
+  .hx .build-preview .parts{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:4px -18px;padding:2px 18px}.hx .build-preview .parts::-webkit-scrollbar{display:none}.hx .build-preview .part{flex:none}
+  .hx .hl-preview{max-height:84px;font-size:14px;padding:8px 12px}
+  .hx .build-preview .banner{margin:6px 0;padding:8px 12px}
+  .hx .build-preview #g-check-summary{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+  .hx .build-chat .bp-head .small{font-size:12.5px}.hx #g-note{margin:0 0 4px}
+  .hx .composer .chips{padding:2px 0}
+  .hx .answer textarea{max-height:96px}
+}
 @media(prefers-reduced-motion:no-preference){.hx .btn,.hx .chip,.hx .nav a{transition:background .17s,transform .17s,box-shadow .17s}.hx .hack-card{transition:transform .25s var(--ease)}.hx .hack-card:hover{transform:translateY(-2px)}.hx .skeleton{animation:hx-shimmer 1.4s linear infinite}}
 @media(prefers-reduced-motion:reduce){.hx *{animation:none!important;transition:none!important}}
 @keyframes hx-shimmer{to{background-position:-200% 0}}

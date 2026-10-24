@@ -3,8 +3,9 @@ import type { ExperienceHack, Mode, OutputFormat, PromptFields } from './types.t
 import { OUTPUT_FORMATS } from './types.ts';
 
 /** Assembles a prompt from the guided fields (the wording of the approved prototype). */
+export const PROMPT_TAIL = 'Ask for essential missing information. Distinguish provided facts from assumptions. Explain tradeoffs and do not invent unsupported details.';
 export function composePrompt(f: Pick<PromptFields, 'goal' | 'context' | 'format'>): string {
-  return `Objective: ${f.goal.trim()}\n\nContext and constraints: ${f.context.trim()}\n\nReturn: ${f.format}.\n\nAsk for essential missing information. Distinguish provided facts from assumptions. Explain tradeoffs and do not invent unsupported details.`;
+  return `Objective: ${f.goal.trim()}\n\nContext and constraints: ${f.context.trim()}\n\nReturn: ${f.format}.\n\n${PROMPT_TAIL}`;
 }
 
 export const isOutputFormat = (v: string): v is OutputFormat => (OUTPUT_FORMATS as readonly string[]).includes(v);
