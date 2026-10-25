@@ -71,8 +71,8 @@ test('copyText reports "copied" only when the write succeeded, and "blocked" whe
 });
 test('the provider announces success only in the success branch; a failure opens the selectable manual-copy dialog with instructions', () => {
   const p = src('src/ui/experience/ExperienceProvider.tsx');
-  assert.match(src('src/ui/experience/copy.ts'), /if \(result === 'copied'\) deps\.onCopied\(\); else deps\.onManual\(text\);/);
-  assert.match(p, /onCopied: \(\) => toast\(COPIED\), onManual: setManualCopy/);
+  assert.match(src('src/ui/experience/copy.ts'), /if \(result === 'copied'\) deps\.onCopied\(text, stamp\); else deps\.onManual\(text\);/);
+  assert.match(p, /onCopied: \(text, stamp\) => \{ toast\(COPIED\);.*onManual: setManualCopy/);
   assert.match(p, /<ManualCopyDialog text=\{manualCopy\}/);
   const d = src('src/ui/experience/ManualCopyDialog.tsx'); assert.match(d, /readOnly/); assert.match(d, /\.select\(\)/);
   const c = src('src/ui/experience/copy.ts'); assert.match(c, /nothing has been copied yet/); assert.match(c, /Ctrl\+C/);

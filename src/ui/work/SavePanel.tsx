@@ -8,7 +8,8 @@ import { useSession } from '../account/SessionProvider.tsx';
 import { ConflictPanel } from './ConflictPanel.tsx';
 import { isRetryable, PRIVACY_NOTE, problemText, promptStatusText } from './messages.ts';
 
-export function SavePanel() {
+/** `compact`: the Hack page's "Your version" block: the same controller, status and messages, with the V3 wording and without the second save button. */
+export function SavePanel({ compact = false }: { compact?: boolean } = {}) {
   const { state, work, dispatch } = useExperience();
   const { session } = useSession();
   const view = promptSaveView(state);
@@ -18,15 +19,15 @@ export function SavePanel() {
   const pillClass = view === 'not_saved' || view === 'changed' ? '' : view;
   const anon = session.status === 'anonymous' && w.saved === null;
   return (
-    <section className="save-panel" aria-labelledby="save-h">
+    <section className={`save-panel${compact ? ' compact' : ''}`} aria-labelledby="save-h">
       <div className="save-head">
-        <h3 id="save-h">Save to your account</h3>
+        <h3 id="save-h">{compact ? 'Your version' : 'Save to your account'}</h3>
         <span id="save-status" className={`save-pill ${pillClass}`} role="status" aria-live="polite">{promptStatusText(view, w.saved?.savedAt ?? null)}</span>
       </div>
       <div className="actions">
-        <button type="button" id="save-prompt" className="btn primary" disabled={busy} aria-busy={busy && view === 'saving'} onClick={() => { void work.savePrompt('save'); }}>{w.saved ? 'Save changes' : 'Save prompt'}</button>
-        <button type="button" id="save-copy" className="btn" disabled={busy} onClick={() => { void work.savePrompt('copy'); }}>Save as new copy</button>
-        {w.saved ? <Link className="btn subtle" id="open-my-prompts" href="/account/prompts">My prompts</Link> : null}
+        <button type="button" id="save-prompt" className="btn primary" disabled={busy} aria-busy={busy && view === 'saving'} onClick={() => { void work.savePrompt('save'); }}>{w.saved ? 'Save changes' : compact ? 'Save my version' : 'Save prompt'}</button>
+        {compact ? null : <button type="button" id="save-copy" className="btn" disabled={busy} onClick={() => { void work.savePrompt('copy'); }}>Save as new copy</button>}
+        {w.saved && !compact ? <Link className="btn subtle" id="open-my-prompts" href="/account/prompts">My prompts</Link> : null}
       </div>
       {anon ? <p className="save-note" id="save-anon">You’re not signed in. <Link href="/account/sign-in?next=%2Flab">Sign in</Link> to save; your draft stays on this page.</p> : null}
       {problem ? (

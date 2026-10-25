@@ -27,21 +27,27 @@ export const MANUAL_COPY_HELP = 'Your browser did not allow automatic copying, s
  */
 export interface CopyFlowDeps {
   readonly write: (text: string) => Promise<CopyResult>;
-  readonly onCopied: () => void;
+  /** `stamp` is whatever the caller passed to `copy` (the provider remembers which draft revision the confirmed copy belonged to). */
+  readonly onCopied: (text: string, stamp?: unknown) => void;
   readonly onManual: (text: string) => void;
   readonly onClear: () => void;
 }
 export function createCopyFlow(deps: CopyFlowDeps) {
   let epoch = 0;
   return {
-    async copy(text: string): Promise<void> {
+    async copy(text: string, stamp?: unknown): Promise<void> {
       const mine = epoch;
       let result: CopyResult;
       try { result = await deps.write(text); } catch { result = 'blocked'; }
       if (mine !== epoch) return;                // the account changed while the request ran: say nothing, show nothing
-      if (result === 'copied') deps.onCopied(); else deps.onManual(text);
+      if (result === 'copied') deps.onCopied(text, stamp); else deps.onManual(text);
     },
     invalidate(): void { epoch++; deps.onClear(); },
   };
 }
 export type CopyFlow = ReturnType<typeof createCopyFlow>;
+
+/** A copy the browser CONFIRMED, remembered with the draft revision and generation it belonged to. */
+export interface CopiedRecord { readonly text: string; readonly revision: number; readonly epoch: number }
+/** True only for exactly the same text, the same revision of the same draft generation. Any edit, a new or reset draft, or an account change (which clears the record) makes it false. */
+export const copyStillValid = (rec: CopiedRecord | null, text: string, revision: number, epoch: number): boolean => rec !== null && rec.text === text && rec.revision === revision && rec.epoch === epoch;
